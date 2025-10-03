@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon } from "lucide-react";
+import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon, ExternalLink } from "lucide-react"; // Importar ExternalLink
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
@@ -316,7 +316,18 @@ const SEISOPage = () => {
           currentTask && (
             <div className="space-y-6">
               <div className="text-center">
-                <CardTitle className="text-3xl font-bold text-gray-800 mb-2">{currentTask.content}</CardTitle>
+                <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
+                  {currentTask.content}
+                  <a
+                    href={`https://todoist.com/app/task/${currentTask.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-blue-600 transition-colors"
+                    aria-label="Abrir no Todoist"
+                  >
+                    <ExternalLink className="h-5 w-5" />
+                  </a>
+                </CardTitle>
                 {currentTask.description && (
                   <CardDescription className="text-gray-700 mb-2">
                     {currentTask.description}

@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck, ExternalLink } from "lucide-react"; // Importar ExternalLink
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, updateTaskDueDate, handleApiCall } from "@/lib/todoistApi";
@@ -208,9 +208,18 @@ const SEIKETSUPage = () => {
                   />
                   <label
                     htmlFor={`task-${task.id}`}
-                    className={`text-lg font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${getPriorityColor(task.priority)}`}
+                    className={`text-lg font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2 ${getPriorityColor(task.priority)}`}
                   >
                     {task.content} ({getPriorityLabel(task.priority)})
+                    <a
+                      href={`https://todoist.com/app/task/${task.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-400 hover:text-blue-600 transition-colors"
+                      aria-label="Abrir no Todoist"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
                   </label>
                 </div>
               ))

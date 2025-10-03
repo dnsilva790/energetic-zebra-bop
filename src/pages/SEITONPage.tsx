@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, LayoutDashboard } from "lucide-react";
+import { ArrowLeft, LayoutDashboard, ExternalLink } from "lucide-react"; // Importar ExternalLink
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, getProjects, moveTaskToProject, handleApiCall } from "@/lib/todoistApi";
@@ -148,7 +148,18 @@ const SEITONPage = () => {
                 <CardContent className="space-y-4">
                   {tasks.map(task => (
                     <div key={task.id} className="flex flex-col p-3 border rounded-md bg-white shadow-sm">
-                      <p className="font-medium text-gray-800 mb-2">{task.content}</p>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-medium text-gray-800">{task.content}</p>
+                        <a
+                          href={`https://todoist.com/app/task/${task.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-gray-400 hover:text-blue-600 transition-colors"
+                          aria-label="Abrir no Todoist"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </div>
                       <Select onValueChange={(newProjectId) => handleMoveTask(task.id, newProjectId)} value={task.project_id}>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Mover para projeto..." />
