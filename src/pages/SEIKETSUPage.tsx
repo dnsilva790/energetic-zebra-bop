@@ -1,33 +1,30 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
-import { showSuccess } from "@/utils/toast";
+import { showSuccess, showError } from "@/utils/toast";
+import { getTasks, updateTaskDueDate, handleApiCall } from "@/lib/todoistApi";
+import { isToday, parseISO, format, addDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-interface Task {
+interface TodoistTask {
   id: string;
-  title: string;
-  priority: "P1" | "P2" | "P3";
+  content: string;
+  description?: string;
+  due?: {
+    date: string;
+    string: string;
+    lang: string;
+    is_recurring: boolean;
+  } | null;
+  priority: number; // 1 (lowest) to 4 (highest)
+  is_completed: boolean;
 }
-
-const fakeSummary = {
-  concluidas: 5,
-  pendentes: 3,
-  tempo_total: "4h 30min",
-  pomodoros: 9,
-};
-
-const fakePendingTasks: Task[] = [
-  { id: "1", title: "Revisar contrato", priority: "P1" },
-  { id: "2", title: "Ligar para cliente", priority: "P2" },
-  { id: "3", title: "Comprar material escritório", priority: "P2" },
-  { id: "4", title: "Estudar novo framework", priority: "P3" },
-];
 
 const motivationalMessages = [
   "Bom trabalho hoje! 🌟",
@@ -42,11 +39,42 @@ const SEIKETSUPage = () => {
   const navigate = useNavigate();
   const [selectedPendingTasks, setSelectedPendingTasks] = useState<string[]>([]);
   const [motivationalMessage, setMotivationalMessage] = useState("");
+  const [tasksForToday, setTasksForToday] = useState<TodoistTask[]>([]);
+  const [completedTodayCount, setCompletedTodayCount] = useState(0);
+  const [pendingTodayTasks, setPendingTodayTasks] = useState<TodoistTask[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const randomIndex = Math.floor(Math.random() * motivationalMessages.length);
     setMotivationalMessage(motivationalMessages[randomIndex]);
   }, []);
+
+  const fetchAndProcessTasks = useCallback(async () => {
+    setLoading(true);
+    const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas do dia...");
+    if (fetchedTasks) {
+      const today = new Date();
+      const tasksDueToday = fetchedTasks.filter((task: TodoistTask) => 
+        task.due && isToday(parseISO(task.due.date))
+      );
+      setTasksForToday(tasksDueToday);
+
+      const completed = tasksDueToday.filter(task => task.is_completed).length;
+      setCompletedTodayCount(completed);
+
+      const pending = tasksDueToday.filter(task => !task.is_completed);
+      setPendingTodayTasks(pending);
+
+    } else {
+      showError("Não foi possível carregar as tarefas do Todoist.");
+      navigate("/main-menu");
+    }
+    setLoading(false);
+  }, [navigate]);
+
+  useEffect(() => {
+    fetchAndProcessTasks();
+  }, [fetchAndProcessTasks]);
 
   const handleCheckboxChange = (taskId: string, checked: boolean) => {
     setSelectedPendingTasks((prev) =>
@@ -54,30 +82,73 @@ const SEIKETSUPage = () => {
     );
   };
 
-  const handleReprogramSelected = () => {
+  const handleReprogramSelected = async () => {
     if (selectedPendingTasks.length === 0) {
       showSuccess("Nenhuma tarefa selecionada para reprogramar.");
       return;
     }
-    const reprogrammedTitles = fakePendingTasks
-      .filter((task) => selectedPendingTasks.includes(task.id))
-      .map((task) => task.title);
-    showSuccess(`Tarefas reprogramadas: ${reprogrammedTitles.join(", ")}`);
-    setSelectedPendingTasks([]); // Clear selection after reprogramming
+
+    const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
+    const reprogrammedTitles: string[] = [];
+    let successCount = 0;
+
+    for (const taskId of selectedPendingTasks) {
+      const taskToReprogram = pendingTodayTasks.find(task => task.id === taskId);
+      if (taskToReprogram) {
+        const success = await handleApiCall(
+          () => updateTaskDueDate(taskId, tomorrow),
+          `Reprogramando "${taskToReprogram.content}"...`
+        );
+        if (success) {
+          reprogrammedTitles.push(taskToReprogram.content);
+          successCount++;
+        } else {
+          showError(`Falha ao reprogramar "${taskToReprogram.content}".`);
+        }
+      }
+    }
+
+    if (successCount > 0) {
+      showSuccess(`Tarefas reprogramadas: ${reprogrammedTitles.join(", ")}`);
+      setSelectedPendingTasks([]); // Clear selection after reprogramming
+      fetchAndProcessTasks(); // Refresh tasks to update the UI
+    } else {
+      showError("Nenhuma tarefa foi reprogramada com sucesso.");
+    }
   };
 
-  const getPriorityColor = (priority: "P1" | "P2" | "P3") => {
+  const getPriorityColor = (priority: number) => {
     switch (priority) {
-      case "P1":
+      case 4:
         return "text-red-600";
-      case "P2":
+      case 3:
         return "text-yellow-600";
-      case "P3":
+      case 2:
+        return "text-blue-600";
+      case 1:
         return "text-gray-600";
       default:
         return "text-gray-600";
     }
   };
+
+  const getPriorityLabel = (priority: number) => {
+    switch (priority) {
+      case 4: return "P1";
+      case 3: return "P2";
+      case 2: return "P3";
+      case 1: return "P4";
+      default: return "Sem Prioridade";
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-purple-100 p-4">
+        <p className="text-lg text-purple-600">Carregando resumo do dia...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-purple-100 p-4">
@@ -103,19 +174,20 @@ const SEIKETSUPage = () => {
           <div className="grid grid-cols-2 gap-4 text-left">
             <div className="flex items-center space-x-2">
               <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <p className="text-lg text-gray-700">Concluídas: <span className="font-semibold">{fakeSummary.concluidas}</span></p>
+              <p className="text-lg text-gray-700">Concluídas: <span className="font-semibold">{completedTodayCount}</span></p>
             </div>
             <div className="flex items-center space-x-2">
               <Hourglass className="h-5 w-5 text-yellow-600" />
-              <p className="text-lg text-gray-700">Pendentes: <span className="font-semibold">{fakeSummary.pendentes}</span></p>
+              <p className="text-lg text-gray-700">Pendentes: <span className="font-semibold">{pendingTodayTasks.length}</span></p>
             </div>
+            {/* Tempo Total e Pomodoros são placeholders, pois a API do Todoist não fornece esses dados diretamente */}
             <div className="flex items-center space-x-2">
               <Clock className="h-5 w-5 text-blue-600" />
-              <p className="text-lg text-gray-700">Trabalhado: <span className="font-semibold">{fakeSummary.tempo_total}</span></p>
+              <p className="text-lg text-gray-700">Trabalhado: <span className="font-semibold">--</span></p>
             </div>
             <div className="flex items-center space-x-2">
               <Coffee className="h-5 w-5 text-red-600" />
-              <p className="text-lg text-gray-700">Pomodoros: <span className="font-semibold">{fakeSummary.pomodoros}</span></p>
+              <p className="text-lg text-gray-700">Pomodoros: <span className="font-semibold">--</span></p>
             </div>
           </div>
         </div>
@@ -125,26 +197,31 @@ const SEIKETSUPage = () => {
           <CardTitle className="text-2xl font-bold text-gray-800 text-center">Tarefas que ficaram pendentes:</CardTitle>
           <p className="text-gray-700 text-center mb-4">Quais dessas você quer tentar amanhã?</p>
           <div className="space-y-3">
-            {fakePendingTasks.map((task) => (
-              <div key={task.id} className="flex items-center space-x-3">
-                <Checkbox
-                  id={`task-${task.id}`}
-                  checked={selectedPendingTasks.includes(task.id)}
-                  onCheckedChange={(checked) => handleCheckboxChange(task.id, checked as boolean)}
-                  className="h-5 w-5"
-                />
-                <label
-                  htmlFor={`task-${task.id}`}
-                  className={`text-lg font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${getPriorityColor(task.priority)}`}
-                >
-                  {task.title} ({task.priority})
-                </label>
-              </div>
-            ))}
+            {pendingTodayTasks.length > 0 ? (
+              pendingTodayTasks.map((task) => (
+                <div key={task.id} className="flex items-center space-x-3">
+                  <Checkbox
+                    id={`task-${task.id}`}
+                    checked={selectedPendingTasks.includes(task.id)}
+                    onCheckedChange={(checked) => handleCheckboxChange(task.id, checked as boolean)}
+                    className="h-5 w-5"
+                  />
+                  <label
+                    htmlFor={`task-${task.id}`}
+                    className={`text-lg font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${getPriorityColor(task.priority)}`}
+                  >
+                    {task.content} ({getPriorityLabel(task.priority)})
+                  </label>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-gray-500">Nenhuma tarefa pendente para hoje. Bom trabalho!</p>
+            )}
           </div>
           <Button
             onClick={handleReprogramSelected}
             className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-md transition-colors flex items-center justify-center"
+            disabled={pendingTodayTasks.length === 0}
           >
             <CalendarCheck className="mr-2 h-5 w-5" /> REPROGRAMAR SELECIONADAS
           </Button>

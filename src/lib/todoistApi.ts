@@ -115,3 +115,18 @@ export async function deleteTask(taskId: string) {
 export async function moveTaskToProject(taskId: string, projectId: string) {
   return updateTask(taskId, { project_id: projectId });
 }
+
+export async function updateTaskDueDate(taskId: string, dueDate: string) {
+  const headers = getApiHeaders();
+  if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
+  const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ due_date: dueDate })
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Erro ao atualizar data de vencimento da tarefa: ${response.statusText}`);
+  }
+  return response.json();
+}
