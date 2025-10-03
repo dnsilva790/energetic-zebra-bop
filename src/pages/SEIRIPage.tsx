@@ -52,7 +52,7 @@ const SEIRIPage = () => {
   const [deletedTasksCount, setDeletedTasksCount] = useState(0);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-  const [loading, setLoading] = useState(true); // Inicializa como true
+  const [loading, setLoading] = useState(true);
 
   const currentTask = allTasks[currentTaskIndex];
   const totalTasks = allTasks.length;
@@ -103,28 +103,28 @@ const SEIRIPage = () => {
   };
 
   const fetchTasksAndProjects = useCallback(async () => {
-    console.log("SEIRI: Iniciando fetchTasksAndProjects");
-    setLoading(true); // Garante que o loading está ativo ao iniciar a busca
+    setLoading(true);
     try {
       const [tasks, projects] = await Promise.all([
         handleApiCall(getTasks, "Carregando tarefas..."),
         handleApiCall(getProjects, "Carregando projetos..."),
       ]);
-      console.log("SEIRI: Promise.all resolvida. Tarefas:", tasks, "Projetos:", projects);
 
       if (tasks && projects) {
         const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
-        const tasksWithProjectNames = tasks.map((task: any) => ({
-          ...task,
-          project_name: projectMap.get(task.project_id) || "Caixa de Entrada"
-        }));
+        const tasksWithProjectNames = tasks.map((task: any) => {
+          const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
+          // console.log(`Task ID: ${task.id}, Project ID: ${task.project_id}, Mapped Project Name: ${projectName}`); // Log para depuração
+          return {
+            ...task,
+            project_name: projectName
+          };
+        });
         setAllTasks(tasksWithProjectNames);
         if (tasksWithProjectNames.length === 0) {
           setShowSummary(true);
         }
-        console.log("SEIRI: Tarefas e projetos processados com sucesso.");
       } else {
-        console.log("SEIRI: Falha ao carregar tarefas ou projetos, navegando para o menu principal.");
         showError("Não foi possível carregar as tarefas ou projetos do Todoist.");
         navigate("/main-menu");
       }
@@ -133,24 +133,19 @@ const SEIRIPage = () => {
       showError("Ocorreu um erro inesperado ao carregar dados.");
       navigate("/main-menu");
     } finally {
-      setLoading(false); // Garante que o loading é desativado no final
-      console.log("SEIRI: Finalizado fetchTasksAndProjects, setLoading(false).");
+      setLoading(false);
     }
   }, [navigate]);
 
   useEffect(() => {
     const initializePage = async () => {
-      console.log("SEIRI: Iniciando inicialização da página.");
-      setLoading(true); // Garante que o loading está ativo no início da inicialização
+      setLoading(true);
       const hasLoadedProgress = loadProgress();
       if (hasLoadedProgress) {
-        console.log("SEIRI: Progresso carregado do localStorage.");
-        setLoading(false); // Desativa o loading se o progresso foi carregado
+        setLoading(false);
       } else {
-        console.log("SEIRI: Nenhum progresso salvo, buscando tarefas e projetos.");
-        await fetchTasksAndProjects(); // Esta função já gerencia seu próprio setLoading(false)
+        await fetchTasksAndProjects();
       }
-      console.log("SEIRI: Inicialização da página concluída.");
     };
     initializePage();
   }, [fetchTasksAndProjects, loadProgress]);
