@@ -19,28 +19,7 @@ import {
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, getProjects, completeTask, handleApiCall } from "@/lib/todoistApi";
-
-interface TodoistTask {
-  id: string;
-  content: string;
-  description?: string;
-  due?: {
-    date: string;
-    string: string;
-    lang: string;
-    is_recurring: boolean;
-  } | null;
-  priority: number; // 1 (lowest) to 4 (highest)
-  project_id: string;
-  project_name?: string; // Adicionado para facilitar a exibição
-  classificacao?: 'essencial' | 'descartavel'; // Classificação interna do app
-}
-
-interface TodoistProject {
-  id: string;
-  name: string;
-  color: string;
-}
+import { TodoistTask, TodoistProject } from "@/lib/types"; // Importar os tipos
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
 
@@ -112,9 +91,8 @@ const SEIRIPage = () => {
 
       if (tasks && projects) {
         const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
-        const tasksWithProjectNames = tasks.map((task: any) => {
+        const tasksWithProjectNames = tasks.map((task: TodoistTask) => { // Usar TodoistTask aqui
           const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
-          // console.log(`Task ID: ${task.id}, Project ID: ${task.project_id}, Mapped Project Name: ${projectName}`); // Log para depuração
           return {
             ...task,
             project_name: projectName
@@ -275,6 +253,11 @@ const SEIRIPage = () => {
                   {currentTask.due?.date && (
                     <p className="text-sm text-gray-500">
                       Vencimento: <span className="font-medium text-gray-700">{new Date(currentTask.due.date).toLocaleDateString()}</span>
+                    </p>
+                  )}
+                  {currentTask.deadline && ( // Exibir o campo deadline
+                    <p className="text-sm text-gray-500">
+                      Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
                     </p>
                   )}
                 </div>

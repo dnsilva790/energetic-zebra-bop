@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Trash2, Archive, ArrowUpCircle, BarChart2, ExternalLink } from "lucide-react"; // Importar ExternalLink
+import { ArrowLeft, Trash2, Archive, ArrowUpCircle, BarChart2, ExternalLink } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,21 +20,7 @@ import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, updateTask, handleApiCall } from "@/lib/todoistApi";
 import { isPast, parseISO } from "date-fns";
-
-interface TodoistTask {
-  id: string;
-  content: string;
-  description?: string;
-  due?: {
-    date: string;
-    string: string;
-    lang: string;
-    is_recurring: boolean;
-  } | null;
-  priority: number; // 1 (lowest) to 4 (highest)
-  project_id: string;
-  project_name?: string; // Adicionado para facilitar a exibição
-}
+import { TodoistTask } from "@/lib/types"; // Importar o tipo
 
 const SHITSUKEPage = () => {
   const navigate = useNavigate();
@@ -58,7 +44,7 @@ const SHITSUKEPage = () => {
       // - Prioridade 1 ou 2 (baixa/média)
       // - Ou tarefas sem data de vencimento
       // - Ou tarefas que estão atrasadas (passaram da data de vencimento)
-      const p3Tasks = fetchedTasks.filter((task: TodoistTask) => {
+      const p3Tasks = fetchedTasks.filter((task: TodoistTask) => { // Usar TodoistTask aqui
         const isLowPriority = task.priority === 1 || task.priority === 2;
         const hasNoDueDate = !task.due;
         const isOverdue = task.due && isPast(parseISO(task.due.date));
@@ -210,6 +196,11 @@ const SHITSUKEPage = () => {
                 {currentTask.due?.date && (
                   <p className="text-md text-gray-500">
                     Vencimento: <span className="font-medium text-gray-700">{new Date(currentTask.due.date).toLocaleDateString()}</span>
+                  </p>
+                )}
+                {currentTask.deadline && ( // Exibir o campo deadline
+                  <p className="text-md text-gray-500">
+                    Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
                   </p>
                 )}
               </div>

@@ -5,28 +5,13 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon, ExternalLink } from "lucide-react"; // Importar ExternalLink
+import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon, ExternalLink } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
 import { format, isToday, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
-interface TodoistTask {
-  id: string;
-  content: string;
-  description?: string;
-  due?: {
-    date: string;
-    string: string;
-    lang: string;
-    is_recurring: boolean;
-  } | null;
-  priority: number; // 1 (lowest) to 4 (highest)
-  project_id: string;
-  project_name?: string; // Adicionado para facilitar a exibição
-  time_estimate?: string; // Custom field for time estimate, if available
-}
+import { TodoistTask } from "@/lib/types"; // Importar o tipo
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
 
@@ -77,7 +62,7 @@ const SEISOPage = () => {
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para hoje...");
     if (fetchedTasks) {
       const today = new Date();
-      const filteredTasks = fetchedTasks.filter((task: TodoistTask) => {
+      const filteredTasks = fetchedTasks.filter((task: TodoistTask) => { // Usar TodoistTask aqui
         // Include tasks due today or tasks with no due date
         return (task.due && isToday(parseISO(task.due.date))) || !task.due;
       });
@@ -342,6 +327,11 @@ const SEISOPage = () => {
                 {currentTask.due && (
                   <p className="text-sm text-gray-500">
                     Vencimento: <span className="font-medium text-gray-700">{format(parseISO(currentTask.due.date), "dd/MM/yyyy", { locale: ptBR })}</span>
+                  </p>
+                )}
+                {currentTask.deadline && ( // Exibir o campo deadline
+                  <p className="text-sm text-gray-500">
+                    Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
                   </p>
                 )}
               </div>

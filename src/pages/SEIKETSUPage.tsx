@@ -5,26 +5,13 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck, ExternalLink } from "lucide-react"; // Importar ExternalLink
+import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck, ExternalLink } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, updateTaskDueDate, handleApiCall } from "@/lib/todoistApi";
 import { isToday, parseISO, format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
-interface TodoistTask {
-  id: string;
-  content: string;
-  description?: string;
-  due?: {
-    date: string;
-    string: string;
-    lang: string;
-    is_recurring: boolean;
-  } | null;
-  priority: number; // 1 (lowest) to 4 (highest)
-  is_completed: boolean;
-}
+import { TodoistTask } from "@/lib/types"; // Importar o tipo
 
 const motivationalMessages = [
   "Bom trabalho hoje! 🌟",
@@ -211,6 +198,11 @@ const SEIKETSUPage = () => {
                     className={`text-lg font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2 ${getPriorityColor(task.priority)}`}
                   >
                     {task.content} ({getPriorityLabel(task.priority)})
+                    {task.deadline && ( // Exibir o campo deadline
+                      <span className="text-sm text-gray-500 ml-2">
+                        (Limite: {new Date(task.deadline).toLocaleDateString()})
+                      </span>
+                    )}
                     <a
                       href={`https://todoist.com/app/task/${task.id}`}
                       target="_blank"

@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { TodoistTask, TodoistProject } from "./types"; // Importar os tipos
 
 const TODOIST_CONFIG = {
   baseURL: 'https://api.todoist.com/rest/v2',
@@ -13,8 +14,6 @@ const getTodoistToken = () => {
 const getApiHeaders = () => {
   const token = getTodoistToken();
   if (!token) {
-    // Em um ambiente real, você redirecionaria para a página de setup ou mostraria um erro.
-    // Por enquanto, vamos apenas logar e retornar headers vazios.
     console.error("Todoist API token not found in localStorage.");
     toast.error("Token do Todoist não encontrado. Por favor, configure-o na página de Configurações.");
     return {};
@@ -45,7 +44,7 @@ export async function handleApiCall<T>(apiFunction: () => Promise<T>, loadingMes
 }
 
 // Funções específicas da API do Todoist
-export async function getTasks() {
+export async function getTasks(): Promise<TodoistTask[]> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
   const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks`, { headers });
@@ -56,7 +55,7 @@ export async function getTasks() {
   return response.json();
 }
 
-export async function getProjects() {
+export async function getProjects(): Promise<TodoistProject[]> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
   const response = await fetch(`${TODOIST_CONFIG.baseURL}/projects`, { headers });
@@ -67,7 +66,7 @@ export async function getProjects() {
   return response.json();
 }
 
-export async function updateTask(taskId: string, data: any) {
+export async function updateTask(taskId: string, data: any): Promise<TodoistTask> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
   const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}`, {
@@ -82,7 +81,7 @@ export async function updateTask(taskId: string, data: any) {
   return response.json(); // Retorna a tarefa atualizada
 }
 
-export async function completeTask(taskId: string) {
+export async function completeTask(taskId: string): Promise<boolean> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
   const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}/close`, {
@@ -97,7 +96,7 @@ export async function completeTask(taskId: string) {
   return true; 
 }
 
-export async function deleteTask(taskId: string) {
+export async function deleteTask(taskId: string): Promise<boolean> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
   const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}`, {
@@ -112,11 +111,11 @@ export async function deleteTask(taskId: string) {
   return true;
 }
 
-export async function moveTaskToProject(taskId: string, projectId: string) {
+export async function moveTaskToProject(taskId: string, projectId: string): Promise<TodoistTask> {
   return updateTask(taskId, { project_id: projectId });
 }
 
-export async function updateTaskDueDate(taskId: string, dueDate: string) {
+export async function updateTaskDueDate(taskId: string, dueDate: string): Promise<TodoistTask> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
   const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}`, {
