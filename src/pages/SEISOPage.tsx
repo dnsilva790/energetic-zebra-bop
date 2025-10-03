@@ -23,6 +23,8 @@ const fakeTasks: Task[] = [
   { id: "4", title: "Organizar arquivos", priority: "P2", time: "30min" },
 ];
 
+const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
+
 const parseTime = (timeStr: string): number => {
   const match = timeStr.match(/(\d+)(min|h)/);
   if (!match) return 0;
@@ -36,6 +38,12 @@ const parseTime = (timeStr: string): number => {
   return 0;
 };
 
+const formatTime = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+};
+
 const SEISOPage = () => {
   const navigate = useNavigate();
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
@@ -43,90 +51,131 @@ const SEISOPage = () => {
   const [showCelebration, setShowCelebration] = useState(false);
   const [isSessionFinished, setIsSessionFinished] = useState(false);
 
-  const [timeLeft, setTimeLeft] = useState(0); // in seconds
-  const [initialTime, setInitialTime] = useState(0); // to calculate progress
-  const [isActive, setIsActive] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // Pomodoro Timer States
+  const [pomodoroTimeLeft, setPomodoroTimeLeft] = useState(POMODORO_DURATION);
+  const [isPomodoroActive, setIsPomodoroActive] = useState(false);
+  const [isPomodoroPaused, setIsPomodoroPaused] = useState(false);
+  const pomodoroTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Task Timer States
+  const [taskTimeElapsed, setTaskTimeElapsed] = useState(0);
+  const [isTaskActive, setIsTaskActive] = useState(false);
+  const [isTaskPaused, setIsTaskPaused] = useState(false);
+  const taskTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Task specific data (for display and +15min logic)
+  const [currentTaskEstimate, setCurrentTaskEstimate] = useState(0); // in seconds
 
   const totalTasks = fakeTasks.length;
   const currentTask = fakeTasks[currentTaskIndex];
 
-  // Initialize timer when task changes or page loads
+  // Initialize timers and task estimate when task changes or page loads
   useEffect(() => {
     if (currentTask) {
       const timeInSeconds = parseTime(currentTask.time);
-      setTimeLeft(timeInSeconds);
-      setInitialTime(timeInSeconds);
-      setIsActive(false);
-      setIsPaused(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      setCurrentTaskEstimate(timeInSeconds);
+
+      // Reset Pomodoro
+      setPomodoroTimeLeft(POMODORO_DURATION);
+      setIsPomodoroActive(false);
+      setIsPomodoroPaused(false);
+      if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
+
+      // Reset Task Timer
+      setTaskTimeElapsed(0);
+      setIsTaskActive(false);
+      setIsTaskPaused(false);
+      if (taskTimerRef.current) clearInterval(taskTimerRef.current);
     }
   }, [currentTaskIndex, currentTask]);
 
-  // Timer countdown logic
+  // Pomodoro Timer Countdown Logic
   useEffect(() => {
-    if (isActive && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prevTime) => prevTime - 1);
+    if (isPomodoroActive && pomodoroTimeLeft > 0) {
+      pomodoroTimerRef.current = setInterval(() => {
+        setPomodoroTimeLeft((prevTime) => prevTime - 1);
       }, 1000);
-    } else if (timeLeft === 0 && isActive) {
-      setIsActive(false);
-      showSuccess("Tempo esgotado para a tarefa!");
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+    } else if (pomodoroTimeLeft === 0 && isPomodoroActive) {
+      setIsPomodoroActive(false);
+      showSuccess("Pomodoro concluído! Hora de uma pausa.");
+      if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
     }
 
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
     };
-  }, [isActive, timeLeft]);
+  }, [isPomodoroActive, pomodoroTimeLeft]);
 
-  const startTimer = () => {
-    if (timeLeft > 0) {
-      setIsActive(true);
-      setIsPaused(false);
+  // Task Timer Count-up Logic
+  useEffect(() => {
+    if (isTaskActive) {
+      taskTimerRef.current = setInterval(() => {
+        setTaskTimeElapsed((prevTime) => prevTime + 1);
+      }, 1000);
+    }
+
+    return () => {
+      if (taskTimerRef.current) clearInterval(taskTimerRef.current);
+    };
+  }, [isTaskActive]);
+
+  // Pomodoro Controls
+  const startPomodoro = () => {
+    if (pomodoroTimeLeft > 0) {
+      setIsPomodoroActive(true);
+      setIsPomodoroPaused(false);
     }
   };
 
-  const pauseTimer = () => {
-    setIsActive(false);
-    setIsPaused(true);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
+  const pausePomodoro = () => {
+    setIsPomodoroActive(false);
+    setIsPomodoroPaused(true);
+    if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
   };
 
-  const stopTimer = () => {
-    setIsActive(false);
-    setIsPaused(false);
-    if (currentTask) {
-      const timeInSeconds = parseTime(currentTask.time);
-      setTimeLeft(timeInSeconds);
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
+  const resetPomodoro = () => {
+    setIsPomodoroActive(false);
+    setIsPomodoroPaused(false);
+    setPomodoroTimeLeft(POMODORO_DURATION);
+    if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
+  };
+
+  // Task Timer Controls
+  const startTaskTimer = () => {
+    setIsTaskActive(true);
+    setIsTaskPaused(false);
+  };
+
+  const pauseTaskTimer = () => {
+    setIsTaskActive(false);
+    setIsTaskPaused(true);
+    if (taskTimerRef.current) clearInterval(taskTimerRef.current);
+  };
+
+  const resetTaskTimer = () => {
+    setIsTaskActive(false);
+    setIsTaskPaused(false);
+    setTaskTimeElapsed(0);
+    if (taskTimerRef.current) clearInterval(taskTimerRef.current);
   };
 
   const addFifteenMinutes = () => {
-    setTimeLeft((prevTime) => prevTime + 15 * 60);
-    setInitialTime((prevInitialTime) => prevInitialTime + 15 * 60); // Adjust initial time for progress calculation
-    showSuccess("+15 minutos adicionados!");
+    setCurrentTaskEstimate((prevEstimate) => prevEstimate + 15 * 60);
+    showSuccess("+15 minutos adicionados à estimativa da tarefa!");
   };
 
-  const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+  const stopAllTimers = () => {
+    setIsPomodoroActive(false);
+    setIsPomodoroPaused(false);
+    if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
+
+    setIsTaskActive(false);
+    setIsTaskPaused(false);
+    if (taskTimerRef.current) clearInterval(taskTimerRef.current);
   };
 
   const moveToNextTask = () => {
+    stopAllTimers();
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
       setShowCelebration(false);
@@ -139,10 +188,7 @@ const SEISOPage = () => {
   const handleCompleteTask = () => {
     setTasksCompleted(tasksCompleted + 1);
     setShowCelebration(true);
-    setIsActive(false); // Stop timer on completion
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
+    stopAllTimers();
     // The celebration will handle moving to the next task after a delay or user action
   };
 
@@ -160,7 +206,9 @@ const SEISOPage = () => {
   };
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
-  const timerProgressValue = initialTime > 0 ? ((initialTime - timeLeft) / initialTime) * 100 : 0;
+  const pomodoroProgressValue = ((POMODORO_DURATION - pomodoroTimeLeft) / POMODORO_DURATION) * 100;
+  const taskTimeProgressValue = currentTaskEstimate > 0 ? (taskTimeElapsed / currentTaskEstimate) * 100 : 0;
+
 
   if (isSessionFinished) {
     return (
@@ -196,7 +244,7 @@ const SEISOPage = () => {
         </p>
       </div>
 
-      <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
+      <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
         {showCelebration ? (
           <div className="text-center space-y-4">
             <CardTitle className="text-4xl font-bold text-green-600">Parabéns! 🎉</CardTitle>
@@ -214,34 +262,67 @@ const SEISOPage = () => {
                   Prioridade: {currentTask.priority}
                 </p>
                 <p className="text-md text-gray-600">
-                  Estimativa: <span className="font-medium">{currentTask.time}</span>
+                  Estimativa original: <span className="font-medium">{formatTime(currentTaskEstimate)} estimados</span>
                 </p>
               </div>
 
-              <div className="flex flex-col items-center space-y-4">
-                <div className="text-6xl font-bold text-gray-800">
-                  {formatTime(timeLeft)}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                {/* Pomodoro Timer */}
+                <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
+                  <h3 className="text-xl font-bold text-red-700">Pomodoro</h3>
+                  <div className="text-6xl font-bold text-red-800">
+                    {formatTime(pomodoroTimeLeft)}
+                  </div>
+                  <Progress value={pomodoroProgressValue} className="w-full h-2 bg-red-200 [&>*]:bg-red-600" />
+                  <div className="flex space-x-2">
+                    {!isPomodoroActive && !isPomodoroPaused && (
+                      <Button onClick={startPomodoro} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" />
+                      </Button>
+                    )}
+                    {isPomodoroActive && (
+                      <Button onClick={pausePomodoro} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+                        <Pause className="h-5 w-5" />
+                      </Button>
+                    )}
+                    {isPomodoroPaused && (
+                      <Button onClick={startPomodoro} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" />
+                      </Button>
+                    )}
+                    <Button onClick={resetPomodoro} className="bg-gray-600 hover:bg-gray-700 text-white">
+                      <Square className="h-5 w-5" />
+                    </Button>
+                  </div>
                 </div>
-                <Progress value={timerProgressValue} className="w-full h-2 bg-gray-200 [&>*]:bg-orange-500" />
-                <div className="flex space-x-4">
-                  {!isActive && !isPaused && (
-                    <Button onClick={startTimer} className="bg-green-600 hover:bg-green-700 text-white">
-                      <Play className="mr-2 h-5 w-5" /> INICIAR
+
+                {/* Task Timer */}
+                <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-blue-50/50">
+                  <h3 className="text-xl font-bold text-blue-700">Tempo na Tarefa</h3>
+                  <div className="text-6xl font-bold text-blue-800">
+                    {formatTime(taskTimeElapsed)}
+                  </div>
+                  <Progress value={taskTimeProgressValue} className="w-full h-2 bg-blue-200 [&>*]:bg-blue-600" />
+                  <div className="flex space-x-2">
+                    {!isTaskActive && !isTaskPaused && (
+                      <Button onClick={startTaskTimer} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" />
+                      </Button>
+                    )}
+                    {isTaskActive && (
+                      <Button onClick={pauseTaskTimer} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+                        <Pause className="h-5 w-5" />
+                      </Button>
+                    )}
+                    {isTaskPaused && (
+                      <Button onClick={startTaskTimer} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" />
+                      </Button>
+                    )}
+                    <Button onClick={resetTaskTimer} className="bg-gray-600 hover:bg-gray-700 text-white">
+                      <Square className="h-5 w-5" />
                     </Button>
-                  )}
-                  {isActive && (
-                    <Button onClick={pauseTimer} className="bg-yellow-600 hover:bg-yellow-700 text-white">
-                      <Pause className="mr-2 h-5 w-5" /> PAUSAR
-                    </Button>
-                  )}
-                  {isPaused && (
-                    <Button onClick={startTimer} className="bg-green-600 hover:bg-green-700 text-white">
-                      <Play className="mr-2 h-5 w-5" /> CONTINUAR
-                    </Button>
-                  )}
-                  <Button onClick={stopTimer} className="bg-gray-600 hover:bg-gray-700 text-white">
-                    <Square className="mr-2 h-5 w-5" /> PARAR
-                  </Button>
+                  </div>
                 </div>
               </div>
 
