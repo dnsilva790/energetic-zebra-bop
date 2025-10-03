@@ -19,9 +19,13 @@ const MainMenuPage = () => {
   const navigate = useNavigate();
 
   const handleButtonClick = (sName: string) => {
-    showSuccess(`Tela em construção - ${sName}`);
-    // Futuramente, aqui você navegará para a rota específica de cada S
-    // Ex: navigate(`/5s/${sName.toLowerCase()}`);
+    if (sName === "SEIRI") {
+      navigate("/5s/seiri"); // Navega para a tela SEIRI
+    } else {
+      showSuccess(`Tela em construção - ${sName}`);
+      // Futuramente, aqui você navegará para a rota específica de cada S
+      // Ex: navigate(`/5s/${sName.toLowerCase()}`);
+    }
   };
 
   return (
