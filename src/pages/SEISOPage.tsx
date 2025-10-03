@@ -1,41 +1,42 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
-import { showSuccess } from "@/utils/toast";
+import { showSuccess, showError } from "@/utils/toast";
+import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
+import { format, isToday, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-interface Task {
+interface TodoistTask {
   id: string;
-  title: string;
-  priority: "P1" | "P2";
-  time: string; // e.g., "25min", "45min"
+  content: string;
+  description?: string;
+  due?: {
+    date: string;
+    string: string;
+    lang: string;
+    is_recurring: boolean;
+  } | null;
+  priority: number; // 1 (lowest) to 4 (highest)
+  project_id: string;
+  project_name?: string; // Adicionado para facilitar a exibição
+  time_estimate?: string; // Custom field for time estimate, if available
 }
-
-const fakeTasks: Task[] = [
-  { id: "1", title: "Responder emails urgentes", priority: "P1", time: "25min" },
-  { id: "2", title: "Revisar documento", priority: "P1", time: "45min" },
-  { id: "3", title: "Ligar para cliente", priority: "P2", time: "15min" },
-  { id: "4", title: "Organizar arquivos", priority: "P2", time: "30min" },
-];
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
 
-const parseTime = (timeStr: string): number => {
-  const match = timeStr.match(/(\d+)(min|h)/);
-  if (!match) return 0;
-  const value = parseInt(match[1]);
-  const unit = match[2];
-  if (unit === "min") {
-    return value * 60; // seconds
-  } else if (unit === "h") {
-    return value * 60 * 60; // seconds
-  }
-  return 0;
+const parseTimeEstimate = (task: TodoistTask): number => {
+  // Placeholder for parsing a custom time estimate from task description or a label
+  // For now, we'll use a default or a simple heuristic based on priority
+  if (task.priority === 4) return 45 * 60; // P1 (highest) -> 45 min
+  if (task.priority === 3) return 25 * 60; // P2 -> 25 min
+  if (task.priority === 2) return 15 * 60; // P3 -> 15 min
+  return 10 * 60; // P4 (lowest) or no priority -> 10 min
 };
 
 const formatTime = (seconds: number) => {
@@ -46,10 +47,12 @@ const formatTime = (seconds: number) => {
 
 const SEISOPage = () => {
   const navigate = useNavigate();
+  const [allTasks, setAllTasks] = useState<TodoistTask[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [tasksCompleted, setTasksCompleted] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
   const [isSessionFinished, setIsSessionFinished] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Pomodoro Timer States
   const [pomodoroTimeLeft, setPomodoroTimeLeft] = useState(POMODORO_DURATION);
@@ -66,13 +69,39 @@ const SEISOPage = () => {
   // Task specific data (for display and +15min logic)
   const [currentTaskEstimate, setCurrentTaskEstimate] = useState(0); // in seconds
 
-  const totalTasks = fakeTasks.length;
-  const currentTask = fakeTasks[currentTaskIndex];
+  const totalTasks = allTasks.length;
+  const currentTask = allTasks[currentTaskIndex];
+
+  const fetchTasksForToday = useCallback(async () => {
+    setLoading(true);
+    const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para hoje...");
+    if (fetchedTasks) {
+      const today = new Date();
+      const filteredTasks = fetchedTasks.filter((task: TodoistTask) => {
+        // Include tasks due today or tasks with no due date
+        return (task.due && isToday(parseISO(task.due.date))) || !task.due;
+      });
+
+      if (filteredTasks.length === 0) {
+        showSuccess("Nenhuma tarefa para hoje! Aproveite o dia ou adicione novas tarefas.");
+        setIsSessionFinished(true);
+      }
+      setAllTasks(filteredTasks);
+    } else {
+      showError("Não foi possível carregar as tarefas do Todoist.");
+      navigate("/main-menu");
+    }
+    setLoading(false);
+  }, [navigate]);
+
+  useEffect(() => {
+    fetchTasksForToday();
+  }, [fetchTasksForToday]);
 
   // Initialize timers and task estimate when task changes or page loads
   useEffect(() => {
     if (currentTask) {
-      const timeInSeconds = parseTime(currentTask.time);
+      const timeInSeconds = parseTimeEstimate(currentTask);
       setCurrentTaskEstimate(timeInSeconds);
 
       // Reset Pomodoro
@@ -185,11 +214,18 @@ const SEISOPage = () => {
     }
   };
 
-  const handleCompleteTask = () => {
-    setTasksCompleted(tasksCompleted + 1);
-    setShowCelebration(true);
-    stopAllTimers();
-    // The celebration will handle moving to the next task after a delay or user action
+  const handleCompleteTask = async () => {
+    if (currentTask) {
+      const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
+      if (success) {
+        setTasksCompleted(tasksCompleted + 1);
+        setShowCelebration(true);
+        stopAllTimers();
+        // The celebration will handle moving to the next task after a delay or user action
+      } else {
+        showError("Falha ao concluir a tarefa no Todoist.");
+      }
+    }
   };
 
   const handleSkipTask = () => {
@@ -201,14 +237,37 @@ const SEISOPage = () => {
     moveToNextTask();
   };
 
-  const getPriorityColor = (priority: "P1" | "P2") => {
-    return priority === "P1" ? "text-red-600" : "text-yellow-600";
+  const getPriorityColor = (priority: number) => {
+    switch (priority) {
+      case 4: return "text-red-600"; // P1
+      case 3: return "text-yellow-600"; // P2
+      case 2: return "text-blue-600"; // P3
+      case 1: return "text-gray-600"; // P4
+      default: return "text-gray-600";
+    }
+  };
+
+  const getPriorityLabel = (priority: number) => {
+    switch (priority) {
+      case 4: return "P1 (Urgente)";
+      case 3: return "P2 (Alta)";
+      case 2: return "P3 (Média)";
+      case 1: return "P4 (Baixa)";
+      default: return "Sem Prioridade";
+    }
   };
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const pomodoroProgressValue = ((POMODORO_DURATION - pomodoroTimeLeft) / POMODORO_DURATION) * 100;
   const taskTimeProgressValue = currentTaskEstimate > 0 ? (taskTimeElapsed / currentTaskEstimate) * 100 : 0;
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-orange-100 p-4">
+        <p className="text-lg text-orange-600">Carregando tarefas para hoje...</p>
+      </div>
+    );
+  }
 
   if (isSessionFinished) {
     return (
@@ -257,13 +316,23 @@ const SEISOPage = () => {
           currentTask && (
             <div className="space-y-6">
               <div className="text-center">
-                <CardTitle className="text-3xl font-bold text-gray-800 mb-2">{currentTask.title}</CardTitle>
+                <CardTitle className="text-3xl font-bold text-gray-800 mb-2">{currentTask.content}</CardTitle>
+                {currentTask.description && (
+                  <CardDescription className="text-gray-700 mb-2">
+                    {currentTask.description}
+                  </CardDescription>
+                )}
                 <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
-                  Prioridade: {currentTask.priority}
+                  Prioridade: {getPriorityLabel(currentTask.priority)}
                 </p>
                 <p className="text-md text-gray-600">
-                  Estimativa original: <span className="font-medium">{formatTime(currentTaskEstimate)} estimados</span>
+                  Estimativa: <span className="font-medium">{formatTime(currentTaskEstimate)}</span>
                 </p>
+                {currentTask.due && (
+                  <p className="text-sm text-gray-500">
+                    Vencimento: <span className="font-medium text-gray-700">{format(parseISO(currentTask.due.date), "dd/MM/yyyy", { locale: ptBR })}</span>
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
