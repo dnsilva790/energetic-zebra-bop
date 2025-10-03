@@ -31,51 +31,31 @@ interface TodoistProject {
   color: string;
 }
 
-const SEIRI_PROGRESS_KEY = 'seiri_progress';
-
 const SEITONPage = () => {
   const navigate = useNavigate();
-  const [essencialTasks, setEssencialTasks] = useState<TodoistTask[]>([]);
+  const [activeTasks, setActiveTasks] = useState<TodoistTask[]>([]);
   const [projects, setProjects] = useState<TodoistProject[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchEssencialTasksAndProjects = useCallback(async () => {
+  const fetchTasksAndProjects = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Carregar tarefas classificadas como 'essencial' do localStorage (do SEIRI)
-      const savedProgress = localStorage.getItem(SEIRI_PROGRESS_KEY);
-      let allTasksFromSeiri: TodoistTask[] = [];
-      if (savedProgress) {
-        const { allTasks: savedTasks } = JSON.parse(savedProgress);
-        allTasksFromSeiri = savedTasks;
-      } else {
-        // Se não houver progresso do SEIRI, buscar todas as tarefas e assumir que são 'essenciais'
-        // Ou redirecionar para SEIRI para forçar a classificação
-        const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas...");
-        if (fetchedTasks) {
-          allTasksFromSeiri = fetchedTasks.map((task: any) => ({
-            ...task,
-            classificacao: 'essencial',
-            project_name: `Projeto ${task.project_id.substring(0, 4)}` // Placeholder
-          }));
-        }
-      }
-
-      const filteredEssencialTasks = allTasksFromSeiri.filter(task => task.classificacao === 'essencial');
+      // 1. Buscar todas as tarefas ativas do Todoist
+      const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas...");
       
       // 2. Buscar projetos reais do Todoist
       const fetchedProjects = await handleApiCall(getProjects, "Carregando projetos...");
 
-      if (fetchedProjects) {
+      if (fetchedTasks && fetchedProjects) {
         setProjects(fetchedProjects);
         // Mapear nomes de projeto para as tarefas
-        const tasksWithProjectNames = filteredEssencialTasks.map(task => ({
+        const tasksWithProjectNames = fetchedTasks.map((task: any) => ({
           ...task,
           project_name: fetchedProjects.find((p: TodoistProject) => p.id === task.project_id)?.name || "Caixa de Entrada"
         }));
-        setEssencialTasks(tasksWithProjectNames);
+        setActiveTasks(tasksWithProjectNames);
       } else {
-        showError("Não foi possível carregar projetos do Todoist.");
+        showError("Não foi possível carregar tarefas ou projetos do Todoist.");
         navigate("/main-menu");
       }
     } catch (error) {
@@ -88,13 +68,13 @@ const SEITONPage = () => {
   }, [navigate]);
 
   useEffect(() => {
-    fetchEssencialTasksAndProjects();
-  }, [fetchEssencialTasksAndProjects]);
+    fetchTasksAndProjects();
+  }, [fetchTasksAndProjects]);
 
   const handleMoveTask = useCallback(async (taskId: string, newProjectId: string) => {
     const success = await handleApiCall(() => moveTaskToProject(taskId, newProjectId), "Movendo tarefa...", "Tarefa movida com sucesso!");
     if (success) {
-      setEssencialTasks(prevTasks =>
+      setActiveTasks(prevTasks =>
         prevTasks.map(task => {
           if (task.id === taskId) {
             return {
@@ -111,7 +91,7 @@ const SEITONPage = () => {
     }
   }, [projects]);
 
-  const groupedTasks = essencialTasks.reduce((acc, task) => {
+  const groupedTasks = activeTasks.reduce((acc, task) => {
     const projectName = task.project_name || "Sem Projeto";
     if (!acc[projectName]) {
       acc[projectName] = [];
@@ -141,19 +121,19 @@ const SEITONPage = () => {
           <div className="w-20"></div> {/* Placeholder para alinhar o título */}
         </div>
         <p className="text-xl text-blue-700 text-center mb-8">
-          Organize suas tarefas essenciais em projetos
+          Organize suas tarefas ativas em projetos
         </p>
       </div>
 
       <Card className="w-full max-w-4xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
-        {essencialTasks.length === 0 ? (
+        {activeTasks.length === 0 ? (
           <div className="text-center space-y-4">
-            <CardTitle className="text-2xl font-bold text-gray-800">Nenhuma tarefa essencial encontrada.</CardTitle>
+            <CardTitle className="text-2xl font-bold text-gray-800">Nenhuma tarefa ativa encontrada.</CardTitle>
             <CardDescription className="text-lg text-gray-600">
-              Vá para a tela SEIRI para classificar suas tarefas.
+              Adicione novas tarefas no Todoist ou verifique suas configurações.
             </CardDescription>
-            <Button onClick={() => navigate("/5s/seiri")} className="mt-4 bg-green-600 hover:bg-green-700">
-              Ir para SEIRI
+            <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
+              Voltar ao Menu Principal
             </Button>
           </div>
         ) : (
