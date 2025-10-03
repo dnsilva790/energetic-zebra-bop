@@ -22,7 +22,9 @@ const MainMenuPage = () => {
     if (sName === "SEIRI") {
       navigate("/5s/seiri");
     } else if (sName === "SEITON") {
-      navigate("/5s/seiton"); // Navega para a tela SEITON
+      navigate("/5s/seiton");
+    } else if (sName === "SEISO") {
+      navigate("/5s/seiso"); // Navega para a tela SEISO
     }
     else {
       showSuccess(`Tela em construção - ${sName}`);
