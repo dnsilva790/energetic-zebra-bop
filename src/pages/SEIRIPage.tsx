@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Check, X, ExternalLink } from "lucide-react"; // Importar ExternalLink
+import { ArrowLeft, Check, X, ExternalLink } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
+import { getTasks, getProjects, completeTask, handleApiCall } from "@/lib/todoistApi";
 
 interface TodoistTask {
   id: string;
@@ -30,9 +30,16 @@ interface TodoistTask {
     lang: string;
     is_recurring: boolean;
   } | null;
+  priority: number; // 1 (lowest) to 4 (highest)
   project_id: string;
   project_name?: string; // Adicionado para facilitar a exibição
   classificacao?: 'essencial' | 'descartavel'; // Classificação interna do app
+}
+
+interface TodoistProject {
+  id: string;
+  name: string;
+  color: string;
 }
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
@@ -45,6 +52,7 @@ const SEIRIPage = () => {
   const [deletedTasksCount, setDeletedTasksCount] = useState(0);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const currentTask = allTasks[currentTaskIndex];
   const totalTasks = allTasks.length;
@@ -74,30 +82,55 @@ const SEIRIPage = () => {
     return false;
   }, []);
 
-  const fetchTasks = useCallback(async () => {
-    const tasks = await handleApiCall(getTasks, "Carregando tarefas...");
-    if (tasks) {
-      // Adicionar um nome de projeto fake para exibição, já que a API de tasks não retorna o nome do projeto diretamente
-      // Em um cenário real, você buscaria os projetos separadamente e faria o mapeamento
+  const getPriorityColor = (priority: number) => {
+    switch (priority) {
+      case 4: return "text-red-600"; // P1
+      case 3: return "text-yellow-600"; // P2
+      case 2: return "text-blue-600"; // P3
+      case 1: return "text-gray-600"; // P4
+      default: return "text-gray-600";
+    }
+  };
+
+  const getPriorityLabel = (priority: number) => {
+    switch (priority) {
+      case 4: return "P1 (Urgente)";
+      case 3: return "P2 (Alta)";
+      case 2: return "P3 (Média)";
+      case 1: return "P4 (Baixa)";
+      default: return "Sem Prioridade";
+    }
+  };
+
+  const fetchTasksAndProjects = useCallback(async () => {
+    setLoading(true);
+    const [tasks, projects] = await Promise.all([
+      handleApiCall(getTasks, "Carregando tarefas..."),
+      handleApiCall(getProjects, "Carregando projetos..."),
+    ]);
+
+    if (tasks && projects) {
+      const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
       const tasksWithProjectNames = tasks.map((task: any) => ({
         ...task,
-        project_name: `Projeto ${task.project_id.substring(0, 4)}` // Placeholder
+        project_name: projectMap.get(task.project_id) || "Caixa de Entrada" // Use real project name
       }));
       setAllTasks(tasksWithProjectNames);
       if (tasksWithProjectNames.length === 0) {
-        setShowSummary(true); // Se não houver tarefas, ir direto para o resumo
+        setShowSummary(true);
       }
     } else {
-      showError("Não foi possível carregar as tarefas do Todoist.");
-      navigate("/main-menu"); // Voltar ao menu se houver erro
+      showError("Não foi possível carregar as tarefas ou projetos do Todoist.");
+      navigate("/main-menu");
     }
+    setLoading(false);
   }, [navigate]);
 
   useEffect(() => {
     if (!loadProgress()) {
-      fetchTasks();
+      fetchTasksAndProjects();
     }
-  }, [fetchTasks, loadProgress]);
+  }, [fetchTasksAndProjects, loadProgress]);
 
   useEffect(() => {
     if (allTasks.length > 0 && currentTaskIndex < totalTasks) {
@@ -155,6 +188,14 @@ const SEIRIPage = () => {
 
   const progressValue = totalTasks > 0 ? ((currentTaskIndex + (showSummary ? 1 : 0)) / totalTasks) * 100 : 0;
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-green-100 p-4">
+        <p className="text-lg text-green-600">Carregando tarefas para faxina...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-green-100 p-4">
       <div className="w-full max-w-3xl mb-6">
@@ -209,6 +250,9 @@ const SEIRIPage = () => {
                   )}
                   <p className="text-sm text-gray-500">
                     Projeto: <span className="font-medium text-gray-700">{currentTask.project_name}</span>
+                  </p>
+                  <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
+                    Prioridade: {getPriorityLabel(currentTask.priority)}
                   </p>
                   {currentTask.due?.date && (
                     <p className="text-sm text-gray-500">
