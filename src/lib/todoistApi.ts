@@ -1,0 +1,117 @@
+import { toast } from "sonner";
+
+const TODOIST_CONFIG = {
+  baseURL: 'https://api.todoist.com/rest/v2',
+};
+
+// Função para obter o token do localStorage
+const getTodoistToken = () => {
+  return localStorage.getItem('todoist_token');
+};
+
+// Função para criar os headers da API
+const getApiHeaders = () => {
+  const token = getTodoistToken();
+  if (!token) {
+    // Em um ambiente real, você redirecionaria para a página de setup ou mostraria um erro.
+    // Por enquanto, vamos apenas logar e retornar headers vazios.
+    console.error("Todoist API token not found in localStorage.");
+    toast.error("Token do Todoist não encontrado. Por favor, configure-o na página de Configurações.");
+    return {};
+  }
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+};
+
+// Função genérica para lidar com chamadas de API, loading e erros
+export async function handleApiCall<T>(apiFunction: () => Promise<T>, loadingMessage: string = "Carregando...", successMessage?: string): Promise<T | undefined> {
+  const toastId = toast.loading(loadingMessage);
+  try {
+    const result = await apiFunction();
+    toast.dismiss(toastId);
+    if (successMessage) {
+      toast.success(successMessage);
+    }
+    return result;
+  } catch (error: any) {
+    toast.dismiss(toastId);
+    const errorMessage = error.message || "Erro desconhecido na conexão com Todoist.";
+    toast.error(`Erro na conexão com Todoist: ${errorMessage}`);
+    console.error("Todoist API Error:", error);
+    return undefined;
+  }
+}
+
+// Funções específicas da API do Todoist
+export async function getTasks() {
+  const headers = getApiHeaders();
+  if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
+  const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks`, { headers });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Erro ao buscar tarefas: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getProjects() {
+  const headers = getApiHeaders();
+  if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
+  const response = await fetch(`${TODOIST_CONFIG.baseURL}/projects`, { headers });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Erro ao buscar projetos: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function updateTask(taskId: string, data: any) {
+  const headers = getApiHeaders();
+  if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
+  const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Erro ao atualizar tarefa: ${response.statusText}`);
+  }
+  return response.json(); // Retorna a tarefa atualizada
+}
+
+export async function completeTask(taskId: string) {
+  const headers = getApiHeaders();
+  if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
+  const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}/close`, {
+    method: 'POST',
+    headers
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Erro ao concluir tarefa: ${response.statusText}`);
+  }
+  // A API do Todoist retorna 204 No Content para sucesso em 'close', então não há JSON para parsear.
+  return true; 
+}
+
+export async function deleteTask(taskId: string) {
+  const headers = getApiHeaders();
+  if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
+  const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}`, {
+    method: 'DELETE',
+    headers
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Erro ao deletar tarefa: ${response.statusText}`);
+  }
+  // A API do Todoist retorna 204 No Content para sucesso em 'delete', então não há JSON para parsear.
+  return true;
+}
+
+export async function moveTaskToProject(taskId: string, projectId: string) {
+  return updateTask(taskId, { project_id: projectId });
+}
