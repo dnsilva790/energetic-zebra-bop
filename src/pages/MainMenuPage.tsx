@@ -20,8 +20,11 @@ const MainMenuPage = () => {
 
   const handleButtonClick = (sName: string) => {
     if (sName === "SEIRI") {
-      navigate("/5s/seiri"); // Navega para a tela SEIRI
-    } else {
+      navigate("/5s/seiri");
+    } else if (sName === "SEITON") {
+      navigate("/5s/seiton"); // Navega para a tela SEITON
+    }
+    else {
       showSuccess(`Tela em construção - ${sName}`);
       // Futuramente, aqui você navegará para a rota específica de cada S
       // Ex: navigate(`/5s/${sName.toLowerCase()}`);
