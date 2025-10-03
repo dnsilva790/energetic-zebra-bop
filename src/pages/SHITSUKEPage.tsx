@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -17,35 +17,69 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { MadeWithDyad } from "@/components/made-with-dyad";
-import { showSuccess } from "@/utils/toast";
+import { showSuccess, showError } from "@/utils/toast";
+import { getTasks, completeTask, updateTask, handleApiCall } from "@/lib/todoistApi";
+import { isPast, parseISO } from "date-fns";
 
-interface TaskP3 {
+interface TodoistTask {
   id: string;
-  title: string;
-  days_stopped: number;
-  project: string;
+  content: string;
   description?: string;
+  due?: {
+    date: string;
+    string: string;
+    lang: string;
+    is_recurring: boolean;
+  } | null;
+  priority: number; // 1 (lowest) to 4 (highest)
+  project_id: string;
+  project_name?: string; // Adicionado para facilitar a exibição
 }
-
-const fakeTasksP3: TaskP3[] = [
-  { id: "1", title: "Organizar fotos antigas", days_stopped: 45, project: "Pessoal", description: "Separar por ano e evento, deletar duplicadas." },
-  { id: "2", title: "Ler livro sobre produtividade", days_stopped: 23, project: "Desenvolvimento", description: "Livro 'Getting Things Done' de David Allen." },
-  { id: "3", title: "Pintar parede da sala", days_stopped: 67, project: "Casa", description: "Comprar tinta e materiais, chamar pintor." },
-  { id: "4", title: "Aprender francês", days_stopped: 89, project: "Pessoal", description: "Revisar Duolingo e aulas online." },
-  { id: "5", title: "Backup do computador", days_stopped: 12, project: "Tecnologia", description: "Fazer backup completo para HD externo." },
-];
 
 const SHITSUKEPage = () => {
   const navigate = useNavigate();
+  const [allTasks, setAllTasks] = useState<TodoistTask[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [deletedTasksCount, setDeletedTasksCount] = useState(0);
   const [keptTasksCount, setKeptTasksCount] = useState(0);
   const [promotedTasksCount, setPromotedTasksCount] = useState(0);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const totalTasks = fakeTasksP3.length;
-  const currentTask = fakeTasksP3[currentTaskIndex];
+  const totalTasks = allTasks.length;
+  const currentTask = allTasks[currentTaskIndex];
+
+  const fetchP3Tasks = useCallback(async () => {
+    setLoading(true);
+    const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para revisão...");
+    if (fetchedTasks) {
+      // Filtrar tarefas que consideramos "P3" para revisão semanal:
+      // - Prioridade 1 ou 2 (baixa/média)
+      // - Ou tarefas sem data de vencimento
+      // - Ou tarefas que estão atrasadas (passaram da data de vencimento)
+      const p3Tasks = fetchedTasks.filter((task: TodoistTask) => {
+        const isLowPriority = task.priority === 1 || task.priority === 2;
+        const hasNoDueDate = !task.due;
+        const isOverdue = task.due && isPast(parseISO(task.due.date));
+        return isLowPriority || hasNoDueDate || isOverdue;
+      });
+
+      if (p3Tasks.length === 0) {
+        showSuccess("Nenhuma tarefa para revisão semanal encontrada. Bom trabalho!");
+        setShowSummary(true); // Ir direto para o resumo se não houver tarefas
+      }
+      setAllTasks(p3Tasks);
+    } else {
+      showError("Não foi possível carregar as tarefas do Todoist.");
+      navigate("/main-menu");
+    }
+    setLoading(false);
+  }, [navigate]);
+
+  useEffect(() => {
+    fetchP3Tasks();
+  }, [fetchP3Tasks]);
 
   const moveToNextTask = () => {
     if (currentTaskIndex < totalTasks - 1) {
@@ -59,11 +93,27 @@ const SHITSUKEPage = () => {
     setIsConfirmationOpen(true);
   };
 
-  const confirmDelete = () => {
-    setDeletedTasksCount(deletedTasksCount + 1);
+  const confirmDelete = async () => {
     setIsConfirmationOpen(false);
-    showSuccess("Tarefa deletada!");
-    moveToNextTask();
+    if (currentTask) {
+      const success = await handleApiCall(() => completeTask(currentTask.id), "Deletando tarefa...", "Tarefa deletada!");
+      if (success) {
+        setDeletedTasksCount(deletedTasksCount + 1);
+        // Remove a tarefa da lista local e move para a próxima
+        const updatedTasks = allTasks.filter(task => task.id !== currentTask.id);
+        setAllTasks(updatedTasks);
+        if (currentTaskIndex >= updatedTasks.length) {
+          setShowSummary(true);
+        } else {
+          // Se a tarefa atual foi removida, o índice não precisa ser incrementado,
+          // pois a próxima tarefa já estará na posição atual.
+          // No entanto, se for a última tarefa, o resumo será mostrado.
+        }
+        showSuccess("Tarefa deletada!");
+      } else {
+        showError("Falha ao deletar a tarefa.");
+      }
+    }
   };
 
   const handleKeep = () => {
@@ -72,10 +122,18 @@ const SHITSUKEPage = () => {
     moveToNextTask();
   };
 
-  const handlePromote = () => {
-    setPromotedTasksCount(promotedTasksCount + 1);
-    showSuccess("Tarefa promovida para revisão!");
-    moveToNextTask();
+  const handlePromote = async () => {
+    if (currentTask) {
+      // Promover significa aumentar a prioridade, por exemplo, para P3 (prioridade 3 na API)
+      const success = await handleApiCall(() => updateTask(currentTask.id, { priority: 3 }), "Promovendo tarefa...", "Tarefa promovida para revisão!");
+      if (success) {
+        setPromotedTasksCount(promotedTasksCount + 1);
+        showSuccess("Tarefa promovida para revisão!");
+        moveToNextTask();
+      } else {
+        showError("Falha ao promover a tarefa.");
+      }
+    }
   };
 
   const handleRunSeiton = () => {
@@ -83,6 +141,14 @@ const SHITSUKEPage = () => {
   };
 
   const progressValue = totalTasks > 0 ? ((currentTaskIndex + (showSummary ? 1 : 0)) / totalTasks) * 100 : 0;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-red-100 p-4">
+        <p className="text-lg text-red-600">Carregando tarefas para revisão semanal...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-red-100 p-4">
@@ -118,20 +184,22 @@ const SHITSUKEPage = () => {
             </Button>
           </div>
         ) : (
-          currentTask && (
+          currentTask ? (
             <div className="space-y-6">
               <div className="text-center">
-                <CardTitle className="text-3xl font-bold text-gray-800 mb-2">{currentTask.title}</CardTitle>
-                <p className="text-lg text-gray-600 mb-1">
-                  ⏰ Parada há <span className="font-semibold">{currentTask.days_stopped}</span> dias
-                </p>
-                <p className="text-md text-gray-500">
-                  Projeto: <span className="font-medium text-gray-700">{currentTask.project}</span>
-                </p>
+                <CardTitle className="text-3xl font-bold text-gray-800 mb-2">{currentTask.content}</CardTitle>
                 {currentTask.description && (
                   <CardDescription className="text-gray-700 mt-2">
                     {currentTask.description}
                   </CardDescription>
+                )}
+                <p className="text-md text-gray-500 mt-2">
+                  Projeto: <span className="font-medium text-gray-700">{currentTask.project_name || "Caixa de Entrada"}</span>
+                </p>
+                {currentTask.due?.date && (
+                  <p className="text-md text-gray-500">
+                    Vencimento: <span className="font-medium text-gray-700">{new Date(currentTask.due.date).toLocaleDateString()}</span>
+                  </p>
                 )}
               </div>
 
@@ -159,9 +227,16 @@ const SHITSUKEPage = () => {
                 </Button>
               </div>
             </div>
+          ) : (
+            <div className="text-center text-gray-600">
+              <p>Nenhuma tarefa para revisão semanal encontrada.</p>
+              <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
+                Voltar ao Menu Principal
+              </Button>
+            </div>
           )
         )}
-        {!showSummary && (
+        {!showSummary && currentTask && (
           <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
             <p className="text-sm text-gray-600 mb-2">
               Tarefa P3: {currentTaskIndex + 1} de {totalTasks}
@@ -177,7 +252,7 @@ const SHITSUKEPage = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Tem certeza que deseja deletar esta tarefa?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. A tarefa será removida permanentemente.
+              Esta ação irá concluir a tarefa no Todoist, removendo-a da sua lista ativa.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
