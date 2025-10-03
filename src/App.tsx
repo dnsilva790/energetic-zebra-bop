@@ -9,7 +9,8 @@ import MainMenuPage from "./pages/MainMenuPage";
 import SEIRIPage from "./pages/SEIRIPage";
 import SEITONPage from "./pages/SEITONPage";
 import SEISOPage from "./pages/SEISOPage";
-import SEIKETSUPage from "./pages/SEIKETSUPage"; // Importar a nova página SEIKETSU
+import SEIKETSUPage from "./pages/SEIKETSUPage";
+import SHITSUKEPage from "./pages/SHITSUKEPage"; // Importar a nova página SHITSUKE
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,7 +28,8 @@ const App = () => (
           <Route path="/5s/seiri" element={<SEIRIPage />} />
           <Route path="/5s/seiton" element={<SEITONPage />} />
           <Route path="/5s/seiso" element={<SEISOPage />} />
-          <Route path="/5s/seiketsu" element={<SEIKETSUPage />} /> {/* Nova rota para SEIKETSU */}
+          <Route path="/5s/seiketsu" element={<SEIKETSUPage />} />
+          <Route path="/5s/shitsuke" element={<SHITSUKEPage />} /> {/* Nova rota para SHITSUKE */}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

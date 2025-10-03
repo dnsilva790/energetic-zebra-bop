@@ -26,7 +26,9 @@ const MainMenuPage = () => {
     } else if (sName === "SEISO") {
       navigate("/5s/seiso");
     } else if (sName === "SEIKETSU") {
-      navigate("/5s/seiketsu"); // Navega para a tela SEIKETSU
+      navigate("/5s/seiketsu");
+    } else if (sName === "SHITSUKE") {
+      navigate("/5s/shitsuke"); // Navega para a tela SHITSUKE
     }
     else {
       showSuccess(`Tela em construção - ${sName}`);
