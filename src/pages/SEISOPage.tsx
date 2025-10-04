@@ -81,7 +81,8 @@ const SEISOPage = () => {
   const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
   const [selectedDueTime, setSelectedDueTime] = useState<string>("");
 
-  const [showSeitonRankingDialog, setShowSeitonRankingDialog] = useState(false);
+  // Removido o estado showSeitonRankingDialog, pois o componente será removido
+  // const [showSeitonRankingDialog, setShowSeitonRankingDialog] = useState(false);
   const [isAITutorChatOpen, setIsAITutorChatOpen] = useState(false); // Renomeado o estado
 
   const totalTasks = p1Tasks.length + otherTasks.length;
@@ -351,7 +352,7 @@ const SEISOPage = () => {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Desativa atalhos de teclado se qualquer modal/sidebar estiver aberto
-      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog || isAITutorChatOpen) return;
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || isAITutorChatOpen) return; // Removido showSeitonRankingDialog
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -372,7 +373,7 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, isAITutorChatOpen, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, isAITutorChatOpen, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
@@ -395,18 +396,20 @@ const SEISOPage = () => {
           <CardDescription className="text-lg text-gray-600">
             Você concluiu {tasksCompleted} de {allTasks.length} tarefas.
           </CardDescription>
-          {hasLastSeitonRanking && (
+          {/* Removido o parágrafo sobre o ranking SEITON, pois a funcionalidade foi removida */}
+          {/* {hasLastSeitonRanking && (
             <p className="text-gray-600 text-sm">
               Você pode consultar o último ranking do SEITON.
             </p>
-          )}
+          )} */}
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
           </Button>
           <Button variant="outline" onClick={() => { setIsSessionFinished(false); setSessionStarted(false); setFilterInput(localStorage.getItem(SEISO_FILTER_KEY) || "today | overdue"); }} className="mt-2">
             Iniciar Nova Sessão
           </Button>
-          {hasLastSeitonRanking && (
+          {/* Removido o botão para ver o último ranking SEITON */}
+          {/* {hasLastSeitonRanking && (
             <Button
               variant="secondary"
               onClick={() => setShowSeitonRankingDialog(true)}
@@ -414,7 +417,7 @@ const SEISOPage = () => {
             >
               <ListOrdered className="h-4 w-4" /> Ver Último Ranking SEITON
             </Button>
-          )}
+          )} */}
         </Card>
         <MadeWithDyad />
       </div>
@@ -480,7 +483,8 @@ const SEISOPage = () => {
                 </a>
               </p>
             </CardContent>
-            {hasLastSeitonRanking && (
+            {/* Removido o CardFooter com o botão de ver o último ranking SEITON */}
+            {/* {hasLastSeitonRanking && (
               <CardFooter className="flex justify-center p-4 border-t mt-6">
                 <Button
                   variant="secondary"
@@ -490,7 +494,7 @@ const SEISOPage = () => {
                   <ListOrdered className="h-4 w-4" /> Ver Último Ranking SEITON
                 </Button>
               </CardFooter>
-            )}
+            )} */}
           </Card>
         ) : (
           <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
@@ -705,25 +709,6 @@ const SEISOPage = () => {
             <Button onClick={handleSaveReschedule} disabled={!selectedDueDate || loading}>
               Salvar Reagendamento
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showSeitonRankingDialog} onOpenChange={setShowSeitonRankingDialog}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Último Ranking SEITON</DialogTitle>
-            <DialogDescription>
-              Este é o resultado da sua última sessão de priorização.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <SeitonRankingDisplay />
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Fechar</Button>
-            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
