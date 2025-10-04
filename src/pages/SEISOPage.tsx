@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered
+  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered, X // Importar X
 } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SeitonRankingDisplay from "@/components/SeitonRankingDisplay";
 import AITutorChat from "@/components/AITutorChat";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"; // Importar Sheet components
+// Removidos os imports de Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
@@ -422,200 +422,230 @@ const SEISOPage = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-orange-100 p-4">
-      <div className="w-full max-w-3xl mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" onClick={() => navigate("/main-menu")} className="text-orange-800 hover:bg-orange-200">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
-          </Button>
-          <h1 className="text-4xl font-extrabold text-orange-800 text-center flex-grow">
-            SEISO - Executar Tarefas
-          </h1>
-          <div className="w-20"></div>
-        </div>
-        <p className="text-xl text-orange-700 text-center mb-8">
-          Foque nas suas tarefas prioritárias
-        </p>
-      </div>
-
-      {!sessionStarted ? (
-        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold text-gray-800">Definir Filtro de Tarefas</CardTitle>
-            <CardDescription className="text-lg text-gray-600 mt-2">
-              Insira um filtro do Todoist para suas tarefas de hoje.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="todoist-filter">Filtro Todoist</Label>
-              <Input
-                id="todoist-filter"
-                type="text"
-                placeholder="Ex: today | overdue"
-                value={filterInput}
-                onChange={(e) => {
-                  setFilterInput(e.target.value);
-                  setFilterError("");
-                }}
-                className={filterError ? "border-red-500" : ""}
-              />
-              {filterError && <p className="text-red-500 text-sm mt-1">{filterError}</p>}
-            </div>
-            <Button
-              onClick={fetchTasksAndFilter}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md transition-colors"
-              disabled={loading}
-            >
-              {loading ? "Carregando..." : "Iniciar Sessão"}
+    <div className="min-h-screen flex bg-orange-100 p-4 relative"> {/* Alterado para flex, adicionado relative */}
+      {/* Área de conteúdo principal */}
+      <div className={cn(
+        "flex flex-col items-center flex-grow transition-all duration-300",
+        isAITutorChatOpen ? "mr-[350px]" : "" // Adiciona margem ao conteúdo principal quando a sidebar está aberta
+      )}>
+        <div className="w-full max-w-3xl mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <Button variant="ghost" onClick={() => navigate("/main-menu")} className="text-orange-800 hover:bg-orange-200">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
             </Button>
-            <p className="text-sm text-gray-500 mt-4">
-              <a href="https://todoist.com/help/articles/introduction-to-filters" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                Saiba mais sobre filtros do Todoist
-              </a>
-            </p>
-          </CardContent>
-          {hasLastSeitonRanking && (
-            <CardFooter className="flex justify-center p-4 border-t mt-6">
-              <Button
-                variant="secondary"
-                onClick={() => setShowSeitonRankingDialog(true)}
-                className="flex items-center justify-center gap-2"
-              >
-                <ListOrdered className="h-4 w-4" /> Ver Último Ranking SEITON
-              </Button>
-            </CardFooter>
-          )}
-        </Card>
-      ) : (
-        <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
-          {currentTask && (
-            <div className="space-y-6">
-              <div className="text-center">
-                <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
-                  {currentTask.content}
-                  {currentTask.due?.is_recurring && (
-                    <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
-                  )}
-                  <a
-                    href={`https://todoist.com/app/task/${currentTask.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-blue-600 transition-colors"
-                    aria-label="Abrir no Todoist"
-                  >
-                    <ExternalLink className="h-5 w-5" />
-                  </a>
-                </CardTitle>
-                {currentTask.description && (
-                  <CardDescription className="text-gray-700 mb-2">
-                    {currentTask.description}
-                  </CardDescription>
-                )}
-                <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
-                  Prioridade: {getPriorityLabel(currentTask.priority)}
-                </p>
-                {currentTask.due?.date && (
-                  <p className="text-sm text-gray-500">
-                    Vencimento: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.due)}</span>
-                  </p>
-                )}
-                {currentTask.deadline && (
-                  <p className="text-sm text-gray-500">
-                    Data Limite: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.deadline)}</span>
-                  </p>
-                )}
-                {isUsingSeitonRanking && (
-                  <p className="text-sm text-purple-600 font-medium mt-2">
-                    (Esta tarefa é uma sugestão do ranking SEITON)
-                  </p>
-                )}
-              </div>
+            <h1 className="text-4xl font-extrabold text-orange-800 text-center flex-grow">
+              SEISO - Executar Tarefas
+            </h1>
+            <div className="w-20"></div>
+          </div>
+          <p className="text-xl text-orange-700 text-center mb-8">
+            Foque nas suas tarefas prioritárias
+          </p>
+        </div>
 
-              <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
-                <h3 className="text-xl font-bold text-red-700">Contador de Tempo</h3>
-                <div className="flex items-center space-x-4">
-                  <Label htmlFor="countdown-input-duration" className="text-lg">Tempo Máximo (min):</Label>
-                  <Input
-                    id="countdown-input-duration"
-                    type="number"
-                    value={countdownInputDuration}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setCountdownInputDuration(value);
-                      if (!isCountdownActive && !isCountdownPaused) {
-                        setCountdownTimeLeft(parseInt(value) * 60 || 0);
-                      }
-                    }}
-                    className="w-24 text-center text-lg font-bold"
-                    disabled={isCountdownActive}
-                    min="1"
-                  />
+        {!sessionStarted ? (
+          <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl font-bold text-gray-800">Definir Filtro de Tarefas</CardTitle>
+              <CardDescription className="text-lg text-gray-600 mt-2">
+                Insira um filtro do Todoist para suas tarefas de hoje.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="todoist-filter">Filtro Todoist</Label>
+                <Input
+                  id="todoist-filter"
+                  type="text"
+                  placeholder="Ex: today | overdue"
+                  value={filterInput}
+                  onChange={(e) => {
+                    setFilterInput(e.target.value);
+                    setFilterError("");
+                  }}
+                  className={filterError ? "border-red-500" : ""}
+                />
+                {filterError && <p className="text-red-500 text-sm mt-1">{filterError}</p>}
+              </div>
+              <Button
+                onClick={fetchTasksAndFilter}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md transition-colors"
+                disabled={loading}
+              >
+                {loading ? "Carregando..." : "Iniciar Sessão"}
+              </Button>
+              <p className="text-sm text-gray-500 mt-4">
+                <a href="https://todoist.com/help/articles/introduction-to-filters" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  Saiba mais sobre filtros do Todoist
+                </a>
+              </p>
+            </CardContent>
+            {hasLastSeitonRanking && (
+              <CardFooter className="flex justify-center p-4 border-t mt-6">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowSeitonRankingDialog(true)}
+                  className="flex items-center justify-center gap-2"
+                >
+                  <ListOrdered className="h-4 w-4" /> Ver Último Ranking SEITON
+                </Button>
+              </CardFooter>
+            )}
+          </Card>
+        ) : (
+          <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
+            {currentTask && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
+                    {currentTask.content}
+                    {currentTask.due?.is_recurring && (
+                      <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
+                    )}
+                    <a
+                      href={`https://todoist.com/app/task/${currentTask.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-400 hover:text-blue-600 transition-colors"
+                      aria-label="Abrir no Todoist"
+                    >
+                      <ExternalLink className="h-5 w-5" />
+                    </a>
+                  </CardTitle>
+                  {currentTask.description && (
+                    <CardDescription className="text-gray-700 mb-2">
+                      {currentTask.description}
+                    </CardDescription>
+                  )}
+                  <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
+                    Prioridade: {getPriorityLabel(currentTask.priority)}
+                  </p>
+                  {currentTask.due?.date && (
+                    <p className="text-sm text-gray-500">
+                      Vencimento: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.due)}</span>
+                    </p>
+                  )}
+                  {currentTask.deadline && (
+                    <p className="text-sm text-gray-500">
+                      Data Limite: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.deadline)}</span>
+                    </p>
+                  )}
+                  {isUsingSeitonRanking && (
+                    <p className="text-sm text-purple-600 font-medium mt-2">
+                      (Esta tarefa é uma sugestão do ranking SEITON)
+                    </p>
+                  )}
                 </div>
-                <div className="text-6xl font-bold text-red-800">
-                  {formatTime(countdownTimeLeft)}
+
+                <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
+                  <h3 className="text-xl font-bold text-red-700">Contador de Tempo</h3>
+                  <div className="flex items-center space-x-4">
+                    <Label htmlFor="countdown-input-duration" className="text-lg">Tempo Máximo (min):</Label>
+                    <Input
+                      id="countdown-input-duration"
+                      type="number"
+                      value={countdownInputDuration}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setCountdownInputDuration(value);
+                        if (!isCountdownActive && !isCountdownPaused) {
+                          setCountdownTimeLeft(parseInt(value) * 60 || 0);
+                        }
+                      }}
+                      className="w-24 text-center text-lg font-bold"
+                      disabled={isCountdownActive}
+                      min="1"
+                    />
+                  </div>
+                  <div className="text-6xl font-bold text-red-800">
+                    {formatTime(countdownTimeLeft)}
+                  </div>
+                  <Progress value={countdownProgressValue} className="w-full h-2 bg-red-200 [&>*]:bg-red-600" />
+                  <div className="flex space-x-2">
+                    {!isCountdownActive && !isCountdownPaused && (
+                      <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" /> Iniciar
+                      </Button>
+                    )}
+                    {isCountdownActive && (
+                      <Button onClick={pauseCountdown} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+                        <Pause className="h-5 w-5" /> Pausar
+                      </Button>
+                    )}
+                    {isCountdownPaused && (
+                      <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" /> Continuar
+                      </Button>
+                    )}
+                    <Button onClick={resetCountdown} className="bg-gray-600 hover:bg-gray-700 text-white">
+                      <Square className="h-5 w-5" /> Resetar
+                    </Button>
+                  </div>
                 </div>
-                <Progress value={countdownProgressValue} className="w-full h-2 bg-red-200 [&>*]:bg-red-600" />
-                <div className="flex space-x-2">
-                  {!isCountdownActive && !isCountdownPaused && (
-                    <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700 text-white">
-                      <Play className="h-5 w-5" /> Iniciar
-                    </Button>
-                  )}
-                  {isCountdownActive && (
-                    <Button onClick={pauseCountdown} className="bg-yellow-600 hover:bg-yellow-700 text-white">
-                      <Pause className="h-5 w-5" /> Pausar
-                    </Button>
-                  )}
-                  {isCountdownPaused && (
-                    <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700 text-white">
-                      <Play className="h-5 w-5" /> Continuar
-                    </Button>
-                  )}
-                  <Button onClick={resetCountdown} className="bg-gray-600 hover:bg-gray-700 text-white">
-                    <Square className="h-5 w-5" /> Resetar
+
+                <div className="flex justify-center space-x-4 mt-6">
+                  <Button
+                    onClick={handleCompleteTask}
+                    className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                  >
+                    <Check className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
+                  </Button>
+                  <Button
+                    onClick={handleSkipTask}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                  >
+                    <SkipForward className="mr-2 h-5 w-5" /> PRÓXIMA (P)
+                  </Button>
+                  <Button
+                    onClick={handleOpenRescheduleDialog}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                  >
+                    <CalendarDays className="mr-2 h-5 w-5" /> REAGENDAR (R)
+                  </Button>
+                  <Button
+                    onClick={handleGuideMe}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                  >
+                    Guiar-me (TDAH) (G)
                   </Button>
                 </div>
               </div>
+            )}
+            {!isSessionFinished && currentTask && (
+              <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
+                <p className="text-sm text-gray-600 mb-2">
+                  Tarefa {currentTaskIndex + 1} de {totalTasks}
+                </p>
+                <Progress value={taskProgressValue} className="w-full h-2 bg-orange-200 [&>*]:bg-orange-600" />
+              </CardFooter>
+            )}
+          </Card>
+        )}
 
-              <div className="flex justify-center space-x-4 mt-6">
-                <Button
-                  onClick={handleCompleteTask}
-                  className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-                >
-                  <Check className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
-                </Button>
-                <Button
-                  onClick={handleSkipTask}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-                >
-                  <SkipForward className="mr-2 h-5 w-5" /> PRÓXIMA (P)
-                </Button>
-                <Button
-                  onClick={handleOpenRescheduleDialog}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-                >
-                  <CalendarDays className="mr-2 h-5 w-5" /> REAGENDAR (R)
-                </Button>
-                <Button
-                  onClick={handleGuideMe}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-                >
-                  Guiar-me (TDAH) (G)
-                </Button>
-              </div>
-            </div>
-          )}
-          {!isSessionFinished && currentTask && (
-            <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
-              <p className="text-sm text-gray-600 mb-2">
-                Tarefa {currentTaskIndex + 1} de {totalTasks}
-              </p>
-              <Progress value={taskProgressValue} className="w-full h-2 bg-orange-200 [&>*]:bg-orange-600" />
-            </CardFooter>
-          )}
-        </Card>
-      )}
+        <audio ref={alarmAudioRef} src="/alarm.mp3" preload="auto" />
+
+        <MadeWithDyad />
+      </div>
+
+      {/* Custom Sidebar para o AITutorChat */}
+      <div className={cn(
+        "fixed right-0 top-0 h-full w-[350px] bg-background border-l p-0 z-40 transition-transform duration-300 ease-in-out",
+        isAITutorChatOpen ? "translate-x-0" : "translate-x-full"
+      )}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h2 className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</h2>
+          <Button variant="ghost" onClick={() => setIsAITutorChatOpen(false)} className="p-2">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        {currentTask && (
+          <AITutorChat
+            taskTitle={currentTask.content}
+            taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
+            onClose={() => setIsAITutorChatOpen(false)}
+          />
+        )}
+      </div>
 
       <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
         <DialogContent className="sm:max-w-[425px]">
@@ -696,29 +726,6 @@ const SEISOPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Sidebar para o AITutorChat */}
-      <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
-        <SheetContent side="right" className="w-[min(400px,90vw)] p-0 flex flex-col"> {/* Ajuste a largura aqui */}
-          <SheetHeader className="p-4 border-b">
-            <SheetTitle className="text-3xl font-extrabold text-purple-800">Tutor de IA (Gemini)</SheetTitle>
-            <SheetDescription>
-              Receba orientação passo a passo para sua tarefa.
-            </SheetDescription>
-          </SheetHeader>
-          {currentTask && (
-            <AITutorChat
-              taskTitle={currentTask.content}
-              taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
-              onClose={() => setIsAITutorChatOpen(false)} // A Sheet já tem um botão de fechar, mas o componente interno pode usar isso para lógica adicional
-            />
-          )}
-        </SheetContent>
-      </Sheet>
-
-      <audio ref={alarmAudioRef} src="/alarm.mp3" preload="auto" />
-
-      <MadeWithDyad />
     </div>
   );
 };
