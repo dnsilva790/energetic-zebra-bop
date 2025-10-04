@@ -262,6 +262,20 @@ const SEITONPage = () => {
     let newP3Tasks = [...p3Tasks];
     let nextOpponentIndex: number | null = null;
 
+    // Helper to update a single task's priority in Todoist and return the updated task object
+    const updateTaskAndReturn = async (task: TodoistTask, newPriority: number): Promise<TodoistTask> => {
+      if (task.priority !== newPriority) {
+        const updatedTodoistTask = await handleApiCall(
+          () => updateTask(task.id, { priority: newPriority }),
+          `Atualizando prioridade para ${task.content}...`
+        );
+        if (updatedTodoistTask) {
+          return { ...task, priority: newPriority }; // Return a new task object with updated priority
+        }
+      }
+      return task; // Return original task if no update or API call failed
+    };
+
     if (challengerWins) {
       // Challenger wins, it climbs
       newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger); // Insert challenger
@@ -276,10 +290,12 @@ const SEITONPage = () => {
       nextOpponentIndex = currentOpponentIndex - 1;
       if (nextOpponentIndex < 0) {
         // Challenger reached the top (P1)
-        await handleApiCall(() => updateTask(currentChallenger.id, { priority: 4 }), `Definindo prioridade P1 para ${currentChallenger.content}...`);
+        const updatedChallenger = await updateTaskAndReturn(currentChallenger, 4); // Ensure priority is set
         setCurrentChallenger(null); // Challenger found its final place
         setCurrentOpponentIndex(null);
         setTournamentQueue(prev => prev.slice(1)); // Remove from queue
+        // Replace the challenger in newRankedTasks with its updated version
+        newRankedTasks = newRankedTasks.map(task => task.id === updatedChallenger.id ? updatedChallenger : task);
       } else {
         // Challenger continues to fight
         setCurrentChallenger(currentChallenger); // Keep challenger
@@ -300,28 +316,23 @@ const SEITONPage = () => {
       setTournamentQueue(prev => prev.slice(1)); // Remove from queue
     }
 
+    // Update priorities for tasks in rankedTasks (P1, P2) and P3
+    const updatedP1Tasks = await Promise.all(
+      newRankedTasks.slice(0, 4).map(task => updateTaskAndReturn(task, 4))
+    );
+    const updatedP2Tasks = await Promise.all(
+      newRankedTasks.slice(4, RANKING_SIZE).map(task => updateTaskAndReturn(task, 3))
+    );
+    const updatedP3Tasks = await Promise.all(
+      newP3Tasks.map(task => updateTaskAndReturn(task, 2))
+    );
+
+    // Reconstruct newRankedTasks and newP3Tasks with the updated task objects
+    newRankedTasks = [...updatedP1Tasks, ...updatedP2Tasks];
+    newP3Tasks = updatedP3Tasks;
+
     setRankedTasks(newRankedTasks);
     setP3Tasks(newP3Tasks);
-
-    // Update priorities for tasks in Todoist based on their final position
-    const updateTaskPriorityInTodoist = async (task: TodoistTask, newPriority: number) => {
-      if (task.priority !== newPriority) {
-        await handleApiCall(() => updateTask(task.id, { priority: newPriority }), `Atualizando prioridade para ${task.content}...`);
-      }
-    };
-
-    // Assign P1 (priority 4) to top 4 tasks
-    for (let i = 0; i < Math.min(4, newRankedTasks.length); i++) {
-      await updateTaskPriorityInTodoist(newRankedTasks[i], 4);
-    }
-    // Assign P2 (priority 3) to tasks from 5th to 24th position
-    for (let i = 4; i < Math.min(RANKING_SIZE, newRankedTasks.length); i++) {
-      await updateTaskPriorityInTodoist(newRankedTasks[i], 3);
-    }
-    // Assign P3 (priority 2) to tasks in the p3Tasks queue
-    for (const task of newP3Tasks) {
-      await updateTaskPriorityInTodoist(task, 2);
-    }
 
     if (!currentChallenger && tournamentQueue.length === 0 && nextOpponentIndex === null) {
       setCurrentStep('result');
