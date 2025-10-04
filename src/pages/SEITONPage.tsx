@@ -303,7 +303,6 @@ const SEITONPage = () => {
       console.log("SEITONPage - Challenger wins, inserting into rankedTasks.");
       newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger); // Insert challenger at new position
 
-      actionDescription = `Desafiante inserido na posição ${currentOpponentIndex + 1}.`;
       
       if (newRankedTasks.length > RANKING_SIZE) {
         const pushedOutTask = newRankedTasks.pop(); // Remove the last task
@@ -325,10 +324,11 @@ const SEITONPage = () => {
         setCurrentChallenger(null);
         setCurrentOpponentIndex(null);
         setTournamentQueue(prev => prev.slice(1)); // Remove from queue
-        actionDescription += ` Desafiante "${currentChallenger.content}" alcançou P1.`;
+        actionDescription = `Desafiante "${currentChallenger.content}" alcançou P1.`;
       } else {
         console.log(`SEITONPage - Challenger continues to fight, next opponent index: ${nextOpponentIndexCandidate}`);
         setCurrentOpponentIndex(nextOpponentIndexCandidate); // Challenger moves up
+        actionDescription = `Desafiante "${currentChallenger.content}" inserido na posição ${currentOpponentIndex + 1} e continua a lutar.`;
       }
     } else { // Challenger loses
       console.log("SEITONPage - Opponent wins, challenger loses. Moving challenger to P3.");
