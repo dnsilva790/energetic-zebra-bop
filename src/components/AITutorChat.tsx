@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -84,26 +84,11 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   // --- End early exit ---
 
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-  const localStorageKey = `chat-history-${taskId}`; // Chave de armazenamento única por tarefa
+  
+  // Use useMemo para garantir que localStorageKey seja atualizada apenas quando taskId mudar
+  const localStorageKey = useMemo(() => `chat-history-${taskId}`, [taskId]);
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    if (typeof window !== 'undefined') {
-      const savedHistory = localStorage.getItem(localStorageKey);
-      if (savedHistory) {
-        try {
-          const parsedHistory = JSON.parse(savedHistory);
-          if (Array.isArray(parsedHistory)) {
-            return parsedHistory;
-          }
-        } catch (e) {
-          console.error("Falha ao analisar o histórico do chat do localStorage", e);
-          localStorage.removeItem(localStorageKey); // Limpa dados corrompidos
-        }
-      }
-    }
-    return []; // Retorna vazio se não houver histórico ou erro
-  });
-
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [parsedMicroSteps, setParsedMicroSteps] = useState<{ content: string; description: string }[]>([]);
@@ -189,14 +174,38 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     // Resetar estados relacionados à tarefa quando taskId muda
     setInitialAiResponseReceived(false);
     setParsedMicroSteps([]);
+    setMessages([]); // Limpar mensagens ao mudar de tarefa
 
-    // Se não houver mensagens carregadas para esta tarefa, enviar a mensagem inicial
-    if (messages.length === 0 && !isLoading) {
-      const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
-      setMessages([{ role: 'user', content: initialUserPrompt }]);
-      sendMessageToGemini([{ role: 'user', content: initialUserPrompt }]);
+    let loadedMessages: ChatMessage[] = [];
+    if (typeof window !== 'undefined') {
+      const savedHistory = localStorage.getItem(localStorageKey);
+      if (savedHistory) {
+        try {
+          const parsedHistory = JSON.parse(savedHistory);
+          if (Array.isArray(parsedHistory) && parsedHistory.length > 0) {
+            loadedMessages = parsedHistory;
+            setInitialAiResponseReceived(true); // Se há histórico, já houve interação
+          }
+        } catch (e) {
+          console.error("Falha ao analisar o histórico do chat do localStorage", e);
+          localStorage.removeItem(localStorageKey); // Limpa dados corrompidos
+        }
+      }
     }
-  }, [taskId, messages.length, taskTitle, taskDescription, sendMessageToGemini, isLoading]);
+
+    if (loadedMessages.length > 0) {
+      setMessages(loadedMessages);
+      // Se o histórico foi carregado, o Gemini já tem o contexto.
+      // Não precisamos enviar uma nova mensagem inicial.
+      // A próxima interação do usuário usará o histórico carregado.
+    } else {
+      // Se não há histórico, enviar a mensagem inicial
+      const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
+      const newInitialMessages = [{ role: 'user', content: initialUserPrompt }];
+      setMessages(newInitialMessages);
+      sendMessageToGemini(newInitialMessages); // Envia a mensagem inicial para o Gemini
+    }
+  }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini]); // Adicionado localStorageKey às dependências
 
   // Efeito para salvar mensagens no localStorage
   useEffect(() => {
