@@ -19,6 +19,7 @@ import * as dateFnsTz from "date-fns-tz"; // Importar como wildcard
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
+const SEISO_FILTER_KEY = 'seiso_filter_input'; // Chave para o localStorage
 
 const parseTimeEstimate = (task: TodoistTask): number => {
   if (task.priority === 4) return 45 * 60; // P1 (highest) -> 45 min
@@ -46,7 +47,11 @@ const shuffleArray = (array: any[]) => {
 
 const SEISOPage = () => {
   const navigate = useNavigate();
-  const [filterInput, setFilterInput] = useState("today | overdue"); // Default filter
+  const [filterInput, setFilterInput] = useState(() => {
+    // Carregar o filtro salvo do localStorage ao inicializar o estado
+    const savedFilter = localStorage.getItem(SEISO_FILTER_KEY);
+    return savedFilter || "today | overdue"; // Valor padrão se não houver filtro salvo
+  });
   const [sessionStarted, setSessionStarted] = useState(false);
   const [allTasks, setAllTasks] = useState<TodoistTask[]>([]);
   const [p1Tasks, setP1Tasks] = useState<TodoistTask[]>([]);
@@ -72,6 +77,11 @@ const SEISOPage = () => {
 
   const totalTasks = p1Tasks.length + otherTasks.length;
   const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
+
+  // Efeito para salvar o filtro no localStorage sempre que ele mudar
+  useEffect(() => {
+    localStorage.setItem(SEISO_FILTER_KEY, filterInput);
+  }, [filterInput]);
 
   const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
@@ -346,7 +356,7 @@ const SEISOPage = () => {
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
           </Button>
-          <Button variant="outline" onClick={() => { setIsSessionFinished(false); setSessionStarted(false); setFilterInput("today | overdue"); }} className="mt-2">
+          <Button variant="outline" onClick={() => { setIsSessionFinished(false); setSessionStarted(false); setFilterInput(localStorage.getItem(SEISO_FILTER_KEY) || "today | overdue"); }} className="mt-2">
             Iniciar Nova Sessão
           </Button>
         </Card>
@@ -415,7 +425,7 @@ const SEISOPage = () => {
           {showCelebration ? (
             <div className="text-center space-y-4">
               <CardTitle className="text-4xl font-bold text-green-600">Parabéns! 🎉</CardTitle>
-              <CardDescription className="text-2xl text-gray-800">Tarefa concluída!</CardDescription>
+              <CardDescription className="2xl text-gray-800">Tarefa concluída!</CardDescription>
               <Button onClick={handleContinueAfterCelebration} className="mt-4 bg-blue-600 hover:bg-blue-700">
                 Continuar
               </Button>
