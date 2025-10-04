@@ -14,7 +14,7 @@ import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { utcToZonedTime, formatInTimeZone } from "date-fns-tz"; // Importar diretamente as funções
+import dateFnsTz from "date-fns-tz"; // Importar como default
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
@@ -67,13 +67,13 @@ const SEIRIPage = () => {
       }
 
       // Convert the parsed date to the Brasília timezone for display.
-      const zonedDate = utcToZonedTime(parsedDate, BRASILIA_TIMEZONE); // Usar utcToZonedTime diretamente
+      const zonedDate = dateFnsTz.utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
 
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
       // Format the date in the Brasília timezone
-      return formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR }); // Usar formatInTimeZone diretamente
+      return dateFnsTz.formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
     } catch (e: any) {
       console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";

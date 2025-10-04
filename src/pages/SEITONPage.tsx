@@ -12,7 +12,7 @@ import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { utcToZonedTime, formatInTimeZone } from "date-fns-tz"; // Importar diretamente as funções
+import dateFnsTz from "date-fns-tz"; // Importar como default
 
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
@@ -85,11 +85,11 @@ const SEITONPage = () => {
         return "Data inválida";
       }
 
-      const zonedDate = utcToZonedTime(parsedDate, BRASILIA_TIMEZONE); // Usar utcToZonedTime diretamente
+      const zonedDate = dateFnsTz.utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
-      return formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR }); // Usar formatInTimeZone diretamente
+      return dateFnsTz.formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
     } catch (e: any) {
       console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";
