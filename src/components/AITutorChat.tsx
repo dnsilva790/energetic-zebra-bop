@@ -92,7 +92,7 @@ CONSCIÊNCIA TEMPORAL (Hiperfoco): A cada duas interações do usuário, insira 
 
 REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a descrição desse passo de forma clara e concisa (máximo 1 frase), pronta para ser usada como Título da Tarefa no Todoist. E, formule uma breve frase de motivação ou status (o 'Status da Tarefa') que será usada no campo de Descrição da tarefa no Todoist.`;
 
-  const sendMessageToGemini = useCallback(async (currentMessages: ChatMessage[]) => {
+  const sendMessageToGemini = useCallback(async (userAndModelMessages: ChatMessage[]) => {
     if (!GEMINI_API_KEY) {
       showError("VITE_GEMINI_API_KEY não configurada. Por favor, adicione-a ao seu arquivo .env.");
       setMessages(prev => [...prev, { role: 'model', content: "Erro: Chave API do Gemini não configurada." }]);
@@ -102,10 +102,17 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
 
     setIsLoading(true);
 
-    const formattedContents = currentMessages.map(msg => ({
+    const systemInstructionPart = {
+      role: 'user', // Usando 'user' role para a instrução do sistema
+      parts: [{ text: initialSystemInstructionText }],
+    };
+
+    const formattedContents = userAndModelMessages.map(msg => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }],
     }));
+
+    const contentsForApi = [systemInstructionPart, ...formattedContents]; // Prepend system instruction
 
     try {
       const response = await fetch(GEMINI_API_URL, {
@@ -114,10 +121,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: initialSystemInstructionText }] // Envia a instrução do sistema aqui
-          },
-          contents: formattedContents,
+          contents: contentsForApi,
         }),
       });
 
@@ -147,15 +151,15 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     } finally {
       setIsLoading(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, initialAiResponseReceived, initialSystemInstructionText]); // Adiciona initialSystemInstructionText às dependências
+  }, [GEMINI_API_KEY, GEMINI_API_URL, initialAiResponseReceived, initialSystemInstructionText]);
 
   useEffect(() => {
     const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
 
-    // Apenas adiciona o prompt do usuário ao estado de mensagens
+    // Apenas adiciona o prompt do usuário ao estado de mensagens (não a instrução do sistema)
     setMessages([{ role: 'user', content: initialUserPrompt }]);
     
-    // Chama sendMessageToGemini com o prompt inicial do usuário
+    // Chama sendMessageToGemini com o prompt inicial do usuário; a instrução do sistema será prepended internamente
     sendMessageToGemini([{ role: 'user', content: initialUserPrompt }]);
   }, [taskTitle, taskDescription, sendMessageToGemini]);
 
@@ -210,7 +214,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
 
   return (
     <Card className="flex flex-col h-full bg-white/80 backdrop-blur-sm">
-      <CardContent className="flex-grow overflow-hidden"> {/* Removido p-4 aqui */}
+      <CardContent className="flex-grow p-0 overflow-hidden"> {/* Removido p-4 aqui */}
         <ScrollArea className="h-full p-4" viewportRef={scrollAreaRef}> {/* Adicionado p-4 aqui */}
           <div className="space-y-4">
             {messages.map((msg, index) => (
