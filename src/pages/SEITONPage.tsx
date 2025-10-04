@@ -27,6 +27,15 @@ interface SeitonProgress {
   currentStep: SeitonStep;
   currentChallenger: TodoistTask | null;
   currentOpponentIndex: number | null;
+  comparisonHistory: ComparisonEntry[]; // Adicionado ao progresso salvo
+}
+
+interface ComparisonEntry {
+  challengerContent: string;
+  opponentContent: string;
+  winner: 'challenger' | 'opponent';
+  action: string;
+  timestamp: string;
 }
 
 const SEITONPage = () => {
@@ -39,9 +48,10 @@ const SEITONPage = () => {
   
   const [currentChallenger, setCurrentChallenger] = useState<TodoistTask | null>(null);
   const [currentOpponentIndex, setCurrentOpponentIndex] = useState<number | null>(null);
+  const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]); // Novo estado para histórico
   
   const [loading, setLoading] = useState(true);
-  const [showDebugPanel, setShowDebugPanel] = useState(false); // Estado para o painel de debug
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -97,10 +107,11 @@ const SEITONPage = () => {
       currentStep,
       currentChallenger,
       currentOpponentIndex,
+      comparisonHistory, // Salvar histórico
     };
     localStorage.setItem(SEITON_PROGRESS_KEY, JSON.stringify(progress));
     console.log("SEITONPage - Progress saved:", progress);
-  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex]);
+  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory]);
 
   const loadProgress = useCallback((): SeitonProgress | null => {
     const savedProgress = localStorage.getItem(SEITON_PROGRESS_KEY);
@@ -145,6 +156,7 @@ const SEITONPage = () => {
     let currentChallenger: TodoistTask | null = null;
     let currentOpponentIndex: number | null = null;
     let currentStepState: SeitonStep = 'loading';
+    let currentComparisonHistory: ComparisonEntry[] = [];
 
     if (savedProgress) {
       currentTournamentQueue = savedProgress.tournamentQueue;
@@ -153,6 +165,7 @@ const SEITONPage = () => {
       currentChallenger = savedProgress.currentChallenger;
       currentOpponentIndex = savedProgress.currentOpponentIndex;
       currentStepState = savedProgress.currentStep;
+      currentComparisonHistory = savedProgress.comparisonHistory || []; // Carregar histórico
       console.log("SEITONPage - Loaded progress applied. Queue:", currentTournamentQueue.map(t => t.content), "Ranked:", currentRankedTasks.map(t => t.content), "P3:", currentP3Tasks.map(t => t.content));
     }
 
@@ -180,6 +193,7 @@ const SEITONPage = () => {
     setCurrentChallenger(currentChallenger);
     setCurrentOpponentIndex(currentOpponentIndex);
     setCurrentStep(currentStepState);
+    setComparisonHistory(currentComparisonHistory); // Definir histórico
 
     if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0) {
       showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
@@ -264,6 +278,7 @@ const SEITONPage = () => {
     let newRankedTasks = [...rankedTasks];
     let newP3Tasks = [...p3Tasks];
     let nextOpponentIndex: number | null = null;
+    let actionDescription = "";
 
     const updateTaskAndReturn = async (task: TodoistTask, newPriority: number): Promise<TodoistTask> => {
       if (task.priority !== newPriority) {
@@ -281,12 +296,14 @@ const SEITONPage = () => {
 
     if (challengerWins) {
       console.log("SEITONPage - Challenger wins, inserting into rankedTasks.");
-      newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger);
+      newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger); // Insert challenger
+      actionDescription = `Desafiante inserido na posição ${currentOpponentIndex + 1}.`;
       
       if (newRankedTasks.length > RANKING_SIZE) {
         const pushedOutTask = newRankedTasks.pop();
         if (pushedOutTask) {
           newP3Tasks.push(pushedOutTask);
+          actionDescription += ` Tarefa "${pushedOutTask.content}" movida para P3.`;
           console.log(`SEITONPage - Ranked list full, pushed out ${pushedOutTask.content} to P3.`);
         }
       }
@@ -299,6 +316,7 @@ const SEITONPage = () => {
         setCurrentOpponentIndex(null);
         setTournamentQueue(prev => prev.slice(1));
         newRankedTasks = newRankedTasks.map(task => task.id === updatedChallenger.id ? updatedChallenger : task);
+        actionDescription += ` Desafiante "${updatedChallenger.content}" alcançou P1.`;
       } else {
         console.log(`SEITONPage - Challenger continues to fight, next opponent index: ${nextOpponentIndex}`);
         setCurrentChallenger(currentChallenger);
@@ -306,17 +324,32 @@ const SEITONPage = () => {
       }
     } else {
       console.log("SEITONPage - Opponent wins, challenger loses.");
+      actionDescription = `Oponente "${opponentTask.content}" venceu.`;
       if (newRankedTasks.length < RANKING_SIZE) {
         newRankedTasks.push(currentChallenger);
+        actionDescription += ` Desafiante "${currentChallenger.content}" adicionado ao final do ranking.`;
         console.log("SEITONPage - Ranked list not full, adding challenger to end.");
       } else {
         newP3Tasks.push(currentChallenger);
+        actionDescription += ` Desafiante "${currentChallenger.content}" movido para P3.`;
         console.log("SEITONPage - Ranked list full, adding challenger to P3.");
       }
       setCurrentChallenger(null);
       setCurrentOpponentIndex(null);
       setTournamentQueue(prev => prev.slice(1));
     }
+
+    // Record comparison history
+    setComparisonHistory(prevHistory => [
+      {
+        challengerContent: currentChallenger.content,
+        opponentContent: opponentTask.content,
+        winner: challengerWins ? 'challenger' : 'opponent',
+        action: actionDescription,
+        timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
+      },
+      ...prevHistory,
+    ].slice(0, 3)); // Manter apenas as 3 últimas
 
     console.log("SEITONPage - Updating priorities for ranked and P3 tasks.");
     const updatedP1Tasks = await Promise.all(
@@ -584,6 +617,21 @@ const SEITONPage = () => {
                     <li key={task.id}>{task.content} (ID: {task.id}, Prio: {task.priority})</li>
                   ))}
                 </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold mt-2">Histórico de Comparações (Últimas 3):</h4>
+                {comparisonHistory.length > 0 ? (
+                  <ul className="list-disc list-inside ml-4 space-y-1">
+                    {comparisonHistory.map((entry, index) => (
+                      <li key={index}>
+                        <span className="font-medium">[{entry.timestamp}]</span> Desafiante: "{entry.challengerContent}" vs. Oponente: "{entry.opponentContent}". Vencedor: {entry.winner}. Ação: {entry.action}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="ml-4 text-gray-500">Nenhuma comparação registrada ainda.</p>
+                )}
               </div>
             </div>
           </Card>
