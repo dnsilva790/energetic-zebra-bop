@@ -6,21 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, Check, X, ExternalLink } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, getProjects, completeTask, handleApiCall } from "@/lib/todoistApi";
+import { getTasks, getProjects, completeTask, reopenTask, handleApiCall } from "@/lib/todoistApi"; // Importar reopenTask
 import { TodoistTask, TodoistProject } from "@/lib/types";
-import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
+import { toast } from "sonner"; // Importar toast do sonner
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
 
@@ -30,9 +21,13 @@ const SEIRIPage = () => {
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [keptTasksCount, setKeptTasksCount] = useState(0);
   const [deletedTasksCount, setDeletedTasksCount] = useState(0);
-  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Estados para a funcionalidade de desfazer
+  const [lastDeletedTask, setLastDeletedTask] = useState<TodoistTask | null>(null);
+  const [lastDeletedTaskOriginalIndex, setLastDeletedTaskOriginalIndex] = useState<number | null>(null);
+  const [undoToastId, setUndoToastId] = useState<string | null>(null);
 
   const currentTask = allTasks[currentTaskIndex];
   const totalTasks = allTasks.length;
@@ -93,7 +88,7 @@ const SEIRIPage = () => {
       if (tasks && projects) {
         const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
         const tasksWithProjectNames = tasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
           .map((task: TodoistTask) => {
             const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
             return {
@@ -138,6 +133,14 @@ const SEIRIPage = () => {
   }, [allTasks, currentTaskIndex, totalTasks, saveProgress]);
 
   const moveToNextTask = () => {
+    // Dismiss any active undo toast when moving to the next task
+    if (undoToastId) {
+      toast.dismiss(undoToastId);
+      setUndoToastId(null);
+    }
+    setLastDeletedTask(null); // Clear last deleted task info
+    setLastDeletedTaskOriginalIndex(null);
+
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
     } else {
@@ -158,30 +161,94 @@ const SEIRIPage = () => {
     }
   };
 
-  const handleDelete = () => {
-    setIsConfirmationOpen(true);
+  const handleDelete = async () => {
+    if (!currentTask) return;
+
+    // Store the task and its current index before attempting deletion
+    setLastDeletedTask(currentTask);
+    setLastDeletedTaskOriginalIndex(currentTaskIndex);
+
+    const success = await handleApiCall(
+      () => completeTask(currentTask.id),
+      "Deletando tarefa...",
+      "Tarefa deletada com sucesso!"
+    );
+
+    if (success) {
+      setDeletedTasksCount((prev) => prev + 1);
+
+      // Remove the task from the local state immediately
+      const updatedTasks = allTasks.filter((task) => task.id !== currentTask.id);
+      setAllTasks(updatedTasks);
+
+      // Show undo toast
+      const id = toast.custom((t) => (
+        <div className="flex items-center justify-between p-3 bg-gray-800 text-white rounded-md shadow-lg">
+          <span>Tarefa deletada.</span>
+          <Button
+            variant="link"
+            onClick={() => handleUndo(t.id)}
+            className="text-blue-400 hover:text-blue-200 ml-4"
+          >
+            Desfazer
+          </Button>
+        </div>
+      ), { duration: 5000 }); // Toast visible for 5 seconds
+      setUndoToastId(id);
+
+      // Move to the next task. If it was the last one, show summary.
+      if (currentTaskIndex >= updatedTasks.length) {
+        setShowSummary(true);
+        localStorage.removeItem(SEIRI_PROGRESS_KEY);
+      } else {
+        // If the current task was removed, the next task is now at the same index.
+        // No need to increment currentTaskIndex here, it effectively moves to the next.
+        saveProgress(); // Save progress after deletion
+      }
+    } else {
+      showError("Falha ao deletar a tarefa.");
+      // If deletion failed, clear lastDeletedTask and its index
+      setLastDeletedTask(null);
+      setLastDeletedTaskOriginalIndex(null);
+    }
   };
 
-  const confirmDelete = async () => {
-    setIsConfirmationOpen(false);
-    if (currentTask) {
-      const success = await handleApiCall(() => completeTask(currentTask.id), "Deletando tarefa...", "Tarefa deletada com sucesso!");
-      if (success) {
-        const updatedTasks = allTasks.filter((_, idx) => idx !== currentTaskIndex);
-        setAllTasks(updatedTasks); // Remove a tarefa da lista local
-        setDeletedTasksCount(deletedTasksCount + 1);
-        // Se a tarefa atual foi removida, o índice não precisa ser incrementado,
-        // mas precisamos garantir que não exceda o novo total de tarefas.
-        if (currentTaskIndex >= updatedTasks.length) {
-          setShowSummary(true);
-          localStorage.removeItem(SEIRI_PROGRESS_KEY);
-        } else {
-          saveProgress(); // Salva o progresso após a deleção
-          // Não move o índice, pois a próxima tarefa já estará na posição atual
-        }
-      } else {
-        showError("Falha ao deletar a tarefa.");
+  const handleUndo = async (toastId: string) => {
+    if (!lastDeletedTask || lastDeletedTaskOriginalIndex === null) {
+      toast.dismiss(toastId);
+      showError("Não há tarefa para desfazer.");
+      return;
+    }
+
+    const success = await handleApiCall(
+      () => reopenTask(lastDeletedTask.id), // Usar reopenTask para desfazer
+      "Desfazendo exclusão...",
+      "Tarefa restaurada com sucesso!"
+    );
+
+    if (success) {
+      setDeletedTasksCount((prev) => prev - 1);
+
+      // Re-insert the task into allTasks at its original position
+      const newAllTasks = [...allTasks];
+      newAllTasks.splice(lastDeletedTaskOriginalIndex, 0, lastDeletedTask);
+      setAllTasks(newAllTasks);
+
+      // Adjust currentTaskIndex to point back to the restored task
+      setCurrentTaskIndex(lastDeletedTaskOriginalIndex);
+
+      // If summary was showing, hide it
+      if (showSummary) {
+        setShowSummary(false);
       }
+
+      toast.dismiss(toastId);
+      setUndoToastId(null);
+      setLastDeletedTask(null);
+      setLastDeletedTaskOriginalIndex(null);
+      saveProgress(); // Save progress after undo
+    } else {
+      showError("Falha ao restaurar a tarefa.");
     }
   };
 
@@ -296,23 +363,6 @@ const SEIRIPage = () => {
           </CardFooter>
         )}
       </Card>
-
-      <AlertDialog open={isConfirmationOpen} onOpenChange={setIsConfirmationOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Tem certeza que deseja deletar esta tarefa?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação não pode ser desfeita. A tarefa será removida do seu Todoist.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
-              Deletar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <MadeWithDyad />
     </div>
   );

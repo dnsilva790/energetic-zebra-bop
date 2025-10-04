@@ -96,6 +96,20 @@ export async function completeTask(taskId: string): Promise<boolean> {
   return true; 
 }
 
+export async function reopenTask(taskId: string): Promise<boolean> {
+  const headers = getApiHeaders();
+  if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
+  const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}/reopen`, {
+    method: 'POST',
+    headers
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Erro ao reabrir tarefa: ${response.statusText}`);
+  }
+  return true;
+}
+
 export async function deleteTask(taskId: string): Promise<boolean> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
