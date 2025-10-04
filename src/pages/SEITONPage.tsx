@@ -210,13 +210,27 @@ const SEITONPage = () => {
     fetchAndSetupTasks();
   }, [fetchAndSetupTasks]);
 
+  const updateTaskAndReturn = useCallback(async (task: TodoistTask, newPriority: number): Promise<TodoistTask> => {
+    if (task.priority !== newPriority) {
+      console.log(`SEITONPage - Updating Todoist priority for task ${task.content} from ${task.priority} to ${newPriority}`);
+      const updatedTodoistTask = await handleApiCall(
+        () => updateTask(task.id, { priority: newPriority }),
+        `Atualizando prioridade para ${task.content}...`
+      );
+      if (updatedTodoistTask) {
+        return { ...task, priority: newPriority };
+      }
+    }
+    return task;
+  }, []);
+
   useEffect(() => {
     if (!loading) {
       saveProgress();
     }
   }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, loading, saveProgress]);
 
-  const startNextTournamentComparison = useCallback(() => {
+  const startNextTournamentComparison = useCallback(async () => {
     console.log("SEITONPage - startNextTournamentComparison called.");
     if (tournamentQueue.length === 0) {
       console.log("SEITONPage - Tournament queue is empty, moving to result.");
@@ -231,12 +245,10 @@ const SEITONPage = () => {
 
     if (rankedTasks.length === 0) {
       console.log("SEITONPage - Ranked tasks is empty, adding challenger directly.");
-      setRankedTasks(prev => {
-        const newRanked = [...prev, nextChallenger];
-        setTournamentQueue(prevQueue => prevQueue.slice(1));
-        setCurrentChallenger(null);
-        return newRanked;
-      });
+      const updatedChallenger = await updateTaskAndReturn(nextChallenger, 4); // Default to P1 if first task
+      setRankedTasks(prev => [...prev, updatedChallenger]);
+      setTournamentQueue(prevQueue => prevQueue.slice(1));
+      setCurrentChallenger(null);
       return;
     }
 
@@ -244,26 +256,29 @@ const SEITONPage = () => {
     setCurrentOpponentIndex(opponentIndex);
     setCurrentStep('tournamentComparison');
     console.log("SEITONPage - Starting comparison. Opponent Index:", opponentIndex, "Opponent:", rankedTasks[opponentIndex]?.content);
-  }, [tournamentQueue, rankedTasks]);
+  }, [tournamentQueue, rankedTasks, updateTaskAndReturn]);
 
   useEffect(() => {
     console.log("SEITONPage - Flow management effect triggered. Current step:", currentStep);
-    if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length > 0) {
-      console.log("SEITONPage - Flow: Starting next tournament comparison.");
-      startNextTournamentComparison();
-    } else if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length === 0) {
-      console.log("SEITONPage - Flow: Tournament queue exhausted, moving to result.");
-      setCurrentStep('result');
-      localStorage.removeItem(SEITON_PROGRESS_KEY);
-    } else if (currentStep === 'loading' && tournamentQueue.length > 0) {
-      console.log("SEITONPage - Flow: Loaded with tasks in queue, starting tournament.");
-      setCurrentStep('tournamentComparison');
-      startNextTournamentComparison();
-    } else if (currentStep === 'loading' && tournamentQueue.length === 0 && allFetchedTasks.length === 0) {
-      console.log("SEITONPage - Flow: No tasks at all, moving to result.");
-      setCurrentStep('result');
-      localStorage.removeItem(SEITON_PROGRESS_KEY);
-    }
+    const handleFlow = async () => { // Make this async
+      if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length > 0) {
+        console.log("SEITONPage - Flow: Starting next tournament comparison.");
+        await startNextTournamentComparison(); // Await the async call
+      } else if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length === 0) {
+        console.log("SEITONPage - Flow: Tournament queue exhausted, moving to result.");
+        setCurrentStep('result');
+        localStorage.removeItem(SEITON_PROGRESS_KEY);
+      } else if (currentStep === 'loading' && tournamentQueue.length > 0) {
+        console.log("SEITONPage - Flow: Loaded with tasks in queue, starting tournament.");
+        setCurrentStep('tournamentComparison');
+        await startNextTournamentComparison(); // Await the async call
+      } else if (currentStep === 'loading' && tournamentQueue.length === 0 && allFetchedTasks.length === 0) {
+        console.log("SEITONPage - Flow: No tasks at all, moving to result.");
+        setCurrentStep('result');
+        localStorage.removeItem(SEITON_PROGRESS_KEY);
+      }
+    };
+    handleFlow();
   }, [currentStep, currentChallenger, tournamentQueue, allFetchedTasks.length, startNextTournamentComparison]);
 
   const handleTournamentComparison = useCallback(async (challengerWins: boolean) => {
@@ -279,36 +294,22 @@ const SEITONPage = () => {
     let newP3Tasks = [...p3Tasks];
     let actionDescription = "";
 
-    const updateTaskAndReturn = async (task: TodoistTask, newPriority: number): Promise<TodoistTask> => {
-      if (task.priority !== newPriority) {
-        console.log(`SEITONPage - Updating Todoist priority for task ${task.content} from ${task.priority} to ${newPriority}`);
-        const updatedTodoistTask = await handleApiCall(
-          () => updateTask(task.id, { priority: newPriority }),
-          `Atualizando prioridade para ${task.content}...`
-        );
-        if (updatedTodoistTask) {
-          return { ...task, priority: newPriority };
-        }
-      }
-      return task;
-    };
+    // Always remove challenger from newRankedTasks if it was there, to prevent duplicates
+    newRankedTasks = newRankedTasks.filter(t => t.id !== currentChallenger.id);
+    // Also remove from newP3Tasks if it was there (shouldn't happen often, but for safety)
+    newP3Tasks = newP3Tasks.filter(t => t.id !== currentChallenger.id);
 
     if (challengerWins) {
-      console.log("SEITONPage - Challenger wins, attempting to insert into rankedTasks.");
-      // Ensure challenger is not already in newRankedTasks before inserting
-      const existingChallengerIndex = newRankedTasks.findIndex(t => t.id === currentChallenger.id);
-      if (existingChallengerIndex !== -1) {
-          newRankedTasks.splice(existingChallengerIndex, 1); // Remove existing duplicate if any
-          console.warn(`SEITONPage - Removed duplicate challenger ${currentChallenger.content} from rankedTasks before re-inserting.`);
-      }
-      newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger); // Insert challenger
+      console.log("SEITONPage - Challenger wins, inserting into rankedTasks.");
+      newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger); // Insert challenger at new position
 
       actionDescription = `Desafiante inserido na posição ${currentOpponentIndex + 1}.`;
       
       if (newRankedTasks.length > RANKING_SIZE) {
         const pushedOutTask = newRankedTasks.pop(); // Remove the last task
         if (pushedOutTask) {
-          newP3Tasks.push(pushedOutTask);
+          const updatedPushedOutTask = await updateTaskAndReturn(pushedOutTask, 2); // Set priority to P3
+          newP3Tasks.push(updatedPushedOutTask);
           actionDescription += ` Tarefa "${pushedOutTask.content}" movida para P3.`;
           console.log(`SEITONPage - Ranked list full, pushed out ${pushedOutTask.content} to P3.`);
         }
@@ -317,7 +318,10 @@ const SEITONPage = () => {
       const nextOpponentIndexCandidate = currentOpponentIndex - 1;
       if (nextOpponentIndexCandidate < 0) {
         console.log("SEITONPage - Challenger reached top (P1).");
-        // Challenger has found its final place in rankedTasks
+        // Challenger has found its final place in rankedTasks, update its priority to P1
+        const updatedChallenger = await updateTaskAndReturn(currentChallenger, 4);
+        newRankedTasks = newRankedTasks.map(task => task.id === updatedChallenger.id ? updatedChallenger : task); // Ensure the updated challenger is in the list
+        
         setCurrentChallenger(null);
         setCurrentOpponentIndex(null);
         setTournamentQueue(prev => prev.slice(1)); // Remove from queue
@@ -328,7 +332,11 @@ const SEITONPage = () => {
       }
     } else { // Challenger loses
       console.log("SEITONPage - Opponent wins, challenger loses. Moving challenger to P3.");
-      newP3Tasks.push(currentChallenger); // Challenger goes to P3
+      
+      // Add challenger to P3 tasks and update its priority in Todoist
+      const updatedChallengerForP3 = await updateTaskAndReturn(currentChallenger, 2); // Set priority to P3
+      newP3Tasks.push(updatedChallengerForP3);
+      
       actionDescription = `Oponente "${opponentTask.content}" venceu. Desafiante "${currentChallenger.content}" movido para P3.`;
       
       setCurrentChallenger(null);
@@ -337,9 +345,9 @@ const SEITONPage = () => {
     }
 
     // --- Batch update priorities based on final list positions ---
-    console.log("SEITONPage - Updating priorities for ranked and P3 tasks.");
+    console.log("SEITONPage - Re-evaluating priorities for remaining ranked tasks.");
     
-    const updatedRankedTasksPromises = newRankedTasks.map((task, index) => {
+    const finalRankedTasksPromises = newRankedTasks.map(async (task, index) => {
         let targetPriority = 2; // Default to P3 (priority 2)
         if (index < 4) { // Top 4 are P1
             targetPriority = 4;
@@ -349,14 +357,13 @@ const SEITONPage = () => {
         return updateTaskAndReturn(task, targetPriority);
     });
 
-    const updatedP3TasksPromises = newP3Tasks.map(task => updateTaskAndReturn(task, 2)); // All tasks in P3 list are P3 (priority 2)
+    const finalP3TasksPromises = newP3Tasks.map(task => updateTaskAndReturn(task, 2)); // Ensure all P3 tasks are P3
 
     const [resolvedRankedTasks, resolvedP3Tasks] = await Promise.all([
-        Promise.all(updatedRankedTasksPromises),
-        Promise.all(updatedP3TasksPromises)
+        Promise.all(finalRankedTasksPromises),
+        Promise.all(finalP3TasksPromises)
     ]);
 
-    // Filter out any undefined results from API calls if they failed
     newRankedTasks = resolvedRankedTasks.filter(Boolean) as TodoistTask[];
     newP3Tasks = resolvedP3Tasks.filter(Boolean) as TodoistTask[];
 
@@ -392,7 +399,7 @@ const SEITONPage = () => {
       startNextTournamentComparison();
     }
     // If currentChallenger is NOT null, it means it's still fighting, so no state change for step.
-}, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, startNextTournamentComparison]);
+}, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, startNextTournamentComparison, updateTaskAndReturn]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
