@@ -4,19 +4,28 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, LayoutDashboard, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
+import { ArrowLeft, LayoutDashboard, ExternalLink, Repeat } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, getProjects, moveTaskToProject, handleApiCall } from "@/lib/todoistApi";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TodoistTask, TodoistProject } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
+import { format, parseISO } from "date-fns"; // Importar format e parseISO
+import { ptBR } from "date-fns/locale"; // Importar locale ptBR
 
 const SEITONPage = () => {
   const navigate = useNavigate();
   const [activeTasks, setActiveTasks] = useState<TodoistTask[]>([]);
   const [projects, setProjects] = useState<TodoistProject[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const formatDueDate = (dateString: string | undefined) => {
+    if (!dateString) return "Sem vencimento";
+    const parsedDate = parseISO(dateString);
+    const hasTime = dateString.includes('T') || dateString.includes(':');
+    return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
+  };
 
   const fetchTasksAndProjects = useCallback(async () => {
     setLoading(true);
@@ -27,7 +36,7 @@ const SEITONPage = () => {
       if (fetchedTasks && fetchedProjects) {
         setProjects(fetchedProjects);
         const tasksWithProjectNames = fetchedTasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
           .map((task: TodoistTask) => ({
             ...task,
             project_name: fetchedProjects.find((p: TodoistProject) => p.id === task.project_id)?.name || "Caixa de Entrada"
@@ -144,6 +153,11 @@ const SEITONPage = () => {
                           <ExternalLink className="h-4 w-4" />
                         </a>
                       </div>
+                      {task.due?.date && (
+                        <p className="text-sm text-gray-500 mb-2">
+                          Vencimento: <span className="font-medium text-gray-700">{formatDueDate(task.due.date)}</span>
+                        </p>
+                      )}
                       <Select onValueChange={(newProjectId) => handleMoveTask(task.id, newProjectId)} value={task.project_id}>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Mover para projeto..." />

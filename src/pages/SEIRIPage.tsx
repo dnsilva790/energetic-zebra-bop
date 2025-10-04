@@ -5,13 +5,15 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Check, X, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
+import { ArrowLeft, Check, X, ExternalLink, Repeat } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, getProjects, completeTask, reopenTask, handleApiCall } from "@/lib/todoistApi";
 import { TodoistTask, TodoistProject } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { toast } from "sonner";
+import { format, parseISO } from "date-fns"; // Importar format e parseISO
+import { ptBR } from "date-fns/locale"; // Importar locale ptBR
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
 
@@ -30,6 +32,14 @@ const SEIRIPage = () => {
 
   const currentTask = allTasks[currentTaskIndex];
   const totalTasks = allTasks.length;
+
+  const formatDueDate = (dateString: string | undefined) => {
+    if (!dateString) return "Sem vencimento";
+    const parsedDate = parseISO(dateString);
+    // Check if the date string contains a time component (e.g., 'T' or ':')
+    const hasTime = dateString.includes('T') || dateString.includes(':');
+    return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
+  };
 
   const saveProgress = useCallback(() => {
     localStorage.setItem(SEIRI_PROGRESS_KEY, JSON.stringify({
@@ -87,7 +97,7 @@ const SEIRIPage = () => {
       if (tasks && projects) {
         const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
         const tasksWithProjectNames = tasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
           .map((task: TodoistTask) => {
             const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
             return {
@@ -313,12 +323,12 @@ const SEIRIPage = () => {
                   </p>
                   {currentTask.due?.date && (
                     <p className="text-sm text-gray-500">
-                      Vencimento: <span className="font-medium text-gray-700">{new Date(currentTask.due.date).toLocaleDateString()}</span>
+                      Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due.date)}</span>
                     </p>
                   )}
                   {currentTask.deadline && (
                     <p className="text-sm text-gray-500">
-                      Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
+                      Data Limite: <span className="font-medium text-gray-700">{formatDueDate(currentTask.deadline)}</span>
                     </p>
                   )}
                 </div>

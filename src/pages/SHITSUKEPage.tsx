@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Trash2, Archive, ArrowUpCircle, BarChart2, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
+import { ArrowLeft, Trash2, Archive, ArrowUpCircle, BarChart2, ExternalLink, Repeat } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +19,8 @@ import {
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, updateTask, handleApiCall } from "@/lib/todoistApi";
-import { isPast, parseISO } from "date-fns";
+import { isPast, parseISO, format } from "date-fns"; // Importar format
+import { ptBR } from "date-fns/locale"; // Importar locale ptBR
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 
@@ -37,16 +38,23 @@ const SHITSUKEPage = () => {
   const totalTasks = allTasks.length;
   const currentTask = allTasks[currentTaskIndex];
 
+  const formatDueDate = (dateString: string | undefined) => {
+    if (!dateString) return "Sem vencimento";
+    const parsedDate = parseISO(dateString);
+    const hasTime = dateString.includes('T') || dateString.includes(':');
+    return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
+  };
+
   const fetchP3Tasks = useCallback(async () => {
     setLoading(true);
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para revisão...");
     if (fetchedTasks) {
       const p3Tasks = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => {
           const isLowPriority = task.priority === 1 || task.priority === 2;
           const hasNoDueDate = !task.due;
-          const isOverdue = task.due && task.due.date && isPast(parseISO(task.due.date)); // Adicionado check para task.due.date
+          const isOverdue = task.due && task.due.date && isPast(parseISO(task.due.date));
           return isLowPriority || hasNoDueDate || isOverdue;
         });
 
@@ -191,12 +199,12 @@ const SHITSUKEPage = () => {
                 </p>
                 {currentTask.due?.date && (
                   <p className="text-md text-gray-500">
-                    Vencimento: <span className="font-medium text-gray-700">{new Date(currentTask.due.date).toLocaleDateString()}</span>
+                    Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due.date)}</span>
                   </p>
                 )}
                 {currentTask.deadline && (
                   <p className="text-md text-gray-500">
-                    Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
+                    Data Limite: <span className="font-medium text-gray-700">{formatDueDate(currentTask.deadline)}</span>
                   </p>
                 )}
               </div>

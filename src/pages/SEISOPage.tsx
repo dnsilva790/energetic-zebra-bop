@@ -5,11 +5,11 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
+import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon, ExternalLink, Repeat } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
-import { format, isToday, parseISO } from "date-fns";
+import { format, parseISO, isToday } from "date-fns"; // Importar isToday
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
@@ -53,13 +53,19 @@ const SEISOPage = () => {
   const totalTasks = allTasks.length;
   const currentTask = allTasks[currentTaskIndex];
 
+  const formatDueDate = (dateString: string | undefined) => {
+    if (!dateString) return "Sem vencimento";
+    const parsedDate = parseISO(dateString);
+    const hasTime = dateString.includes('T') || dateString.includes(':');
+    return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
+  };
+
   const fetchTasksForToday = useCallback(async () => {
     setLoading(true);
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para hoje...");
     if (fetchedTasks) {
-      const today = new Date();
       const filteredTasks = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => {
           return (task.due && isToday(parseISO(task.due.date))) || !task.due;
         });
@@ -316,14 +322,14 @@ const SEISOPage = () => {
                 <p className="text-md text-gray-600">
                   Estimativa: <span className="font-medium">{formatTime(currentTaskEstimate)}</span>
                 </p>
-                {currentTask.due && (
+                {currentTask.due?.date && (
                   <p className="text-sm text-gray-500">
-                    Vencimento: <span className="font-medium text-gray-700">{format(parseISO(currentTask.due.date), "dd/MM/yyyy", { locale: ptBR })}</span>
+                    Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due.date)}</span>
                   </p>
                 )}
                 {currentTask.deadline && (
                   <p className="text-sm text-gray-500">
-                    Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
+                    Data Limite: <span className="font-medium text-gray-700">{formatDueDate(currentTask.deadline)}</span>
                   </p>
                 )}
               </div>

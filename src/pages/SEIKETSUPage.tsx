@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
+import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck, ExternalLink, Repeat } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, updateTaskDueDate, handleApiCall } from "@/lib/todoistApi";
@@ -37,13 +37,19 @@ const SEIKETSUPage = () => {
     setMotivationalMessage(motivationalMessages[randomIndex]);
   }, []);
 
+  const formatDueDate = (dateString: string | undefined) => {
+    if (!dateString) return "Sem vencimento";
+    const parsedDate = parseISO(dateString);
+    const hasTime = dateString.includes('T') || dateString.includes(':');
+    return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
+  };
+
   const fetchAndProcessTasks = useCallback(async () => {
     setLoading(true);
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas do dia...");
     if (fetchedTasks) {
-      const today = new Date();
       const tasksDueToday = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => 
           task.due && isToday(parseISO(task.due.date))
         );
@@ -201,9 +207,14 @@ const SEIKETSUPage = () => {
                     {task.due?.is_recurring && (
                       <Repeat className="h-4 w-4 text-blue-500" title="Tarefa Recorrente" />
                     )}
+                    {task.due?.date && (
+                      <span className="text-sm text-gray-500 ml-2">
+                        (Vencimento: {formatDueDate(task.due.date)})
+                      </span>
+                    )}
                     {task.deadline && (
                       <span className="text-sm text-gray-500 ml-2">
-                        (Limite: {new Date(task.deadline).toLocaleDateString()})
+                        (Limite: {formatDueDate(task.deadline)})
                       </span>
                     )}
                     <a
