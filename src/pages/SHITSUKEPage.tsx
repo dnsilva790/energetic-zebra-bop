@@ -208,7 +208,6 @@ const SHITSUKEPage = () => {
         <p className="text-lg text-red-600">Carregando tarefas para revisão semanal...</p>
       </div>
     );
-  );
   }
 
   return (
