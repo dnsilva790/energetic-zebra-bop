@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat
+  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered
 } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
@@ -17,11 +17,11 @@ import { format, parseISO, setHours, setMinutes, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-// Removendo importações de date-fns-tz para usar o fuso horário local do navegador
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils"; // Para estilização do popover do calendário
+import { cn } from "@/lib/utils";
+import SeitonRankingDisplay from "@/components/SeitonRankingDisplay"; // Import the new component
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking'; // Chave para o último ranking do Seiton
@@ -59,8 +59,8 @@ const SEISOPage = () => {
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
 
-  // New state for last Seiton ranking
-  const [lastSeitonRanking, setLastSeitonRanking] = useState<{ rankedTasks: TodoistTask[]; p3Tasks: TodoistTask[] } | null>(null);
+  // New state for last Seiton ranking (now only used for initial check, display handled by component)
+  const [hasLastSeitonRanking, setHasLastSeitonRanking] = useState(false);
 
   // New Countdown Timer states
   const [countdownInputDuration, setCountdownInputDuration] = useState("25"); // em minutos
@@ -74,12 +74,21 @@ const SEISOPage = () => {
   const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
   const [selectedDueTime, setSelectedDueTime] = useState<string>(""); // ex: "10:00"
 
+  // State for Seiton Ranking Display Dialog
+  const [showSeitonRankingDialog, setShowSeitonRankingDialog] = useState(false);
+
   const totalTasks = p1Tasks.length + otherTasks.length;
   const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
 
   useEffect(() => {
     localStorage.setItem(SEISO_FILTER_KEY, filterInput);
   }, [filterInput]);
+
+  // Check for last Seiton ranking on mount
+  useEffect(() => {
+    const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
+    setHasLastSeitonRanking(!!savedRanking);
+  }, []);
 
   const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
@@ -131,7 +140,7 @@ const SEISOPage = () => {
   const fetchTasksAndFilter = useCallback(async () => {
     setLoading(true);
     setFilterError("");
-    setLastSeitonRanking(null); // Clear previous ranking when fetching new tasks
+    setHasLastSeitonRanking(false); // Clear previous ranking check when fetching new tasks
     try {
       const fetchedTasks = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas...");
 
@@ -148,17 +157,11 @@ const SEISOPage = () => {
         setAllTasks([...p1, ...others]);
 
         if (p1.length === 0 && others.length === 0) {
-          // No tasks found for the current filter, try to load last Seiton ranking
+          // No tasks found for the current filter, check for last Seiton ranking
           const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
           if (savedRanking) {
-            try {
-              const parsedRanking = JSON.parse(savedRanking);
-              setLastSeitonRanking(parsedRanking);
-              showSuccess("Nenhuma tarefa encontrada com o filtro. Exibindo o último ranking do SEITON.");
-            } catch (e) {
-              console.error("Error parsing last Seiton ranking from localStorage:", e);
-              showError("Nenhuma tarefa encontrada com o filtro. Erro ao carregar ranking anterior.");
-            }
+            setHasLastSeitonRanking(true); // Indicate that a ranking exists
+            showSuccess("Nenhuma tarefa encontrada com o filtro. Você pode consultar o último ranking do SEITON.");
           } else {
             showSuccess("Nenhuma tarefa encontrada com o filtro fornecido. Tente outro!");
           }
@@ -339,7 +342,7 @@ const SEISOPage = () => {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog) return;
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog) return;
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -357,7 +360,7 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
@@ -377,50 +380,13 @@ const SEISOPage = () => {
       <div className="min-h-screen flex flex-col items-center justify-center bg-orange-100 p-4">
         <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
           <CardTitle className="text-3xl font-bold text-gray-800">Sessão Concluída!</CardTitle>
-          {lastSeitonRanking ? (
-            <>
-              <CardDescription className="text-lg text-gray-600">
-                Nenhuma tarefa encontrada com o filtro atual. <br />
-                Exibindo o último ranking do SEITON:
-              </CardDescription>
-
-              {lastSeitonRanking.rankedTasks.slice(0, 4).length > 0 && (
-                <div className="text-left p-4 border rounded-md bg-red-50/50">
-                  <h3 className="text-xl font-bold text-red-700 mb-2">P1 (Urgente)</h3>
-                  <ul className="list-disc list-inside space-y-1">
-                    {lastSeitonRanking.rankedTasks.slice(0, 4).map((task) => (
-                      <li key={task.id} className="text-gray-800">{task.content}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {lastSeitonRanking.rankedTasks.slice(4).length > 0 && (
-                <div className="text-left p-4 border rounded-md bg-yellow-50/50">
-                  <h3 className="text-xl font-bold text-yellow-700 mb-2">P2 (Alta)</h3>
-                  <ul className="list-disc list-inside space-y-1">
-                    {lastSeitonRanking.rankedTasks.slice(4).map((task) => (
-                      <li key={task.id} className="text-gray-800">{task.content}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {lastSeitonRanking.p3Tasks.length > 0 && (
-                <div className="text-left p-4 border rounded-md bg-blue-50/50">
-                  <h3 className="text-xl font-bold text-blue-700 mb-2">P3 (Média)</h3>
-                  <ul className="list-disc list-inside space-y-1">
-                    {lastSeitonRanking.p3Tasks.map((task) => (
-                      <li key={task.id}>{task.content}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          ) : (
-            <CardDescription className="text-lg text-gray-600">
-              Você concluiu {tasksCompleted} de {allTasks.length} tarefas.
-            </CardDescription>
+          <CardDescription className="text-lg text-gray-600">
+            Você concluiu {tasksCompleted} de {allTasks.length} tarefas.
+          </CardDescription>
+          {hasLastSeitonRanking && (
+            <p className="text-gray-600 text-sm">
+              Você pode consultar o último ranking do SEITON.
+            </p>
           )}
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
@@ -428,6 +394,15 @@ const SEISOPage = () => {
           <Button variant="outline" onClick={() => { setIsSessionFinished(false); setSessionStarted(false); setFilterInput(localStorage.getItem(SEISO_FILTER_KEY) || "today | overdue"); }} className="mt-2">
             Iniciar Nova Sessão
           </Button>
+          {hasLastSeitonRanking && (
+            <Button
+              variant="secondary"
+              onClick={() => setShowSeitonRankingDialog(true)}
+              className="mt-2 flex items-center justify-center gap-2"
+            >
+              <ListOrdered className="h-4 w-4" /> Ver Último Ranking SEITON
+            </Button>
+          )}
         </Card>
         <MadeWithDyad />
       </div>
@@ -488,6 +463,17 @@ const SEISOPage = () => {
               </a>
             </p>
           </CardContent>
+          {hasLastSeitonRanking && (
+            <CardFooter className="flex justify-center p-4 border-t mt-6">
+              <Button
+                variant="secondary"
+                onClick={() => setShowSeitonRankingDialog(true)}
+                className="flex items-center justify-center gap-2"
+              >
+                <ListOrdered className="h-4 w-4" /> Ver Último Ranking SEITON
+              </Button>
+            </CardFooter>
+          )}
         </Card>
       ) : (
         <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
@@ -667,6 +653,26 @@ const SEISOPage = () => {
             <Button onClick={handleSaveReschedule} disabled={!selectedDueDate || loading}>
               Salvar Reagendamento
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Seiton Ranking Display Dialog */}
+      <Dialog open={showSeitonRankingDialog} onOpenChange={setShowSeitonRankingDialog}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Último Ranking SEITON</DialogTitle>
+            <DialogDescription>
+              Este é o resultado da sua última sessão de priorização.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <SeitonRankingDisplay />
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Fechar</Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
