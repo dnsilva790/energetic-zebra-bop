@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat
-} from "lucide-react"; // Removido ListOrdered e X
+} from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall, updateTaskDueDate } from "@/lib/todoistApi";
@@ -21,7 +21,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
-// Removido import SeitonRankingDisplay
 import AITutorChat from "@/components/AITutorChat";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
@@ -597,7 +596,7 @@ const SEISOPage = () => {
       <MadeWithDyad />
 
       <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
-        <SheetContent className="w-[350px] sm:w-[400px] flex flex-col p-0">
+        <SheetContent className="flex flex-col"> {/* Alterado aqui */}
           <SheetHeader className="p-4 border-b">
             <SheetTitle className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</SheetTitle>
             <SheetDescription className="sr-only">Chat com o Tutor de IA para assistência na tarefa.</SheetDescription>
