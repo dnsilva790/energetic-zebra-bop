@@ -9,7 +9,7 @@ import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon,
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
-import { format, parseISO, isToday } from "date-fns"; // Importar isToday
+import { format, parseISO, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
@@ -53,9 +53,13 @@ const SEISOPage = () => {
   const totalTasks = allTasks.length;
   const currentTask = allTasks[currentTaskIndex];
 
-  const formatDueDate = (dateString: string | undefined) => {
+  const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
     const parsedDate = parseISO(dateString);
+    if (isNaN(parsedDate.getTime())) { // Check if date is valid
+      console.warn("Invalid date string received:", dateString);
+      return "Data inválida";
+    }
     const hasTime = dateString.includes('T') || dateString.includes(':');
     return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
   };

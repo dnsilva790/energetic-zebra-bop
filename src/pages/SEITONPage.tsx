@@ -11,8 +11,8 @@ import { getTasks, getProjects, moveTaskToProject, handleApiCall } from "@/lib/t
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TodoistTask, TodoistProject } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import { format, parseISO } from "date-fns"; // Importar format e parseISO
-import { ptBR } from "date-fns/locale"; // Importar locale ptBR
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const SEITONPage = () => {
   const navigate = useNavigate();
@@ -20,9 +20,13 @@ const SEITONPage = () => {
   const [projects, setProjects] = useState<TodoistProject[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const formatDueDate = (dateString: string | undefined) => {
+  const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
     const parsedDate = parseISO(dateString);
+    if (isNaN(parsedDate.getTime())) { // Check if date is valid
+      console.warn("Invalid date string received:", dateString);
+      return "Data inválida";
+    }
     const hasTime = dateString.includes('T') || dateString.includes(':');
     return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
   };

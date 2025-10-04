@@ -12,8 +12,8 @@ import { getTasks, getProjects, completeTask, reopenTask, handleApiCall } from "
 import { TodoistTask, TodoistProject } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns"; // Importar format e parseISO
-import { ptBR } from "date-fns/locale"; // Importar locale ptBR
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
 
@@ -33,10 +33,13 @@ const SEIRIPage = () => {
   const currentTask = allTasks[currentTaskIndex];
   const totalTasks = allTasks.length;
 
-  const formatDueDate = (dateString: string | undefined) => {
+  const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
     const parsedDate = parseISO(dateString);
-    // Check if the date string contains a time component (e.g., 'T' or ':')
+    if (isNaN(parsedDate.getTime())) { // Check if date is valid
+      console.warn("Invalid date string received:", dateString);
+      return "Data inválida";
+    }
     const hasTime = dateString.includes('T') || dateString.includes(':');
     return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
   };

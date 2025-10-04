@@ -19,8 +19,8 @@ import {
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, updateTask, handleApiCall } from "@/lib/todoistApi";
-import { isPast, parseISO, format } from "date-fns"; // Importar format
-import { ptBR } from "date-fns/locale"; // Importar locale ptBR
+import { isPast, parseISO, format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 
@@ -38,9 +38,13 @@ const SHITSUKEPage = () => {
   const totalTasks = allTasks.length;
   const currentTask = allTasks[currentTaskIndex];
 
-  const formatDueDate = (dateString: string | undefined) => {
+  const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
     const parsedDate = parseISO(dateString);
+    if (isNaN(parsedDate.getTime())) { // Check if date is valid
+      console.warn("Invalid date string received:", dateString);
+      return "Data inválida";
+    }
     const hasTime = dateString.includes('T') || dateString.includes(':');
     return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
   };
