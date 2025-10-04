@@ -16,7 +16,6 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import * as dateFnsTz from "date-fns-tz"; // Importar como wildcard
 
-const SEIRI_PROGRESS_KEY = 'seiri_progress';
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
 
 const SEIRIPage = () => {
@@ -80,31 +79,6 @@ const SEIRIPage = () => {
     }
   };
 
-  const saveProgress = useCallback(() => {
-    localStorage.setItem(SEIRI_PROGRESS_KEY, JSON.stringify({
-      allTasks,
-      currentTaskIndex,
-      keptTasksCount,
-      deletedTasksCount,
-    }));
-  }, [allTasks, currentTaskIndex, keptTasksCount, deletedTasksCount]);
-
-  const loadProgress = useCallback(() => {
-    const savedProgress = localStorage.getItem(SEIRI_PROGRESS_KEY);
-    if (savedProgress) {
-      const { allTasks: savedTasks, currentTaskIndex: savedIndex, keptTasksCount: savedKept, deletedTasksCount: savedDeleted } = JSON.parse(savedProgress);
-      setAllTasks(savedTasks);
-      setCurrentTaskIndex(savedIndex);
-      setKeptTasksCount(savedKept);
-      setDeletedTasksCount(savedDeleted);
-      if (savedIndex >= savedTasks.length) {
-        setShowSummary(true);
-      }
-      return true;
-    }
-    return false;
-  }, []);
-
   const getPriorityColor = (priority: number) => {
     switch (priority) {
       case 4: return "text-red-600"; // P1
@@ -147,6 +121,11 @@ const SEIRIPage = () => {
         setAllTasks(tasksWithProjectNames);
         if (tasksWithProjectNames.length === 0) {
           setShowSummary(true);
+        } else {
+          setCurrentTaskIndex(0); // Reset index to start from the beginning
+          setKeptTasksCount(0);
+          setDeletedTasksCount(0);
+          setShowSummary(false);
         }
       } else {
         showError("Não foi possível carregar as tarefas ou projetos do Todoist.");
@@ -162,23 +141,9 @@ const SEIRIPage = () => {
   }, [navigate]);
 
   useEffect(() => {
-    const initializePage = async () => {
-      setLoading(true);
-      const hasLoadedProgress = loadProgress();
-      if (hasLoadedProgress) {
-        setLoading(false);
-      } else {
-        await fetchTasksAndProjects();
-      }
-    };
-    initializePage();
-  }, [fetchTasksAndProjects, loadProgress]);
-
-  useEffect(() => {
-    if (allTasks.length > 0 && currentTaskIndex < totalTasks) {
-      saveProgress();
-    }
-  }, [allTasks, currentTaskIndex, totalTasks, saveProgress]);
+    // Always fetch fresh tasks when the component mounts
+    fetchTasksAndProjects();
+  }, [fetchTasksAndProjects]);
 
   const moveToNextTask = useCallback(() => {
     if (undoToastId) {
@@ -192,7 +157,7 @@ const SEIRIPage = () => {
       setCurrentTaskIndex(currentTaskIndex + 1);
     } else {
       setShowSummary(true);
-      localStorage.removeItem(SEIRI_PROGRESS_KEY);
+      // No need to remove from localStorage as we don't save progress anymore
     }
   }, [currentTaskIndex, totalTasks, undoToastId]);
 
@@ -242,16 +207,16 @@ const SEIRIPage = () => {
 
       if (currentTaskIndex >= updatedTasks.length) {
         setShowSummary(true);
-        localStorage.removeItem(SEIRI_PROGRESS_KEY);
+        // No need to remove from localStorage as we don't save progress anymore
       } else {
-        saveProgress();
+        // No need to save progress here
       }
     } else {
       showError("Falha ao deletar a tarefa.");
       setLastDeletedTask(null);
       setLastDeletedTaskOriginalIndex(null);
     }
-  }, [currentTask, currentTaskIndex, allTasks, saveProgress]);
+  }, [currentTask, currentTaskIndex, allTasks]);
 
   const handleUndo = useCallback(async (toastId: string) => {
     if (!lastDeletedTask || lastDeletedTaskOriginalIndex === null) {
@@ -283,11 +248,11 @@ const SEIRIPage = () => {
       setUndoToastId(null);
       setLastDeletedTask(null);
       setLastDeletedTaskOriginalIndex(null);
-      saveProgress();
+      // No need to save progress here
     } else {
       showError("Falha ao restaurar a tarefa.");
     }
-  }, [lastDeletedTask, lastDeletedTaskOriginalIndex, allTasks, showSummary, saveProgress]);
+  }, [lastDeletedTask, lastDeletedTaskOriginalIndex, allTasks, showSummary]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

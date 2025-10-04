@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Zap, ClipboardCheck, TrendingUp } from "lucide-react";
+import { Settings, Brush, LayoutDashboard } from "lucide-react"; // Removidos Zap, ClipboardCheck, TrendingUp
 import {
   Card,
   CardContent,
@@ -23,17 +23,9 @@ const MainMenuPage = () => {
       navigate("/5s/seiri");
     } else if (sName === "SEITON") {
       navigate("/5s/seiton");
-    } else if (sName === "SEISO") {
-      navigate("/5s/seiso");
-    } else if (sName === "SEIKETSU") {
-      navigate("/5s/seiketsu");
-    } else if (sName === "SHITSUKE") {
-      navigate("/5s/shitsuke"); // Navega para a tela SHITSUKE
     }
     else {
       showSuccess(`Tela em construção - ${sName}`);
-      // Futuramente, aqui você navegará para a rota específica de cada S
-      // Ex: navigate(`/5s/${sName.toLowerCase()}`);
     }
   };
 
@@ -63,27 +55,7 @@ const MainMenuPage = () => {
             colorClass="bg-blue-600 hover:bg-blue-700"
             onClick={() => handleButtonClick("SEITON")}
           />
-          <FiveSButton
-            icon={Zap}
-            title="SEISO - Executar"
-            description="Focar nas suas tarefas de hoje"
-            colorClass="bg-orange-600 hover:bg-orange-700"
-            onClick={() => handleButtonClick("SEISO")}
-          />
-          <FiveSButton
-            icon={ClipboardCheck}
-            title="SEIKETSU - Revisar Dia"
-            description="Encerrar o dia e preparar amanhã"
-            colorClass="bg-purple-600 hover:bg-purple-700"
-            onClick={() => handleButtonClick("SEIKETSU")}
-          />
-          <FiveSButton
-            icon={TrendingUp}
-            title="SHITSUKE - Revisão Semanal"
-            description="Faxina profunda e manutenção"
-            colorClass="bg-red-600 hover:bg-red-700"
-            onClick={() => handleButtonClick("SHITSUKE")}
-          />
+          {/* Removidos botões para SEISO, SEIKETSU, SHITSUKE */}
         </CardContent>
       </Card>
 
