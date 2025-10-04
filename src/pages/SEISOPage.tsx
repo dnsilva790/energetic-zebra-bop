@@ -90,11 +90,20 @@ const SEISOPage = () => {
     setHasLastSeitonRanking(!!savedRanking);
   }, []);
 
-  const formatDueDate = (dateString: string | undefined | null) => {
-    if (!dateString) return "Sem vencimento";
+  /**
+   * Formats a date string, relying on parseISO to interpret it in the local timezone.
+   * Displays time (HH:mm) if present in the original date string.
+   * @param due The TodoistTask['due'] object containing date and string representations.
+   * @returns Formatted date string (e.g., "dd/MM/yyyy HH:mm") or "Sem vencimento" / "Data inválida" / "Erro de data".
+   */
+  const formatDueDate = (due: TodoistTask['due']) => {
+    if (!due || !due.date) return "Sem vencimento";
     
+    const dateString = due.date;
+    const rawDueString = due.string; // Use this for robust time detection
+
     if (typeof dateString !== 'string' || dateString.trim() === '') {
-      console.warn("formatDueDate received non-string or empty string:", dateString);
+      console.warn("formatDueDate received non-string or empty date:", dateString);
       return "Data inválida";
     }
 
@@ -106,8 +115,8 @@ const SEISOPage = () => {
         return "Data inválida";
       }
 
-      // Use regex to robustly check for a time pattern (HH:MM) in the date string
-      const hasTime = /\d{2}:\d{2}/.test(dateString);
+      // Use rawDueString for time detection as it might contain more explicit time info
+      const hasTime = /\d{1,2}:\d{2}/.test(rawDueString); // More flexible regex for HH:MM or H:MM
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
       return format(parsedDate, formatString, { locale: ptBR });
@@ -505,7 +514,7 @@ const SEISOPage = () => {
                 </p>
                 {currentTask.due?.date && (
                   <p className="text-sm text-gray-500">
-                    Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due.date)}</span>
+                    Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due)}</span>
                   </p>
                 )}
                 {currentTask.deadline && (
