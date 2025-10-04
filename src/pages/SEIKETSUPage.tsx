@@ -13,7 +13,8 @@ import { isToday, parseISO, format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import * as dateFnsTz from "date-fns-tz"; // Importar como namespace
+import utcToZonedTime from "date-fns-tz/utcToZonedTime"; // Importar diretamente
+import formatInTimeZone from "date-fns-tz/formatInTimeZone"; // Importar diretamente
 
 const motivationalMessages = [
   "Bom trabalho hoje! 🌟",
@@ -72,13 +73,13 @@ const SEIKETSUPage = () => {
       }
 
       // Convert the parsed date to the Brasília timezone for display.
-      const zonedDate = dateFnsTz.utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
+      const zonedDate = utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
 
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
       // Format the date in the Brasília timezone
-      return dateFnsTz.formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
+      return formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
     } catch (e: any) {
       console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";
@@ -95,8 +96,8 @@ const SEIKETSUPage = () => {
           // Para verificar se é "hoje" no fuso horário de Brasília
           const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
           if (taskDueDate) {
-            const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
-            const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
+            const zonedTaskDate = utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
+            const nowZoned = utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
             return isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
           }
           return false; // Tarefas sem data de vencimento não são consideradas "para hoje" nesta tela
@@ -133,8 +134,8 @@ const SEIKETSUPage = () => {
     }
 
     // Reprogramar para amanhã no fuso horário de Brasília
-    const tomorrow = addDays(dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE), 1);
-    const tomorrowFormatted = dateFnsTz.formatInTimeZone(tomorrow, BRASILIA_TIMEZONE, "yyyy-MM-dd");
+    const tomorrow = addDays(utcToZonedTime(new Date(), BRASILIA_TIMEZONE), 1);
+    const tomorrowFormatted = formatInTimeZone(tomorrow, BRASILIA_TIMEZONE, "yyyy-MM-dd");
 
     const reprogrammedTitles: string[] = [];
     let successCount = 0;
