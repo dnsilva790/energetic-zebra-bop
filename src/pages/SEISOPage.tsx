@@ -8,8 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered, Bot
-} from "lucide-react";
+  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered
+} from "lucide-react"; // Removido Bot
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall, updateTaskDueDate } from "@/lib/todoistApi";
@@ -80,11 +80,6 @@ const SEISOPage = () => {
   const [selectedDueTime, setSelectedDueTime] = useState<string>("");
 
   const [showSeitonRankingDialog, setShowSeitonRankingDialog] = useState(false);
-
-  // New state for AI Guidance Dialog
-  const [showAIGuidanceDialog, setShowAIGuidanceDialog] = useState(false);
-  const [aiGuidanceContent, setAiGuidanceContent] = useState("");
-  const [isAIGuidanceLoading, setIsAIGuidanceLoading] = useState(false);
 
   const totalTasks = p1Tasks.length + otherTasks.length;
   const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
@@ -342,66 +337,22 @@ const SEISOPage = () => {
     }
   }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
 
-  const handleGuideMe = useCallback(async () => {
-    if (!currentTask) return;
-
-    setIsAIGuidanceLoading(true);
-    setAiGuidanceContent("");
-    setShowAIGuidanceDialog(true);
-
-    const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!geminiApiKey) {
-      setAiGuidanceContent("Erro: VITE_GEMINI_API_KEY não configurada. Por favor, adicione-a ao seu arquivo .env.");
-      setIsAIGuidanceLoading(false);
+  const handleGuideMe = useCallback(() => {
+    if (!currentTask) {
+      showError("Nenhuma tarefa selecionada para guiar.");
       return;
     }
-
-    const systemInstruction = "Você é um tutor especialista em produtividade e TDAH. Seu único objetivo é pegar a tarefa que o usuário fornecer e transformá-la em 3 a 5 micro-passos simples e imediatos. Sua resposta deve ser apenas a lista de micro-passos, sem introdução ou conclusão. O input do usuário é o título e a descrição da tarefa.";
-    const userInput = `A tarefa atual é: ${currentTask.content}. A descrição é: ${currentTask.description || 'Nenhuma descrição fornecida.'}.`;
-    
-    const fullPrompt = `${systemInstruction}\n\n${userInput}`;
-
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: fullPrompt,
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter uma resposta do Tutor de IA.";
-      setAiGuidanceContent(aiResponseContent);
-      showSuccess("Dicas do Tutor de IA recebidas!");
-    } catch (error: any) {
-      console.error("Erro ao se comunicar com Gemini para guia:", error);
-      setAiGuidanceContent(`Erro ao obter dicas do Tutor de IA: ${error.message}`);
-      showError(`Erro ao obter dicas do Tutor de IA: ${error.message}`);
-    } finally {
-      setIsAIGuidanceLoading(false);
-    }
-  }, [currentTask]);
+    navigate("/ai-tutor-chat", {
+      state: {
+        taskTitle: currentTask.content,
+        taskDescription: currentTask.description || 'Nenhuma descrição fornecida.',
+      },
+    });
+  }, [currentTask, navigate]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog || showAIGuidanceDialog) return;
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog) return; // Removido showAIGuidanceDialog
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -422,7 +373,7 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, showAIGuidanceDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
@@ -650,9 +601,8 @@ const SEISOPage = () => {
                 <Button
                   onClick={handleGuideMe}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-                  disabled={isAIGuidanceLoading}
                 >
-                  <Bot className="mr-2 h-5 w-5" /> Guiar-me (TDAH) (G)
+                  {/* Removido o ícone Bot */} Guiar-me (TDAH) (G)
                 </Button>
               </div>
             </div>
@@ -739,32 +689,6 @@ const SEISOPage = () => {
           </DialogHeader>
           <div className="py-4">
             <SeitonRankingDisplay />
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Fechar</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* AI Guidance Dialog */}
-      <Dialog open={showAIGuidanceDialog} onOpenChange={setShowAIGuidanceDialog}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Dicas do Tutor de IA para "{currentTask?.content}"</DialogTitle>
-            <DialogDescription>
-              Aqui estão algumas dicas para te ajudar a focar e executar esta tarefa.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 max-h-[60vh] overflow-y-auto">
-            {isAIGuidanceLoading ? (
-              <div className="flex items-center justify-center h-32">
-                <p className="text-gray-600">Gerando dicas...</p>
-              </div>
-            ) : (
-              <p className="text-gray-800 whitespace-pre-wrap">{aiGuidanceContent}</p>
-            )}
           </div>
           <DialogFooter>
             <DialogClose asChild>
