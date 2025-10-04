@@ -33,6 +33,14 @@ const SEIRIPage = () => {
   const currentTask = allTasks[currentTaskIndex];
   const totalTasks = allTasks.length;
 
+  /**
+   * Formats a date string, handling potential time components and invalid dates.
+   * Automatically converts to the browser's local timezone if the input string
+   * contains timezone information (e.g., 'Z' for UTC or an offset).
+   * Displays time (HH:mm) if present in the original date string.
+   * @param dateString The date string from Todoist API (e.g., "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SSZ").
+   * @returns Formatted date string (e.g., "dd/MM/yyyy HH:mm") or "Sem vencimento" / "Data inválida" / "Erro de data".
+   */
   const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
     try {
