@@ -46,7 +46,7 @@ const SHITSUKEPage = () => {
       // - Ou tarefas sem data de vencimento
       // - Ou tarefas que estão atrasadas (passaram da data de vencimento)
       const p3Tasks = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado aqui
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
         .filter((task: TodoistTask) => {
           const isLowPriority = task.priority === 1 || task.priority === 2;
           const hasNoDueDate = !task.due;
