@@ -259,7 +259,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t flex items-center gap-2">
+      <div className="p-4 border-t flex flex-col gap-2"> {/* Alterado para flex-col */}
         <Input
           placeholder="Digite sua mensagem..."
           value={input}
@@ -268,16 +268,18 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
           className="flex-grow min-w-0"
           disabled={isLoading}
         />
-        <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''}>
-          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        </Button>
-        <Button 
-          onClick={handleSendToTodoist} 
-          disabled={isLoading || parsedMicroSteps.length === 0} 
-          className="bg-green-600 hover:bg-green-700 text-white"
-        >
-          <Check className="h-4 w-4 mr-2" /> Enviar para Todoist
-        </Button>
+        <div className="flex gap-2 w-full"> {/* Novo div para os botões, ocupando a largura total */}
+          <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''} className="flex-1"> {/* flex-1 para dividir o espaço */}
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
+          </Button>
+          <Button 
+            onClick={handleSendToTodoist} 
+            disabled={isLoading || parsedMicroSteps.length === 0} 
+            className="bg-green-600 hover:bg-green-700 text-white flex-1" // flex-1 para dividir o espaço
+          >
+            <Check className="h-4 w-4 mr-2" /> Para Todoist
+          </Button>
+        </div>
       </div>
     </div>
   );
