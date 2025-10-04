@@ -31,8 +31,26 @@ const SEITONPage = () => {
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Debug: Log component mount
+  useEffect(() => {
+    console.log("SEITONPage mounted.");
+    return () => console.log("SEITONPage unmounted.");
+  }, []);
+
+  // Debug: Log current step changes
+  useEffect(() => {
+    console.log("SEITONPage - currentStep changed to:", currentStep);
+    console.log("SEITONPage - currentTaskIndex:", currentTaskIndex);
+    console.log("SEITONPage - threeMinFilterTasks length:", threeMinFilterTasks.length);
+    console.log("SEITONPage - tasksForPriorityAssignment length:", tasksForPriorityAssignment.length);
+  }, [currentStep, currentTaskIndex, threeMinFilterTasks.length, tasksForPriorityAssignment.length]);
+
+
   const currentTask = threeMinFilterTasks[currentTaskIndex];
-  const currentTaskForAssignment = tasksForPriorityAssignment[currentTaskIndex - threeMinFilterTasks.length]; // Adjust index for assignment tasks
+  // Ensure currentTaskForAssignment is only accessed if currentStep is 'priorityAssignment'
+  const currentTaskForAssignment = currentStep === 'priorityAssignment' 
+    ? tasksForPriorityAssignment[currentTaskIndex - threeMinFilterTasks.length] 
+    : undefined;
 
   /**
    * Formats a date string, handling potential time components and invalid dates.
@@ -81,27 +99,34 @@ const SEITONPage = () => {
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
+    console.log("SEITONPage - fetchTasks: Starting API call to get tasks.");
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas...");
     if (fetchedTasks) {
       const filteredTasks = fetchedTasks
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => !task.is_completed); // Only active tasks
 
+      console.log("SEITONPage - fetchTasks: Filtered tasks count:", filteredTasks.length);
+
       if (filteredTasks.length === 0) {
         showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
         setAllTasks([]); // Ensure allTasks is empty
         setThreeMinFilterTasks([]); // Ensure threeMinFilterTasks is empty
         setCurrentStep('result'); // Go directly to result if no tasks
+        console.log("SEITONPage - fetchTasks: No tasks found, setting step to 'result'.");
       } else {
         setAllTasks(filteredTasks);
         setThreeMinFilterTasks([...filteredTasks]);
         setCurrentStep('threeMinFilter');
+        console.log("SEITONPage - fetchTasks: Tasks found, setting step to 'threeMinFilter'.");
       }
     } else {
       showError("Não foi possível carregar as tarefas do Todoist.");
       navigate("/main-menu");
+      console.error("SEITONPage - fetchTasks: Failed to load tasks, navigating to main menu.");
     }
     setLoading(false);
+    console.log("SEITONPage - fetchTasks: Finished loading tasks.");
   }, [navigate]);
 
   useEffect(() => {
@@ -109,48 +134,69 @@ const SEITONPage = () => {
   }, [fetchTasks]);
 
   const moveToNextFilterTask = useCallback(() => {
+    console.log("SEITONPage - moveToNextFilterTask: currentTaskIndex before increment:", currentTaskIndex);
     if (currentTaskIndex < threeMinFilterTasks.length - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
+      console.log("SEITONPage - moveToNextFilterTask: Moving to next task in threeMinFilterTasks.");
     } else {
       // All tasks have gone through 3-min filter
       setCurrentTaskIndex(0); // Reset index for next step
       if (tasksForPriorityAssignment.length > 0) {
         setCurrentStep('priorityAssignment');
+        console.log("SEITONPage - moveToNextFilterTask: All 3-min tasks processed, moving to 'priorityAssignment'.");
       } else {
         setCurrentStep('result');
+        console.log("SEITONPage - moveToNextFilterTask: All tasks processed, no priority assignment needed, moving to 'result'.");
       }
     }
   }, [currentTaskIndex, threeMinFilterTasks.length, tasksForPriorityAssignment.length]);
 
   const handleThreeMinFilter = useCallback((isLessThanThreeMin: boolean) => {
-    if (!currentTask) return;
+    if (!currentTask) {
+      console.warn("SEITONPage - handleThreeMinFilter: No current task to process.");
+      return;
+    }
+    console.log(`SEITONPage - handleThreeMinFilter: Task "${currentTask.content}" (ID: ${currentTask.id}). Less than 3 min: ${isLessThanThreeMin}`);
 
     if (isLessThanThreeMin) {
       setCurrentStep('executeNow');
+      console.log("SEITONPage - handleThreeMinFilter: Setting step to 'executeNow'.");
     } else {
       setTasksForPriorityAssignment((prev) => [...prev, currentTask]);
+      console.log("SEITONPage - handleThreeMinFilter: Adding task to tasksForPriorityAssignment.");
       moveToNextFilterTask();
     }
   }, [currentTask, moveToNextFilterTask]);
 
   const handleExecuteNow = useCallback(async (executed: boolean) => {
-    if (!currentTask) return;
+    if (!currentTask) {
+      console.warn("SEITONPage - handleExecuteNow: No current task to execute.");
+      return;
+    }
+    console.log(`SEITONPage - handleExecuteNow: Task "${currentTask.content}" (ID: ${currentTask.id}). Executed: ${executed}`);
 
     if (executed) {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa executada e concluída!");
       if (!success) {
         showError("Falha ao concluir a tarefa.");
+        console.error("SEITONPage - handleExecuteNow: Failed to complete task.");
       }
     } else {
       showSuccess("Tarefa não executada, será priorizada depois.");
       setTasksForPriorityAssignment((prev) => [...prev, currentTask]); // If not executed, add to priority assignment
+      console.log("SEITONPage - handleExecuteNow: Task not executed, added to tasksForPriorityAssignment.");
     }
     moveToNextFilterTask();
     setCurrentStep('threeMinFilter'); // Return to 3-min filter for the next task
+    console.log("SEITONPage - handleExecuteNow: Moving to next filter task and setting step to 'threeMinFilter'.");
   }, [currentTask, moveToNextFilterTask]);
 
   const handlePriorityAssignment = useCallback(async (priority: 1 | 2 | 3 | 4) => {
-    if (!currentTaskForAssignment) return;
+    if (!currentTaskForAssignment) {
+      console.warn("SEITONPage - handlePriorityAssignment: No current task for assignment.");
+      return;
+    }
+    console.log(`SEITONPage - handlePriorityAssignment: Task "${currentTaskForAssignment.content}" (ID: ${currentTaskForAssignment.id}). Assigning priority: ${priority}`);
 
     const success = await handleApiCall(() => updateTask(currentTaskForAssignment.id, { priority }), `Definindo prioridade para ${currentTaskForAssignment.content}...`, `Prioridade definida para ${currentTaskForAssignment.content}!`);
     if (success) {
@@ -158,20 +204,25 @@ const SEITONPage = () => {
       else if (priority === 3) setP2Tasks((prev) => [...prev, currentTaskForAssignment]);
       else if (priority === 2) setP3Tasks((prev) => [...prev, currentTaskForAssignment]);
       else setP4Tasks((prev) => [...prev, currentTaskForAssignment]); // Adicionado P4
+      console.log(`SEITONPage - handlePriorityAssignment: Task priority updated to P${priority}.`);
     } else {
       showError("Falha ao definir prioridade.");
+      console.error("SEITONPage - handlePriorityAssignment: Failed to update task priority.");
     }
 
     // Move to next task for assignment
     const nextIndex = currentTaskIndex + 1;
     if (nextIndex - threeMinFilterTasks.length < tasksForPriorityAssignment.length) {
       setCurrentTaskIndex(nextIndex);
+      console.log("SEITONPage - handlePriorityAssignment: Moving to next task for priority assignment.");
     } else {
       setCurrentStep('result');
+      console.log("SEITONPage - handlePriorityAssignment: All priority assignment tasks processed, moving to 'result'.");
     }
   }, [currentTaskForAssignment, currentTaskIndex, threeMinFilterTasks.length, tasksForPriorityAssignment.length]);
 
   useEffect(() => {
+    console.log("SEITONPage - useEffect (keyboard shortcuts): Adding event listener.");
     const handleKeyDown = (event: KeyboardEvent) => {
       if (loading) return;
 
@@ -210,6 +261,7 @@ const SEITONPage = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      console.log("SEITONPage - useEffect (keyboard shortcuts): Removing event listener.");
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [loading, currentStep, currentTask, currentTaskForAssignment, handleThreeMinFilter, handleExecuteNow, handlePriorityAssignment]);
