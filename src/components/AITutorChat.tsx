@@ -219,10 +219,16 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     isMounted.current = true;
   }, []);
 
-  // Efeito para salvar mensagens no localStorage, ignorando a primeira montagem
+  // Efeito para salvar mensagens no localStorage, ignorando a primeira montagem e a mensagem inicial
   useEffect(() => {
     if (!isMounted.current) {
       return; // Ignora a primeira execução (montagem inicial)
+    }
+
+    // Adiciona a condição para salvar apenas se houver mais de 1 mensagem
+    if (messages.length <= 1) {
+      console.log('Não salvando histórico: Apenas a mensagem inicial ou nenhuma mensagem.');
+      return; 
     }
 
     if (messages.length > 0) {
