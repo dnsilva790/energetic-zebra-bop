@@ -111,6 +111,7 @@ const SEIRIPage = () => {
         const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
         const tasksWithProjectNames = tasks
           .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
+          .filter((task: TodoistTask) => task.priority === 1) // Filtra apenas tarefas com prioridade 1 (P4)
           .map((task: TodoistTask) => {
             const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
             return {
