@@ -12,9 +12,8 @@ import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { utcToZonedTime, formatInTimeZone } from "date-fns-tz"; // Importar funções específicas
+// Removendo importações de date-fns-tz para usar o fuso horário local do navegador
 
-const BRASILIA_TIMEZONE = 'America/Sao_Paulo';
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 const SEITON_PROGRESS_KEY = 'seiton_progress';
 
@@ -76,23 +75,17 @@ const SEITONPage = () => {
     }
 
     try {
-      let dateToParse = dateString;
-      if (dateString.includes('T') && !dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('-')) {
-        dateToParse = dateString + 'Z';
-      }
-
-      const parsedDate = parseISO(dateToParse);
+      const parsedDate = parseISO(dateString); // parseISO interpreta no fuso horário local se não houver offset/Z
 
       if (isNaN(parsedDate.getTime())) {
-        console.warn("Invalid date string after parseISO:", dateToParse);
+        console.warn("Invalid date string after parseISO:", dateString);
         return "Data inválida";
       }
 
-      const zonedDate = utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
-      return formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
+      return format(parsedDate, formatString, { locale: ptBR });
     } catch (e: any) {
       console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";
@@ -647,7 +640,7 @@ const SEITONPage = () => {
               <div>
                 <h4 className="font-semibold mt-2">P3 Tasks ({p3Tasks.length} tasks):</h4>
                 <ul className="list-disc list-inside ml-4">
-                  {p3Tasks.map(task => (
+                  {p3Tasks.map((task) => (
                     <li key={task.id}>{task.content} (ID: {task.id}, Prio: {task.priority})</li>
                   ))}
                 </ul>

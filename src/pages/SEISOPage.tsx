@@ -17,13 +17,12 @@ import { format, parseISO, setHours, setMinutes, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import { utcToZonedTime, formatInTimeZone } from "date-fns-tz"; // Importar funções específicas
+// Removendo importações de date-fns-tz para usar o fuso horário local do navegador
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils"; // Para estilização do popover do calendário
 
-const BRASILIA_TIMEZONE = 'America/Sao_Paulo';
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 
 const formatTime = (seconds: number) => {
@@ -87,23 +86,17 @@ const SEISOPage = () => {
     }
 
     try {
-      let dateToParse = dateString;
-      if (dateString.includes('T') && !dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('-')) {
-        dateToParse = dateString + 'Z';
-      }
-
-      const parsedDate = parseISO(dateToParse);
+      const parsedDate = parseISO(dateString); // parseISO interpreta no fuso horário local se não houver offset/Z
 
       if (isNaN(parsedDate.getTime())) {
-        console.warn("Invalid date string after parseISO:", dateToParse);
+        console.warn("Invalid date string after parseISO:", dateString);
         return "Data inválida";
       }
 
-      const zonedDate = utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
-      return formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
+      return format(parsedDate, formatString, { locale: ptBR });
     } catch (e: any) {
       console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";
@@ -295,8 +288,9 @@ const SEISOPage = () => {
       if (!isNaN(hours) && !isNaN(minutes)) {
         let dateWithTime = setHours(selectedDueDate, hours);
         dateWithTime = setMinutes(dateWithTime, minutes);
-        // Todoist API expects ISO format, often UTC for dates with time
-        newDueDateString = formatInTimeZone(dateWithTime, BRASILIA_TIMEZONE, "yyyy-MM-dd'T'HH:mm:ss");
+        // Para a API do Todoist, se estamos enviando uma data com hora, é melhor enviar em ISO 8601 sem offset
+        // e deixar o Todoist interpretar no fuso horário do usuário.
+        newDueDateString = format(dateWithTime, "yyyy-MM-dd'T'HH:mm:ss");
       }
     }
 

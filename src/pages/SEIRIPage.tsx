@@ -14,9 +14,7 @@ import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { utcToZonedTime, formatInTimeZone } from "date-fns-tz"; // Importar funções específicas
-
-const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
+// Removendo importações de date-fns-tz para usar o fuso horário local do navegador
 
 const SEIRIPage = () => {
   const navigate = useNavigate();
@@ -35,10 +33,9 @@ const SEIRIPage = () => {
   const totalTasks = allTasks.length;
 
   /**
-   * Formats a date string, handling potential time components and invalid dates.
-   * Assumes Todoist dates are UTC (UTC 0) and converts them to Brasília timezone (UTC-3).
+   * Formats a date string, relying on parseISO to interpret it in the local timezone.
    * Displays time (HH:mm) if present in the original date string.
-   * @param dateString The date string from Todoist API (e.g., "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SSZ").
+   * @param dateString The date string from Todoist API (e.g., "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS").
    * @returns Formatted date string (e.g., "dd/MM/yyyy HH:mm") or "Sem vencimento" / "Data inválida" / "Erro de data".
    */
   const formatDueDate = (dateString: string | undefined | null) => {
@@ -51,28 +48,17 @@ const SEIRIPage = () => {
     }
 
     try {
-      let dateToParse = dateString;
-      // If the date string has a time component but no explicit timezone,
-      // assume it's UTC and append 'Z' to force parse as UTC.
-      if (dateString.includes('T') && !dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('-')) {
-        dateToParse = dateString + 'Z';
-      }
-
-      const parsedDate = parseISO(dateToParse);
+      const parsedDate = parseISO(dateString); // parseISO interpreta no fuso horário local se não houver offset/Z
 
       if (isNaN(parsedDate.getTime())) {
-        console.warn("Invalid date string after parseISO:", dateToParse);
+        console.warn("Invalid date string after parseISO:", dateString);
         return "Data inválida";
       }
-
-      // Convert the parsed date to the Brasília timezone for display.
-      const zonedDate = utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
 
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
-      // Format the date in the Brasília timezone
-      return formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
+      return format(parsedDate, formatString, { locale: ptBR });
     } catch (e: any) {
       console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";
