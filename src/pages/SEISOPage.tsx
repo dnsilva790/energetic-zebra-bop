@@ -8,8 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered, X // Importar X
-} from "lucide-react";
+  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat
+} from "lucide-react"; // Removido ListOrdered e X
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall, updateTaskDueDate } from "@/lib/todoistApi";
@@ -21,9 +21,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
-import SeitonRankingDisplay from "@/components/SeitonRankingDisplay";
+// Removido import SeitonRankingDisplay
 import AITutorChat from "@/components/AITutorChat";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"; // Re-importar Sheet
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
@@ -607,7 +607,7 @@ const SEISOPage = () => {
               taskTitle={currentTask.content}
               taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
               onClose={() => setIsAITutorChatOpen(false)}
-              className="flex-grow" // AITutorChat já é flex-col h-full internamente
+              className="flex-grow"
             />
           )}
         </SheetContent>
