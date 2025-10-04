@@ -119,17 +119,23 @@ const SEITONPage = () => {
   const loadProgress = useCallback(() => {
     const savedProgress = localStorage.getItem(SEITON_PROGRESS_KEY);
     if (savedProgress) {
-      const progress: SeitonProgress = JSON.parse(savedProgress);
-      setThreeMinFilterQueue(progress.threeMinFilterQueue);
-      setTournamentQueue(progress.tournamentQueue);
-      setRankedTasks(progress.rankedTasks);
-      setP3Tasks(progress.p3Tasks);
-      setCurrentStep(progress.currentStep);
-      setCurrentThreeMinTask(progress.currentThreeMinTask);
-      setCurrentChallenger(progress.currentChallenger);
-      setCurrentOpponentIndex(progress.currentOpponentIndex);
-      console.log("SEITONPage - Progress loaded:", progress);
-      return true;
+      try {
+        const progress: SeitonProgress = JSON.parse(savedProgress);
+        setThreeMinFilterQueue(progress.threeMinFilterQueue);
+        setTournamentQueue(progress.tournamentQueue);
+        setRankedTasks(progress.rankedTasks);
+        setP3Tasks(progress.p3Tasks);
+        setCurrentStep(progress.currentStep);
+        setCurrentThreeMinTask(progress.currentThreeMinTask);
+        setCurrentChallenger(progress.currentChallenger);
+        setCurrentOpponentIndex(progress.currentOpponentIndex);
+        console.log("SEITONPage - Progress loaded:", progress);
+        return true;
+      } catch (e) {
+        console.error("SEITONPage - Error parsing saved progress from localStorage:", e);
+        localStorage.removeItem(SEITON_PROGRESS_KEY); // Clear invalid data
+        return false;
+      }
     }
     return false;
   }, []);
@@ -191,7 +197,17 @@ const SEITONPage = () => {
     }
     setLoading(false);
     console.log("SEITONPage - fetchTasks: Finished loading tasks.");
-  }, [navigate, loadProgress, threeMinFilterQueue, tournamentQueue, rankedTasks, p3Tasks, currentThreeMinTask, currentChallenger, currentStep]);
+  }, [
+    navigate,
+    loadProgress,
+    threeMinFilterQueue,
+    tournamentQueue,
+    rankedTasks,
+    p3Tasks,
+    currentThreeMinTask,
+    currentChallenger,
+    currentStep,
+  ]);
 
   useEffect(() => {
     fetchTasks();
@@ -264,10 +280,21 @@ const SEITONPage = () => {
       setCurrentStep('executeNow');
     } else {
       setTournamentQueue(prev => [...prev, currentThreeMinTask]);
-      setCurrentThreeMinTask(remainingThreeMinTasks[0] || null);
+    }
+    setCurrentThreeMinTask(remainingThreeMinTasks[0] || null);
+    if (remainingThreeMinTasks.length === 0) {
+      // If 3-min queue is empty, move to tournament or result
+      if (tournamentQueue.length > 0) {
+        setCurrentStep('tournamentComparison');
+        startNextTournamentComparison();
+      } else {
+        setCurrentStep('result');
+        localStorage.removeItem(SEITON_PROGRESS_KEY);
+      }
+    } else {
       setCurrentStep('threeMinFilter'); // Stay in 3-min filter for next task
     }
-  }, [currentThreeMinTask, threeMinFilterQueue]);
+  }, [currentThreeMinTask, threeMinFilterQueue, tournamentQueue, startNextTournamentComparison]);
 
   const handleExecuteNow = useCallback(async (executed: boolean) => {
     if (!currentThreeMinTask) return;
@@ -285,8 +312,19 @@ const SEITONPage = () => {
       setTournamentQueue(prev => [...prev, currentThreeMinTask]);
     }
     setCurrentThreeMinTask(remainingThreeMinTasks[0] || null);
-    setCurrentStep('threeMinFilter'); // Return to 3-min filter for the next task
-  }, [currentThreeMinTask, threeMinFilterQueue]);
+    if (remainingThreeMinTasks.length === 0) {
+      // If 3-min queue is empty, move to tournament or result
+      if (tournamentQueue.length > 0) {
+        setCurrentStep('tournamentComparison');
+        startNextTournamentComparison();
+      } else {
+        setCurrentStep('result');
+        localStorage.removeItem(SEITON_PROGRESS_KEY);
+      }
+    } else {
+      setCurrentStep('threeMinFilter'); // Return to 3-min filter for the next task
+    }
+  }, [currentThreeMinTask, threeMinFilterQueue, tournamentQueue, startNextTournamentComparison]);
 
   const handleTournamentComparison = useCallback(async (challengerWins: boolean) => {
     if (!currentChallenger || currentOpponentIndex === null) return;
@@ -338,7 +376,6 @@ const SEITONPage = () => {
     setP3Tasks(newP3Tasks);
 
     // Update priorities for tasks in rankedTasks (P1, P2) and P3
-    // This could be optimized to only update changed tasks, but for simplicity, re-evaluate all.
     const updatePriorities = async (tasks: TodoistTask[], targetPriority: number) => {
       for (const task of tasks) {
         if (task.priority !== targetPriority) {
