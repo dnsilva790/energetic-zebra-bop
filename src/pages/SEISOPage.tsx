@@ -55,6 +55,9 @@ const SEISOPage = () => {
   const totalTasks = allTasks.length;
   const currentTask = allTasks[currentTaskIndex];
 
+  // Adicionando log para o estado de carregamento e renderização
+  console.log("SEISOPage - Render. Loading:", loading, "isSessionFinished:", isSessionFinished, "currentTask:", currentTask?.content);
+
   /**
    * Formats a date string, handling potential time components and invalid dates.
    * Assumes Todoist dates are UTC (UTC 0) and converts them to Brasília timezone (UTC-3).
@@ -102,31 +105,43 @@ const SEISOPage = () => {
 
   const fetchTasksForToday = useCallback(async () => {
     setLoading(true);
+    console.log("SEISOPage - fetchTasksForToday: Starting.");
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para hoje...");
+    console.log("SEISOPage - fetchTasksForToday: handleApiCall returned:", fetchedTasks ? `${fetchedTasks.length} tasks` : "undefined");
+
     if (fetchedTasks) {
       const filteredTasks = fetchedTasks
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
+        .filter((task: TodoistTask) => !task.is_completed)
         .filter((task: TodoistTask) => {
           // Para verificar se é "hoje" no fuso horário de Brasília
           const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
           if (taskDueDate) {
             const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
             const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
-            return isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
+            const isTaskDueToday = isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
+            console.log(`SEISOPage - Task: ${task.content}, DueDate: ${task.due?.date}, ZonedDate: ${zonedTaskDate}, IsToday: ${isTaskDueToday}`);
+            return isTaskDueToday;
           }
-          return !task.due; // Inclui tarefas sem data de vencimento
+          // Inclui tarefas sem data de vencimento
+          console.log(`SEISOPage - Task: ${task.content}, No DueDate. Including.`);
+          return !task.due; 
         });
 
+      console.log("SEISOPage - fetchTasksForToday: Filtered tasks count:", filteredTasks.length);
       if (filteredTasks.length === 0) {
         showSuccess("Nenhuma tarefa para hoje! Aproveite o dia ou adicione novas tarefas.");
         setIsSessionFinished(true);
+        console.log("SEISOPage - fetchTasksForToday: No tasks, setting isSessionFinished to true.");
       }
       setAllTasks(filteredTasks);
     } else {
       showError("Não foi possível carregar as tarefas do Todoist.");
       navigate("/main-menu");
+      console.log("SEISOPage - fetchTasksForToday: API call failed, navigating to main-menu.");
     }
     setLoading(false);
+    console.log("SEISOPage - fetchTasksForToday: Finished, setLoading(false).");
   }, [navigate]);
 
   useEffect(() => {
