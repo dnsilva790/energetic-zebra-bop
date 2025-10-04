@@ -18,15 +18,13 @@ const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 const SEITON_PROGRESS_KEY = 'seiton_progress';
 
-type SeitonStep = 'loading' | 'threeMinFilter' | 'executeNow' | 'tournamentComparison' | 'result';
+type SeitonStep = 'loading' | 'tournamentComparison' | 'result';
 
 interface SeitonProgress {
-  threeMinFilterQueue: TodoistTask[];
   tournamentQueue: TodoistTask[];
   rankedTasks: TodoistTask[];
   p3Tasks: TodoistTask[];
   currentStep: SeitonStep;
-  currentThreeMinTask: TodoistTask | null;
   currentChallenger: TodoistTask | null;
   currentOpponentIndex: number | null;
 }
@@ -35,12 +33,10 @@ const SEITONPage = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<SeitonStep>('loading');
   const [allFetchedTasks, setAllFetchedTasks] = useState<TodoistTask[]>([]); // All tasks from Todoist
-  const [threeMinFilterQueue, setThreeMinFilterQueue] = useState<TodoistTask[]>([]); // Tasks for 3-min filter
   const [tournamentQueue, setTournamentQueue] = useState<TodoistTask[]>([]); // Tasks waiting to enter tournament
   const [rankedTasks, setRankedTasks] = useState<TodoistTask[]>([]); // Top 24 tasks (P1/P2)
   const [p3Tasks, setP3Tasks] = useState<TodoistTask[]>([]); // Tasks that are P3
   
-  const [currentThreeMinTask, setCurrentThreeMinTask] = useState<TodoistTask | null>(null);
   const [currentChallenger, setCurrentChallenger] = useState<TodoistTask | null>(null);
   const [currentOpponentIndex, setCurrentOpponentIndex] = useState<number | null>(null);
   
@@ -55,12 +51,11 @@ const SEITONPage = () => {
   // Debug: Log current step changes
   useEffect(() => {
     console.log("SEITONPage - currentStep changed to:", currentStep);
-    console.log("SEITONPage - currentThreeMinTask:", currentThreeMinTask?.content);
     console.log("SEITONPage - currentChallenger:", currentChallenger?.content);
     console.log("SEITONPage - currentOpponentIndex:", currentOpponentIndex);
     console.log("SEITONPage - rankedTasks length:", rankedTasks.length);
     console.log("SEITONPage - p3Tasks length:", p3Tasks.length);
-  }, [currentStep, currentThreeMinTask, currentChallenger, currentOpponentIndex, rankedTasks.length, p3Tasks.length]);
+  }, [currentStep, currentChallenger, currentOpponentIndex, rankedTasks.length, p3Tasks.length]);
 
   /**
    * Formats a date string, handling potential time components and invalid dates.
@@ -103,18 +98,16 @@ const SEITONPage = () => {
 
   const saveProgress = useCallback(() => {
     const progress: SeitonProgress = {
-      threeMinFilterQueue,
       tournamentQueue,
       rankedTasks,
       p3Tasks,
       currentStep,
-      currentThreeMinTask,
       currentChallenger,
       currentOpponentIndex,
     };
     localStorage.setItem(SEITON_PROGRESS_KEY, JSON.stringify(progress));
     console.log("SEITONPage - Progress saved:", progress);
-  }, [threeMinFilterQueue, tournamentQueue, rankedTasks, p3Tasks, currentStep, currentThreeMinTask, currentChallenger, currentOpponentIndex]);
+  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex]);
 
   const loadProgress = useCallback((): SeitonProgress | null => {
     const savedProgress = localStorage.getItem(SEITON_PROGRESS_KEY);
@@ -152,44 +145,35 @@ const SEITONPage = () => {
 
     if (savedProgress) {
       // Apply loaded progress
-      setThreeMinFilterQueue(savedProgress.threeMinFilterQueue);
       setTournamentQueue(savedProgress.tournamentQueue);
       setRankedTasks(savedProgress.rankedTasks);
       setP3Tasks(savedProgress.p3Tasks);
       setCurrentStep(savedProgress.currentStep);
-      setCurrentThreeMinTask(savedProgress.currentThreeMinTask);
       setCurrentChallenger(savedProgress.currentChallenger);
       setCurrentOpponentIndex(savedProgress.currentOpponentIndex);
 
       // Now, identify new tasks that were not in the saved progress
       const processedTaskIds = new Set([
-        ...savedProgress.threeMinFilterQueue.map(t => t.id),
         ...savedProgress.tournamentQueue.map(t => t.id),
         ...savedProgress.rankedTasks.map(t => t.id),
         ...savedProgress.p3Tasks.map(t => t.id),
-        ...(savedProgress.currentThreeMinTask ? [savedProgress.currentThreeMinTask.id] : []),
         ...(savedProgress.currentChallenger ? [savedProgress.currentChallenger.id] : []),
       ]);
 
       const newTasks = activeTasks.filter(task => !processedTaskIds.has(task.id));
       if (newTasks.length > 0) {
-        setThreeMinFilterQueue(prev => [...prev, ...newTasks]);
-        // If we were in a 'result' state, or 3-min queue was empty,
-        // and new tasks arrived, we should restart the 3-min filter for them.
-        if (savedProgress.currentStep === 'result' || savedProgress.threeMinFilterQueue.length === 0) {
-          setCurrentThreeMinTask(newTasks[0]);
-          setCurrentStep('threeMinFilter');
+        setTournamentQueue(prev => [...prev, ...newTasks]);
+        // If we were in a 'result' state, or tournament queue was empty,
+        // and new tasks arrived, we should restart the tournament for them.
+        if (savedProgress.currentStep === 'result' || savedProgress.tournamentQueue.length === 0) {
+          setCurrentStep('tournamentComparison');
         }
         showSuccess(`${newTasks.length} novas tarefas adicionadas para triagem.`);
       } else if (savedProgress.currentStep === 'loading') {
         // If it was 'loading' and no new tasks, but progress was loaded,
         // ensure we transition to the correct step based on loaded state.
-        if (savedProgress.threeMinFilterQueue.length > 0) {
-          setCurrentThreeMinTask(savedProgress.threeMinFilterQueue[0]);
-          setCurrentStep('threeMinFilter');
-        } else if (savedProgress.tournamentQueue.length > 0) {
+        if (savedProgress.tournamentQueue.length > 0) {
           setCurrentStep('tournamentComparison');
-          // The useEffect below will pick up the currentChallenger/Opponent
         } else {
           setCurrentStep('result');
         }
@@ -198,12 +182,11 @@ const SEITONPage = () => {
       // No saved progress, initialize from scratch
       if (activeTasks.length === 0) {
         showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
-        setThreeMinFilterQueue([]);
+        setTournamentQueue([]);
         setCurrentStep('result');
       } else {
-        setThreeMinFilterQueue([...activeTasks]);
-        setCurrentThreeMinTask(activeTasks[0] || null);
-        setCurrentStep('threeMinFilter');
+        setTournamentQueue([...activeTasks]);
+        setCurrentStep('tournamentComparison');
       }
     }
     setLoading(false);
@@ -219,7 +202,7 @@ const SEITONPage = () => {
     if (!loading) {
       saveProgress();
     }
-  }, [threeMinFilterQueue, tournamentQueue, rankedTasks, p3Tasks, currentStep, currentThreeMinTask, currentChallenger, currentOpponentIndex, loading, saveProgress]);
+  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, loading, saveProgress]);
 
   // --- Tournament Logic ---
   const startNextTournamentComparison = useCallback(() => {
@@ -250,86 +233,26 @@ const SEITONPage = () => {
     setCurrentStep('tournamentComparison');
   }, [tournamentQueue, rankedTasks]);
 
-  // Effect to manage the flow of tournament comparisons and 3-min filter
+  // Effect to manage the flow of tournament comparisons
   useEffect(() => {
     console.log("Flow management effect triggered. Current step:", currentStep);
     if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length > 0) {
       console.log("Flow: Starting next tournament comparison.");
       startNextTournamentComparison();
-    } else if (currentStep === 'threeMinFilter' && !currentThreeMinTask && threeMinFilterQueue.length > 0) {
-      console.log("Flow: Getting next 3-min task.");
-      setCurrentThreeMinTask(threeMinFilterQueue[0]);
-    } else if (currentStep === 'threeMinFilter' && !currentThreeMinTask && threeMinFilterQueue.length === 0 && tournamentQueue.length > 0) {
-      console.log("Flow: 3-min queue exhausted, moving to tournament.");
+    } else if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length === 0) {
+      console.log("Flow: Tournament queue exhausted, moving to result.");
+      setCurrentStep('result');
+      localStorage.removeItem(SEITON_PROGRESS_KEY);
+    } else if (currentStep === 'loading' && tournamentQueue.length > 0) {
+      // If we just loaded and there are tasks in queue, start tournament
       setCurrentStep('tournamentComparison');
       startNextTournamentComparison();
-    } else if (currentStep === 'threeMinFilter' && !currentThreeMinTask && threeMinFilterQueue.length === 0 && tournamentQueue.length === 0) {
-      console.log("Flow: All tasks processed, moving to result.");
+    } else if (currentStep === 'loading' && tournamentQueue.length === 0 && allFetchedTasks.length === 0) {
+      // If no tasks at all, go to result
       setCurrentStep('result');
       localStorage.removeItem(SEITON_PROGRESS_KEY);
     }
-  }, [currentStep, currentChallenger, currentThreeMinTask, threeMinFilterQueue, tournamentQueue, startNextTournamentComparison]);
-
-
-  const handleThreeMinFilter = useCallback((isLessThanThreeMin: boolean) => {
-    if (!currentThreeMinTask) return;
-
-    const taskToProcess = currentThreeMinTask;
-    const remainingThreeMinTasks = threeMinFilterQueue.slice(1);
-    setThreeMinFilterQueue(remainingThreeMinTasks);
-
-    if (!isLessThanThreeMin) { // If NOT less than 3 min, it goes to tournament
-      setTournamentQueue(prev => [...prev, taskToProcess]);
-    }
-
-    // Determine next step
-    if (remainingThreeMinTasks.length > 0) {
-      setCurrentThreeMinTask(remainingThreeMinTasks[0]);
-      setCurrentStep('threeMinFilter');
-    } else {
-      setCurrentThreeMinTask(null); // No more 3-min tasks
-      // Check if there are tasks in tournamentQueue (including the one just added if !isLessThanThreeMin)
-      if (tournamentQueue.length + (isLessThanThreeMin ? 0 : 1) > 0) { 
-        setCurrentStep('tournamentComparison');
-      } else {
-        setCurrentStep('result');
-        localStorage.removeItem(SEITON_PROGRESS_KEY);
-      }
-    }
-  }, [currentThreeMinTask, threeMinFilterQueue, tournamentQueue]);
-
-  const handleExecuteNow = useCallback(async (executed: boolean) => {
-    if (!currentThreeMinTask) return;
-
-    const taskToProcess = currentThreeMinTask;
-    const remainingThreeMinTasks = threeMinFilterQueue.slice(1);
-    setThreeMinFilterQueue(remainingThreeMinTasks);
-
-    if (executed) {
-      const success = await handleApiCall(() => completeTask(taskToProcess.id), "Concluindo tarefa...", "Tarefa executada e concluída!");
-      if (!success) {
-        showError("Falha ao concluir a tarefa.");
-      }
-    } else {
-      showSuccess("Tarefa não executada, entrará no torneio.");
-      setTournamentQueue(prev => [...prev, taskToProcess]);
-    }
-
-    // Determine next step
-    if (remainingThreeMinTasks.length > 0) {
-      setCurrentThreeMinTask(remainingThreeMinTasks[0]);
-      setCurrentStep('threeMinFilter');
-    } else {
-      setCurrentThreeMinTask(null); // No more 3-min tasks
-      // Check if there are tasks in tournamentQueue (including the one just added if not executed)
-      if (tournamentQueue.length + (executed ? 0 : 1) > 0) { 
-        setCurrentStep('tournamentComparison');
-      } else {
-        setCurrentStep('result');
-        localStorage.removeItem(SEITON_PROGRESS_KEY);
-      }
-    }
-  }, [currentThreeMinTask, threeMinFilterQueue, tournamentQueue]);
+  }, [currentStep, currentChallenger, tournamentQueue, allFetchedTasks.length, startNextTournamentComparison]);
 
   const handleTournamentComparison = useCallback(async (challengerWins: boolean) => {
     if (!currentChallenger || currentOpponentIndex === null) return;
@@ -414,23 +337,7 @@ const SEITONPage = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (loading) return;
 
-      if (currentStep === 'threeMinFilter' && currentThreeMinTask) {
-        if (event.key === 's' || event.key === 'S') {
-          event.preventDefault();
-          handleThreeMinFilter(true);
-        } else if (event.key === 'n' || event.key === 'N') {
-          event.preventDefault();
-          handleThreeMinFilter(false);
-        }
-      } else if (currentStep === 'executeNow' && currentThreeMinTask) {
-        if (event.key === 'e' || event.key === 'E') {
-          event.preventDefault();
-          handleExecuteNow(true);
-        } else if (event.key === 'x' || event.key === 'X') {
-          event.preventDefault();
-          handleExecuteNow(false);
-        }
-      } else if (currentStep === 'tournamentComparison' && currentChallenger && currentOpponentIndex !== null) {
+      if (currentStep === 'tournamentComparison' && currentChallenger && currentOpponentIndex !== null) {
         if (event.key === '1') { // Challenger wins
           event.preventDefault();
           handleTournamentComparison(true);
@@ -445,7 +352,7 @@ const SEITONPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, currentStep, currentThreeMinTask, currentChallenger, currentOpponentIndex, handleThreeMinFilter, handleExecuteNow, handleTournamentComparison]);
+  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison]);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -536,41 +443,6 @@ const SEITONPage = () => {
       </div>
 
       <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
-        {currentStep === 'threeMinFilter' && currentThreeMinTask && (
-          <div className="space-y-6 text-center">
-            <CardTitle className="text-2xl font-bold text-gray-800">Filtro de 3 minutos</CardTitle>
-            <CardDescription className="text-lg text-gray-700">
-              Esta tarefa leva menos de 3 minutos?
-            </CardDescription>
-            {renderTaskCard(currentThreeMinTask, "Tarefa Atual", "Esta tarefa leva menos de 3 minutos?")}
-            <div className="flex justify-center space-x-4 mt-6">
-              <Button onClick={() => handleThreeMinFilter(true)} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md transition-colors">
-                SIM (S)
-              </Button>
-              <Button onClick={() => handleThreeMinFilter(false)} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-md transition-colors">
-                NÃO (N)
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 'executeNow' && currentThreeMinTask && (
-          <div className="space-y-6 text-center">
-            <CardTitle className="text-2xl font-bold text-gray-800">Execute agora!</CardTitle>
-            <CardDescription className="text-lg text-gray-700">
-              Tarefa: {currentThreeMinTask.content}
-            </CardDescription>
-            <div className="flex justify-center space-x-4 mt-6">
-              <Button onClick={() => handleExecuteNow(true)} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
-                <Check className="mr-2 h-5 w-5" /> EXECUTEI (E)
-              </Button>
-              <Button onClick={() => handleExecuteNow(false)} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
-                <X className="mr-2 h-5 w-5" /> NÃO EXECUTEI (X)
-              </Button>
-            </div>
-          </div>
-        )}
-
         {currentStep === 'tournamentComparison' && currentChallenger && currentOpponent && currentOpponentIndex !== null && (
           <div className="space-y-6 text-center">
             <CardTitle className="text-2xl font-bold text-gray-800">Qual é mais importante?</CardTitle>
@@ -644,7 +516,7 @@ const SEITONPage = () => {
         )}
 
         {/* Fallback for when no tasks are found or processed */}
-        {currentStep !== 'loading' && !currentThreeMinTask && !currentChallenger && tournamentQueue.length === 0 && threeMinFilterQueue.length === 0 && currentStep !== 'result' && (
+        {currentStep !== 'loading' && !currentChallenger && tournamentQueue.length === 0 && currentStep !== 'result' && (
           <div className="text-center space-y-4">
             <CardTitle className="text-2xl font-bold text-gray-800">Todas as tarefas foram processadas!</CardTitle>
             <CardDescription className="text-lg text-gray-600">
