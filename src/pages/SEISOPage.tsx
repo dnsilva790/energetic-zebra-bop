@@ -26,6 +26,11 @@ import SeitonRankingDisplay from "@/components/SeitonRankingDisplay"; // Import 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking'; // Chave para o último ranking do Seiton
 
+interface SeitonRankingData {
+  rankedTasks: TodoistTask[];
+  p3Tasks: TodoistTask[];
+}
+
 const formatTime = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -61,6 +66,8 @@ const SEISOPage = () => {
 
   // New state for last Seiton ranking (now only used for initial check, display handled by component)
   const [hasLastSeitonRanking, setHasLastSeitonRanking] = useState(false);
+  // New state to indicate if tasks are from Seiton ranking fallback
+  const [isUsingSeitonRanking, setIsUsingSeitonRanking] = useState(false);
 
   // New Countdown Timer states
   const [countdownInputDuration, setCountdownInputDuration] = useState("25"); // em minutos
@@ -149,12 +156,44 @@ const SEISOPage = () => {
   const fetchTasksAndFilter = useCallback(async () => {
     setLoading(true);
     setFilterError("");
-    setHasLastSeitonRanking(false); // Clear previous ranking check when fetching new tasks
-    try {
-      const fetchedTasks = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas...");
+    
+    let tasksToProcess: TodoistTask[] = [];
+    let usingSeitonFallback = false;
 
-      if (fetchedTasks) {
-        const filteredAndCleanedTasks = fetchedTasks
+    try {
+      // 1. Try to fetch tasks using the user's filter
+      const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas...");
+
+      if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
+        tasksToProcess = fetchedTasksFromFilter;
+        showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
+      } else {
+        // 2. If filter yields no tasks, try to load from Seiton ranking
+        const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
+        if (savedRanking) {
+          try {
+            const parsedRanking: SeitonRankingData = JSON.parse(savedRanking);
+            // Combine P1, P2, P3 tasks from Seiton ranking
+            const seitonTasks = [
+              ...parsedRanking.rankedTasks.filter(t => t.priority === 4), // P1
+              ...parsedRanking.rankedTasks.filter(t => t.priority === 3), // P2
+              ...parsedRanking.p3Tasks.filter(t => t.priority === 2) // P3
+            ];
+
+            if (seitonTasks.length > 0) {
+              tasksToProcess = seitonTasks;
+              usingSeitonFallback = true;
+              showSuccess("Filtro esgotado. Continuando com tarefas do último ranking SEITON.");
+            }
+          } catch (e) {
+            console.error("Error parsing last Seiton ranking for fallback:", e);
+            showError("Erro ao carregar o último ranking do SEITON para fallback.");
+          }
+        }
+      }
+
+      if (tasksToProcess.length > 0) {
+        const filteredAndCleanedTasks = tasksToProcess
           .filter((task: TodoistTask) => task.parent_id === null)
           .filter((task: TodoistTask) => !task.is_completed);
 
@@ -164,35 +203,24 @@ const SEISOPage = () => {
         setP1Tasks(p1);
         setOtherTasks(others);
         setAllTasks([...p1, ...others]);
-
-        if (p1.length === 0 && others.length === 0) {
-          // No tasks found for the current filter, check for last Seiton ranking
-          const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
-          if (savedRanking) {
-            setHasLastSeitonRanking(true); // Indicate that a ranking exists
-            showSuccess("Nenhuma tarefa encontrada com o filtro. Você pode consultar o último ranking do SEITON.");
-          } else {
-            showSuccess("Nenhuma tarefa encontrada com o filtro fornecido. Tente outro!");
-          }
-          setIsSessionFinished(true);
-          setSessionStarted(false);
-        } else {
-          setSessionStarted(true);
-          setCurrentTaskIndex(0);
-          setTasksCompleted(0);
-          setIsSessionFinished(false);
-          showSuccess(`Sessão iniciada com ${p1.length + others.length} tarefas.`);
-        }
+        setIsUsingSeitonRanking(usingSeitonFallback); // Set the new state
+        setSessionStarted(true);
+        setCurrentTaskIndex(0);
+        setTasksCompleted(0);
+        setIsSessionFinished(false);
       } else {
-        setFilterError("Não foi possível carregar as tarefas. Verifique o token ou o filtro.");
-        showError("Não foi possível carregar as tarefas do Todoist.");
+        // No tasks from filter and no tasks from Seiton ranking
+        showSuccess("Nenhuma tarefa encontrada. Tente outro filtro ou complete o SEITON.");
+        setIsSessionFinished(true);
         setSessionStarted(false);
+        setIsUsingSeitonRanking(false); // Ensure this is false if no tasks are loaded
       }
     } catch (error: any) {
       console.error("SEISO: Erro em fetchTasksAndFilter:", error);
       setFilterError(error.message || "Ocorreu um erro inesperado ao carregar dados.");
       showError("Ocorreu um erro inesperado ao carregar dados.");
       setSessionStarted(false);
+      setIsUsingSeitonRanking(false); // Ensure this is false on error
     } finally {
       setLoading(false);
     }
@@ -282,7 +310,7 @@ const SEISOPage = () => {
         showError("Falha ao concluir a tarefa no Todoist.");
       }
     }
-  }, [currentTask, stopAllTimers, moveToNextTask]);
+  }, [currentTask, stopAllTimers, moveToNextTask, tasksCompleted]);
 
   const handleSkipTask = useCallback(() => {
     showSuccess("Tarefa pulada.");
@@ -520,6 +548,11 @@ const SEISOPage = () => {
                 {currentTask.deadline && (
                   <p className="text-sm text-gray-500">
                     Data Limite: <span className="font-medium text-gray-700">{formatDueDate(currentTask.deadline)}</span>
+                  </p>
+                )}
+                {isUsingSeitonRanking && (
+                  <p className="text-sm text-purple-600 font-medium mt-2">
+                    (Esta tarefa é uma sugestão do ranking SEITON)
                   </p>
                 )}
               </div>
