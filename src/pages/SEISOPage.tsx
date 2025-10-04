@@ -422,11 +422,11 @@ const SEISOPage = () => {
   }
 
   return (
-    <div className="min-h-screen flex bg-orange-100 p-4 relative"> {/* Alterado para flex, adicionado relative */}
+    <div className="min-h-screen flex bg-orange-100 p-4 relative">
       {/* Área de conteúdo principal */}
       <div className={cn(
         "flex flex-col items-center flex-grow transition-all duration-300",
-        isAITutorChatOpen ? "mr-[350px]" : "" // Adiciona margem ao conteúdo principal quando a sidebar está aberta
+        isAITutorChatOpen ? "mr-[350px]" : ""
       )}>
         <div className="w-full max-w-3xl mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -629,7 +629,7 @@ const SEISOPage = () => {
 
       {/* Custom Sidebar para o AITutorChat */}
       <div className={cn(
-        "fixed right-0 top-0 h-full w-[350px] bg-background border-l p-0 z-40 transition-transform duration-300 ease-in-out flex flex-col", // Adicionado flex flex-col aqui
+        "fixed right-0 top-0 h-full w-[350px] bg-background border-l p-0 z-40 transition-transform duration-300 ease-in-out flex flex-col",
         isAITutorChatOpen ? "translate-x-0" : "translate-x-full"
       )}>
         <div className="p-4 border-b flex items-center justify-between">
@@ -643,7 +643,7 @@ const SEISOPage = () => {
             taskTitle={currentTask.content}
             taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
             onClose={() => setIsAITutorChatOpen(false)}
-            className="flex-grow" // Adicionado flex-grow aqui
+            className="flex-grow"
           />
         )}
       </div>
@@ -723,7 +723,8 @@ const SEISOPage = () => {
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Fechar</Button>
-            </DialogFooter>
+            </DialogClose>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
