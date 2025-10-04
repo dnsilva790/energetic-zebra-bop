@@ -5,10 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Send, Loader2, User, Bot } from 'lucide-react';
-import { MadeWithDyad } from '@/components/made-with-dyad';
+import { ArrowLeft, Send, Loader2, User, Bot, Check } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils';
+import { createTasks, handleApiCall } from '@/lib/todoistApi'; // Importar createTasks e handleApiCall
 
 interface ChatMessage {
   role: 'user' | 'model';
@@ -21,10 +21,50 @@ interface AITutorChatProps {
   onClose: () => void;
 }
 
+// Helper function to parse AI response for tasks
+const parseAiResponseForTasks = (responseText: string): { content: string; description: string }[] => {
+  const tasks: { content: string; description: string }[] = [];
+  const lines = responseText.split('\n');
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    // Look for lines that start with a list marker (-, *, or number followed by .)
+    const listItemMatch = trimmedLine.match(/^(\s*[-*]|\s*\d+\.)\s*(.*)/);
+    if (listItemMatch) {
+      let contentAndDescription = listItemMatch[2].trim();
+
+      // Remove markdown bolding
+      contentAndDescription = contentAndDescription.replace(/\*\*(.*?)\*\*/g, '$1').trim();
+
+      let title = contentAndDescription;
+      let description = '';
+
+      // Try to split by the first occurrence of a common separator (:, -, .)
+      // but only if it's followed by a space and then a word character, to avoid splitting mid-sentence.
+      const separatorMatch = contentAndDescription.match(/^(.*?)\s*([:.-])\s*(.*)$/);
+      if (separatorMatch && separatorMatch[3]) { // Ensure there's content after the separator
+        title = separatorMatch[1].trim();
+        description = separatorMatch[3].trim();
+      } else {
+        // If no clear separator, treat the whole line as title, no description
+        title = contentAndDescription;
+        description = '';
+      }
+
+      if (title) {
+        tasks.push({ content: title, description: description || 'Sem descrição.' });
+      }
+    }
+  }
+  return tasks;
+};
+
 const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, onClose }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [parsedMicroSteps, setParsedMicroSteps] = useState<{ content: string; description: string }[]>([]);
+  const [initialAiResponseReceived, setInitialAiResponseReceived] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -73,7 +113,16 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, o
       const data = await response.json();
       const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter uma resposta do Tutor de IA.";
       
-      setMessages(prev => [...prev, { role: 'model', content: aiResponseContent }]);
+      setMessages(prev => {
+        const newMessages = [...prev, { role: 'model', content: aiResponseContent }];
+        // Only parse the first AI response after the initial user prompt
+        if (!initialAiResponseReceived && newMessages.filter(m => m.role === 'model').length === 1) {
+            const extractedTasks = parseAiResponseForTasks(aiResponseContent);
+            setParsedMicroSteps(extractedTasks);
+            setInitialAiResponseReceived(true);
+        }
+        return newMessages;
+      });
       showSuccess("Resposta do Tutor de IA recebida!");
     } catch (error: any) {
       console.error("Erro ao se comunicar com Gemini:", error);
@@ -82,7 +131,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, o
     } finally {
       setIsLoading(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL]);
+  }, [GEMINI_API_KEY, GEMINI_API_URL, initialAiResponseReceived]);
 
   useEffect(() => {
     const initialSystemInstruction = `# PERFIL E FUNÇÃO
@@ -119,6 +168,33 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     setInput('');
     
     await sendMessageToGemini(updatedMessages);
+  };
+
+  const handleSendToTodoist = async () => {
+    if (parsedMicroSteps.length === 0) {
+      showError("Nenhum micro-passo para enviar. Por favor, aguarde a resposta do Tutor de IA.");
+      return;
+    }
+
+    setIsLoading(true); // Disable input/button during API call
+    try {
+      const createdTasks = await handleApiCall(
+        () => createTasks(parsedMicroSteps),
+        "Enviando micro-passos para o Todoist...",
+        "Micro-passos enviados com sucesso para o Todoist!"
+      );
+
+      if (createdTasks) {
+        setMessages(prev => [...prev, { role: 'model', content: "✅ Micro-passos enviados para o Todoist!" }]);
+        setParsedMicroSteps([]); // Clear parsed steps after sending
+      } else {
+        setMessages(prev => [...prev, { role: 'model', content: "❌ Falha ao enviar micro-passos para o Todoist." }]);
+      }
+    } catch (error: any) {
+      setMessages(prev => [...prev, { role: 'model', content: `❌ Erro ao enviar micro-passos: ${error.message}` }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -181,6 +257,13 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
         />
         <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''}>
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </Button>
+        <Button 
+          onClick={handleSendToTodoist} 
+          disabled={isLoading || parsedMicroSteps.length === 0} 
+          className="bg-green-600 hover:bg-green-700 text-white"
+        >
+          <Check className="h-4 w-4 mr-2" /> Enviar para Todoist
         </Button>
       </div>
     </Card>
