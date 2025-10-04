@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered
+  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered, Bot
 } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
@@ -20,12 +20,12 @@ import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn, formatDateForDisplay } from "@/lib/utils"; // Importar a nova função
-import SeitonRankingDisplay from "@/components/SeitonRankingDisplay"; // Import the new component
+import { cn, formatDateForDisplay } from "@/lib/utils";
+import SeitonRankingDisplay from "@/components/SeitonRankingDisplay";
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
-const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking'; // Chave para o último ranking do Seiton
-const SEITON_FALLBACK_TASK_LIMIT = 12; // Define o limite para tarefas do ranking Seiton no fallback
+const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
+const SEITON_FALLBACK_TASK_LIMIT = 12;
 
 interface SeitonRankingData {
   rankedTasks: TodoistTask[];
@@ -65,26 +65,26 @@ const SEISOPage = () => {
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
 
-  // New state for last Seiton ranking (now only used for initial check, display handled by component)
   const [hasLastSeitonRanking, setHasLastSeitonRanking] = useState(false);
-  // New state to indicate if tasks are from Seiton ranking fallback
   const [isUsingSeitonRanking, setIsUsingSeitonRanking] = useState(false);
 
-  // New Countdown Timer states
-  const [countdownInputDuration, setCountdownInputDuration] = useState("25"); // em minutos
-  const [countdownTimeLeft, setCountdownTimeLeft] = useState(0); // em segundos
+  const [countdownInputDuration, setCountdownInputDuration] = useState("25");
+  const [countdownTimeLeft, setCountdownTimeLeft] = useState(0);
   const [isCountdownActive, setIsCountdownActive] = useState(false);
   const [isCountdownPaused, setIsCountdownPaused] = useState(false);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const alarmAudioRef = useRef<HTMLAudioElement>(null); // Ref para o elemento de áudio
+  const alarmAudioRef = useRef<HTMLAudioElement>(null);
 
-  // Reschedule Dialog states
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
   const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
-  const [selectedDueTime, setSelectedDueTime] = useState<string>(""); // ex: "10:00"
+  const [selectedDueTime, setSelectedDueTime] = useState<string>("");
 
-  // State for Seiton Ranking Display Dialog
   const [showSeitonRankingDialog, setShowSeitonRankingDialog] = useState(false);
+
+  // New state for AI Guidance Dialog
+  const [showAIGuidanceDialog, setShowAIGuidanceDialog] = useState(false);
+  const [aiGuidanceContent, setAiGuidanceContent] = useState("");
+  const [isAIGuidanceLoading, setIsAIGuidanceLoading] = useState(false);
 
   const totalTasks = p1Tasks.length + otherTasks.length;
   const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
@@ -93,7 +93,6 @@ const SEISOPage = () => {
     localStorage.setItem(SEISO_FILTER_KEY, filterInput);
   }, [filterInput]);
 
-  // Check for last Seiton ranking on mount
   useEffect(() => {
     const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
     setHasLastSeitonRanking(!!savedRanking);
@@ -127,19 +126,16 @@ const SEISOPage = () => {
     let usingSeitonFallback = false;
 
     try {
-      // 1. Try to fetch tasks using the user's filter
       const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas...");
 
       if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
         tasksToProcess = fetchedTasksFromFilter;
         showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
       } else {
-        // 2. If filter yields no tasks, try to load from Seiton ranking
         const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
         if (savedRanking) {
           try {
             const parsedRanking: SeitonRankingData = JSON.parse(savedRanking);
-            // Take the top N tasks from the rankedTasks array, which is already ordered by the tournament
             const seitonTopTasks = parsedRanking.rankedTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
 
             if (seitonTopTasks.length > 0) {
@@ -164,10 +160,8 @@ const SEISOPage = () => {
 
         let others: TodoistTask[];
         if (usingSeitonFallback) {
-          // If using Seiton ranking, preserve the order from the ranking
           others = nonP1Tasks;
         } else {
-          // Otherwise, shuffle tasks from the regular filter
           others = shuffleArray(nonP1Tasks);
         }
 
@@ -196,7 +190,6 @@ const SEISOPage = () => {
     }
   }, [filterInput]);
 
-  // Initialize countdown timer when current task changes or session starts
   useEffect(() => {
     if (currentTask && sessionStarted) {
       const initialDuration = parseInt(countdownInputDuration) * 60;
@@ -207,7 +200,6 @@ const SEISOPage = () => {
     }
   }, [currentTask, sessionStarted, countdownInputDuration]);
 
-  // Countdown Timer logic
   useEffect(() => {
     if (isCountdownActive && countdownTimeLeft > 0) {
       countdownTimerRef.current = setInterval(() => {
@@ -294,7 +286,6 @@ const SEISOPage = () => {
     moveToNextTask();
   }, [moveToNextTask]);
 
-  // Reschedule handlers
   const handleOpenRescheduleDialog = useCallback(() => {
     if (currentTask?.due?.date) {
       const parsedDate = parseISO(currentTask.due.date);
@@ -324,8 +315,6 @@ const SEISOPage = () => {
       if (!isNaN(hours) && !isNaN(minutes)) {
         let dateWithTime = setHours(selectedDueDate, hours);
         dateWithTime = setMinutes(dateWithTime, minutes);
-        // Para a API do Todoist, se estamos enviando uma data com hora, é melhor enviar em ISO 8601 sem offset
-        // e deixar o Todoist interpretar no fuso horário do usuário.
         newDueDateString = format(dateWithTime, "yyyy-MM-dd'T'HH:mm:ss");
       }
     }
@@ -337,7 +326,6 @@ const SEISOPage = () => {
     );
 
     if (success) {
-      // Update the current task's due date locally for immediate reflection
       setAllTasks(prevTasks => prevTasks.map(task => 
         task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
       ));
@@ -348,15 +336,62 @@ const SEISOPage = () => {
         task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
       ));
       setShowRescheduleDialog(false);
-      moveToNextTask(); // Move to next task after rescheduling
+      moveToNextTask();
     } else {
       showError("Falha ao reagendar a tarefa.");
     }
   }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
 
+  // New AI Guidance function
+  const handleGuideMe = useCallback(async () => {
+    if (!currentTask) return;
+
+    setIsAIGuidanceLoading(true);
+    setAiGuidanceContent("");
+    setShowAIGuidanceDialog(true);
+
+    const tessAiKey = import.meta.env.VITE_TESS_AI_KEY;
+    if (!tessAiKey) {
+      setAiGuidanceContent("Erro: TESS_AI_KEY não configurada. Por favor, adicione-a ao seu arquivo .env.");
+      setIsAIGuidanceLoading(false);
+      return;
+    }
+
+    const prompt = `Preciso de ajuda para focar nesta tarefa: "${currentTask.content}". A descrição é: "${currentTask.description || 'Nenhuma descrição fornecida.'}". Dê-me algumas dicas práticas e acionáveis para pessoas com TDAH, focando em como iniciar, manter o foco e concluir esta tarefa específica. Seja conciso e direto.`;
+
+    try {
+      const response = await fetch("https://tess.pareto.io/api/agents/32502/execute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${tessAiKey}`,
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Erro na API Tess.ai: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const aiResponseContent = data.text || data.message || "Não foi possível obter uma resposta do Tutor de IA.";
+      setAiGuidanceContent(aiResponseContent);
+      showSuccess("Dicas do Tutor de IA recebidas!");
+    } catch (error: any) {
+      console.error("Erro ao se comunicar com Tess.ai para guia:", error);
+      setAiGuidanceContent(`Erro ao obter dicas do Tutor de IA: ${error.message}`);
+      showError(`Erro ao obter dicas do Tutor de IA: ${error.message}`);
+    } finally {
+      setIsAIGuidanceLoading(false);
+    }
+  }, [currentTask]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog) return;
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog || showAIGuidanceDialog) return;
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -364,9 +399,12 @@ const SEISOPage = () => {
       } else if (event.key === 'p' || event.key === 'P') {
         event.preventDefault();
         handleSkipTask();
-      } else if (event.key === 'r' || event.key === 'R') { // 'R' for Reschedule
+      } else if (event.key === 'r' || event.key === 'R') {
         event.preventDefault();
         handleOpenRescheduleDialog();
+      } else if (event.key === 'g' || event.key === 'G') { // 'G' for Guide Me
+        event.preventDefault();
+        handleGuideMe();
       }
     };
 
@@ -374,7 +412,7 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, showAIGuidanceDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
@@ -534,7 +572,6 @@ const SEISOPage = () => {
                 )}
               </div>
 
-              {/* Countdown Timer Section */}
               <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
                 <h3 className="text-xl font-bold text-red-700">Contador de Tempo</h3>
                 <div className="flex items-center space-x-4">
@@ -600,6 +637,13 @@ const SEISOPage = () => {
                 >
                   <CalendarDays className="mr-2 h-5 w-5" /> REAGENDAR (R)
                 </Button>
+                <Button
+                  onClick={handleGuideMe}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                  disabled={isAIGuidanceLoading}
+                >
+                  <Bot className="mr-2 h-5 w-5" /> Guiar-me (TDAH) (G)
+                </Button>
               </div>
             </div>
           )}
@@ -614,7 +658,6 @@ const SEISOPage = () => {
         </Card>
       )}
 
-      {/* Reschedule Dialog */}
       <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -676,7 +719,6 @@ const SEISOPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Seiton Ranking Display Dialog */}
       <Dialog open={showSeitonRankingDialog} onOpenChange={setShowSeitonRankingDialog}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
@@ -696,7 +738,32 @@ const SEISOPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Hidden audio element for alarm */}
+      {/* AI Guidance Dialog */}
+      <Dialog open={showAIGuidanceDialog} onOpenChange={setShowAIGuidanceDialog}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Dicas do Tutor de IA para "{currentTask?.content}"</DialogTitle>
+            <DialogDescription>
+              Aqui estão algumas dicas para te ajudar a focar e executar esta tarefa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 max-h-[60vh] overflow-y-auto">
+            {isAIGuidanceLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <p className="text-gray-600">Gerando dicas...</p>
+              </div>
+            ) : (
+              <p className="text-gray-800 whitespace-pre-wrap">{aiGuidanceContent}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Fechar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <audio ref={alarmAudioRef} src="/alarm.mp3" preload="auto" />
 
       <MadeWithDyad />

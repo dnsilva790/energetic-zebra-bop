@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Play, Bot } from "lucide-react"; // Adicionado Bot para o Tutor de IA
+import { Settings, Brush, LayoutDashboard, Play } from "lucide-react"; // Removido Bot
 import {
   Card,
   CardContent,
@@ -25,9 +25,8 @@ const MainMenuPage = () => {
       navigate("/5s/seiton");
     } else if (sName === "SEISO") {
       navigate("/5s/seiso");
-    } else if (sName === "AITUTOR") { // Nova lógica para o Tutor de IA
-      navigate("/ai-tutor-chat");
     }
+    // Removida a lógica para "AITUTOR"
     else {
       showSuccess(`Tela em construção - ${sName}`);
     }
@@ -66,13 +65,7 @@ const MainMenuPage = () => {
             colorClass="bg-orange-600 hover:bg-orange-700"
             onClick={() => handleButtonClick("SEISO")}
           />
-          <FiveSButton // Novo botão para o Tutor de IA
-            icon={Bot}
-            title="Tutor de IA"
-            description="Converse com um tutor para te ajudar com suas tarefas"
-            colorClass="bg-purple-600 hover:bg-purple-700"
-            onClick={() => handleButtonClick("AITUTOR")}
-          />
+          {/* Removido o botão para o Tutor de IA */}
         </CardContent>
       </Card>
 
