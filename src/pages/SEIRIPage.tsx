@@ -88,7 +88,7 @@ const SEIRIPage = () => {
       if (tasks && projects) {
         const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
         const tasksWithProjectNames = tasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado aqui
           .map((task: TodoistTask) => {
             const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
             return {

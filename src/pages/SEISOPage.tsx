@@ -64,7 +64,7 @@ const SEISOPage = () => {
     if (fetchedTasks) {
       const today = new Date();
       const filteredTasks = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado aqui
         .filter((task: TodoistTask) => {
           // Include tasks due today or tasks with no due date
           return (task.due && isToday(parseISO(task.due.date))) || !task.due;

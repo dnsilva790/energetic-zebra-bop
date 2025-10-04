@@ -43,7 +43,7 @@ const SEIKETSUPage = () => {
     if (fetchedTasks) {
       const today = new Date();
       const tasksDueToday = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado aqui
         .filter((task: TodoistTask) => 
           task.due && isToday(parseISO(task.due.date))
         );

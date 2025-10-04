@@ -31,7 +31,7 @@ const SEITONPage = () => {
         setProjects(fetchedProjects);
         // Mapear nomes de projeto para as tarefas e aplicar o filtro
         const tasksWithProjectNames = fetchedTasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado aqui
           .map((task: TodoistTask) => ({
             ...task,
             project_name: fetchedProjects.find((p: TodoistProject) => p.id === task.project_id)?.name || "Caixa de Entrada"
