@@ -22,7 +22,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SeitonRankingDisplay from "@/components/SeitonRankingDisplay";
-import AITutorChat from "@/components/AITutorChat"; // Importar o componente AITutorChat
+import AITutorChat from "@/components/AITutorChat";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"; // Importar Sheet components
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
@@ -81,7 +82,7 @@ const SEISOPage = () => {
   const [selectedDueTime, setSelectedDueTime] = useState<string>("");
 
   const [showSeitonRankingDialog, setShowSeitonRankingDialog] = useState(false);
-  const [showAITutorChatDialog, setShowAITutorChatDialog] = useState(false); // Novo estado para o modal do chat
+  const [isAITutorChatOpen, setIsAITutorChatOpen] = useState(false); // Renomeado o estado
 
   const totalTasks = p1Tasks.length + otherTasks.length;
   const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
@@ -344,13 +345,13 @@ const SEISOPage = () => {
       showError("Nenhuma tarefa selecionada para guiar.");
       return;
     }
-    setShowAITutorChatDialog(true); // Abre o modal do chat
+    setIsAITutorChatOpen(true); // Abre a sidebar
   }, [currentTask]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Desativa atalhos de teclado se qualquer modal estiver aberto
-      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog || showAITutorChatDialog) return;
+      // Desativa atalhos de teclado se qualquer modal/sidebar estiver aberto
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog || isAITutorChatOpen) return;
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -371,7 +372,7 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, showAITutorChatDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, isAITutorChatOpen, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
@@ -696,18 +697,24 @@ const SEISOPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Novo Dialog para o AITutorChat */}
-      <Dialog open={showAITutorChatDialog} onOpenChange={setShowAITutorChatDialog}>
-        <DialogContent className="sm:max-w-[800px] h-[90vh] p-0"> {/* Ajuste o tamanho conforme necessário */}
+      {/* Sidebar para o AITutorChat */}
+      <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
+        <SheetContent side="right" className="w-[min(400px,90vw)] p-0 flex flex-col"> {/* Ajuste a largura aqui */}
+          <SheetHeader className="p-4 border-b">
+            <SheetTitle className="text-3xl font-extrabold text-purple-800">Tutor de IA (Gemini)</SheetTitle>
+            <SheetDescription>
+              Receba orientação passo a passo para sua tarefa.
+            </SheetDescription>
+          </SheetHeader>
           {currentTask && (
             <AITutorChat
               taskTitle={currentTask.content}
               taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
-              onClose={() => setShowAITutorChatDialog(false)}
+              onClose={() => setIsAITutorChatOpen(false)} // A Sheet já tem um botão de fechar, mas o componente interno pode usar isso para lógica adicional
             />
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <audio ref={alarmAudioRef} src="/alarm.mp3" preload="auto" />
 

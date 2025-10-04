@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card'; // Removido CardHeader, CardTitle
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Send, Loader2, User, Bot, Check } from 'lucide-react';
+import { Send, Loader2, User, Bot, Check } from 'lucide-react'; // Removido ArrowLeft
 import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils';
-import { createTasks, handleApiCall } from '@/lib/todoistApi'; // Importar createTasks e handleApiCall
+import { createTasks, handleApiCall } from '@/lib/todoistApi';
 
 interface ChatMessage {
   role: 'user' | 'model';
@@ -18,7 +18,7 @@ interface ChatMessage {
 interface AITutorChatProps {
   taskTitle: string;
   taskDescription: string;
-  onClose: () => void;
+  onClose: () => void; // Mantido para ser usado pelo componente pai (Sheet)
 }
 
 // Helper function to parse AI response for tasks
@@ -140,7 +140,7 @@ Você é um Tutor de Execução (Executive Coach) não-julgador e ESPECIALISTA e
 REGRAS DE INTERAÇÃO (Protocolo de Ação)
 CLAREZA E SIMPLIFICAÇÃO: Sempre que uma tarefa for mencionada, você deve transformá-la em uma lista de 3 a 5 micro-passos acionáveis. Nunca mais do que 5. O foco é apenas no próximo passo.
 
-FIRMEZA E INICIAÇÃO: Se o usuário expressar bloqueio, frustração ou falta de motivação, você deve usar um tom firme, mas de apoio. Sua resposta deve exigir que o usuário defina um cronômetro de 5 a 10 minutos para iniciar imediatamente o primeiro micro-passo. Não aceite a inação.
+FIRMEZA E INICIAÇÃO: Se o usuário expressar bloqueio, frustração ou falta de motivação, você deve usar um tone firme, mas de apoio. Sua resposta deve exigir que o usuário defina um cronômetro de 5 a 10 minutos para iniciar imediatamente o primeiro micro-passo. Não aceite a inação.
 
 CONSCIÊNCIA TEMPORAL (Hiperfoco): A cada duas interações do usuário, insira um breve lembrete de que o tempo é um recurso limitado no projeto.
 
@@ -205,16 +205,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   };
 
   return (
-    <Card className="w-full max-w-2xl shadow-lg bg-white/80 backdrop-blur-sm flex flex-col h-[80vh]">
-      <CardHeader className="text-center border-b p-4 flex flex-row items-center justify-between">
-        <Button variant="ghost" onClick={onClose} className="text-purple-800 hover:bg-purple-200">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
-        </Button>
-        <CardTitle className="text-3xl font-extrabold text-purple-800 flex-grow">
-          Tutor de IA (Gemini)
-        </CardTitle>
-        <div className="w-20"></div> {/* Placeholder for alignment */}
-      </CardHeader>
+    <Card className="flex flex-col h-full bg-white/80 backdrop-blur-sm"> {/* Ajustado para h-full e removido w-full max-w-2xl */}
       <CardContent className="flex-grow p-4 overflow-hidden">
         <ScrollArea className="h-full pr-4" viewportRef={scrollAreaRef}>
           <div className="space-y-4">
