@@ -86,7 +86,11 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   
   // Use useMemo para garantir que localStorageKey seja atualizada apenas quando taskId mudar
-  const localStorageKey = useMemo(() => `chat-history-${taskId}`, [taskId]);
+  const localStorageKey = useMemo(() => {
+    const key = `chat-history-${taskId}`;
+    console.log('Chave de localStorage:', key); // Log da chave
+    return key;
+  }, [taskId]);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
@@ -178,7 +182,9 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
 
     let loadedMessages: ChatMessage[] = [];
     if (typeof window !== 'undefined') {
+      console.log('Tentando carregar histórico com chave:', localStorageKey); // Log de carregamento
       const savedHistory = localStorage.getItem(localStorageKey);
+      console.log('Histórico RAW do localStorage:', savedHistory); // Log do histórico RAW
       if (savedHistory) {
         try {
           const parsedHistory = JSON.parse(savedHistory);
@@ -210,7 +216,10 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   // Efeito para salvar mensagens no localStorage
   useEffect(() => {
     if (messages.length > 0) {
-      localStorage.setItem(localStorageKey, JSON.stringify(messages));
+      console.log('Salvando histórico. Nova contagem de mensagens:', messages.length); // Log de salvamento
+      const historyToStore = JSON.stringify(messages);
+      console.log('Histórico salvo (stringified):', historyToStore); // Log do histórico stringificado
+      localStorage.setItem(localStorageKey, historyToStore);
     } else {
       localStorage.removeItem(localStorageKey); // Remove a chave se o chat estiver vazio
     }
