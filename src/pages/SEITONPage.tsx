@@ -16,8 +16,20 @@ import * as dateFnsTz from "date-fns-tz";
 
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
+const SEITON_PROGRESS_KEY = 'seiton_progress';
 
 type SeitonStep = 'loading' | 'threeMinFilter' | 'executeNow' | 'tournamentComparison' | 'result';
+
+interface SeitonProgress {
+  threeMinFilterQueue: TodoistTask[];
+  tournamentQueue: TodoistTask[];
+  rankedTasks: TodoistTask[];
+  p3Tasks: TodoistTask[];
+  currentStep: SeitonStep;
+  currentThreeMinTask: TodoistTask | null;
+  currentChallenger: TodoistTask | null;
+  currentOpponentIndex: number | null;
+}
 
 const SEITONPage = () => {
   const navigate = useNavigate();
@@ -30,7 +42,7 @@ const SEITONPage = () => {
   
   const [currentThreeMinTask, setCurrentThreeMinTask] = useState<TodoistTask | null>(null);
   const [currentChallenger, setCurrentChallenger] = useState<TodoistTask | null>(null);
-  const [currentOpponentIndex, setCurrentOpponentIndex] = useState<number | null>(null); // Index in rankedTasks
+  const [currentOpponentIndex, setCurrentOpponentIndex] = useState<number | null>(null);
   
   const [loading, setLoading] = useState(true);
 
@@ -89,6 +101,39 @@ const SEITONPage = () => {
     }
   };
 
+  const saveProgress = useCallback(() => {
+    const progress: SeitonProgress = {
+      threeMinFilterQueue,
+      tournamentQueue,
+      rankedTasks,
+      p3Tasks,
+      currentStep,
+      currentThreeMinTask,
+      currentChallenger,
+      currentOpponentIndex,
+    };
+    localStorage.setItem(SEITON_PROGRESS_KEY, JSON.stringify(progress));
+    console.log("SEITONPage - Progress saved:", progress);
+  }, [threeMinFilterQueue, tournamentQueue, rankedTasks, p3Tasks, currentStep, currentThreeMinTask, currentChallenger, currentOpponentIndex]);
+
+  const loadProgress = useCallback(() => {
+    const savedProgress = localStorage.getItem(SEITON_PROGRESS_KEY);
+    if (savedProgress) {
+      const progress: SeitonProgress = JSON.parse(savedProgress);
+      setThreeMinFilterQueue(progress.threeMinFilterQueue);
+      setTournamentQueue(progress.tournamentQueue);
+      setRankedTasks(progress.rankedTasks);
+      setP3Tasks(progress.p3Tasks);
+      setCurrentStep(progress.currentStep);
+      setCurrentThreeMinTask(progress.currentThreeMinTask);
+      setCurrentChallenger(progress.currentChallenger);
+      setCurrentOpponentIndex(progress.currentOpponentIndex);
+      console.log("SEITONPage - Progress loaded:", progress);
+      return true;
+    }
+    return false;
+  }, []);
+
   const fetchTasks = useCallback(async () => {
     setLoading(true);
     console.log("SEITONPage - fetchTasks: Starting API call to get tasks.");
@@ -99,19 +144,45 @@ const SEITONPage = () => {
         .filter((task: TodoistTask) => !task.is_completed); // Only active tasks
 
       console.log("SEITONPage - fetchTasks: Filtered tasks count:", filteredTasks.length);
+      setAllFetchedTasks(filteredTasks);
 
-      if (filteredTasks.length === 0) {
-        showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
-        setAllFetchedTasks([]);
-        setThreeMinFilterQueue([]);
-        setCurrentStep('result');
-        console.log("SEITONPage - fetchTasks: No tasks found, setting step to 'result'.");
+      const hasLoadedProgress = loadProgress();
+
+      if (!hasLoadedProgress) {
+        if (filteredTasks.length === 0) {
+          showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
+          setThreeMinFilterQueue([]);
+          setCurrentStep('result');
+          console.log("SEITONPage - fetchTasks: No tasks found, setting step to 'result'.");
+        } else {
+          setThreeMinFilterQueue([...filteredTasks]); // All tasks initially go to 3-min filter
+          setCurrentThreeMinTask(filteredTasks[0] || null);
+          setCurrentStep('threeMinFilter');
+          console.log("SEITONPage - fetchTasks: Tasks found, setting step to 'threeMinFilter'.");
+        }
       } else {
-        setAllFetchedTasks(filteredTasks);
-        setThreeMinFilterQueue([...filteredTasks]); // All tasks initially go to 3-min filter
-        setCurrentThreeMinTask(filteredTasks[0] || null);
-        setCurrentStep('threeMinFilter');
-        console.log("SEITONPage - fetchTasks: Tasks found, setting step to 'threeMinFilter'.");
+        // If progress was loaded, we need to check for new tasks that weren't in the previous session
+        const processedTaskIds = new Set([
+          ...threeMinFilterQueue.map(t => t.id),
+          ...tournamentQueue.map(t => t.id),
+          ...rankedTasks.map(t => t.id),
+          ...p3Tasks.map(t => t.id),
+          ...(currentThreeMinTask ? [currentThreeMinTask.id] : []),
+          ...(currentChallenger ? [currentChallenger.id] : []),
+        ]);
+
+        const newTasks = filteredTasks.filter(task => !processedTaskIds.has(task.id));
+        if (newTasks.length > 0) {
+          setThreeMinFilterQueue(prev => [...prev, ...newTasks]);
+          if (!currentThreeMinTask && currentStep !== 'threeMinFilter') {
+            setCurrentThreeMinTask(newTasks[0]);
+            setCurrentStep('threeMinFilter');
+          }
+          showSuccess(`${newTasks.length} novas tarefas adicionadas para triagem.`);
+        } else if (threeMinFilterQueue.length === 0 && tournamentQueue.length === 0 && currentStep !== 'result') {
+          // If no new tasks and all queues are empty, and not already in result, move to result
+          setCurrentStep('result');
+        }
       }
     } else {
       showError("Não foi possível carregar as tarefas do Todoist.");
@@ -120,16 +191,24 @@ const SEITONPage = () => {
     }
     setLoading(false);
     console.log("SEITONPage - fetchTasks: Finished loading tasks.");
-  }, [navigate]);
+  }, [navigate, loadProgress, threeMinFilterQueue, tournamentQueue, rankedTasks, p3Tasks, currentThreeMinTask, currentChallenger, currentStep]);
 
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
 
+  // Save progress whenever relevant state changes
+  useEffect(() => {
+    if (!loading) {
+      saveProgress();
+    }
+  }, [threeMinFilterQueue, tournamentQueue, rankedTasks, p3Tasks, currentStep, currentThreeMinTask, currentChallenger, currentOpponentIndex, loading, saveProgress]);
+
   // --- Tournament Logic ---
   const startNextTournamentComparison = useCallback(() => {
     if (tournamentQueue.length === 0) {
       setCurrentStep('result');
+      localStorage.removeItem(SEITON_PROGRESS_KEY); // Clear progress when done
       return;
     }
 
@@ -163,10 +242,14 @@ const SEITONPage = () => {
     } else if (currentStep === 'threeMinFilter' && !currentThreeMinTask && threeMinFilterQueue.length > 0) {
       // If 3-min filter task finished, get next
       setCurrentThreeMinTask(threeMinFilterQueue[0] || null);
-    } else if (currentStep === 'threeMinFilter' && !currentThreeMinTask && threeMinFilterQueue.length === 0) {
+    } else if (currentStep === 'threeMinFilter' && !currentThreeMinTask && threeMinFilterQueue.length === 0 && tournamentQueue.length > 0) {
       // All 3-min tasks processed, move to tournament
       setCurrentStep('tournamentComparison');
       startNextTournamentComparison();
+    } else if (currentStep === 'threeMinFilter' && !currentThreeMinTask && threeMinFilterQueue.length === 0 && tournamentQueue.length === 0) {
+      // All tasks processed, no more in queue, move to result
+      setCurrentStep('result');
+      localStorage.removeItem(SEITON_PROGRESS_KEY); // Clear progress when done
     }
   }, [currentStep, currentChallenger, currentThreeMinTask, threeMinFilterQueue, tournamentQueue, startNextTournamentComparison]);
 
@@ -256,30 +339,25 @@ const SEITONPage = () => {
 
     // Update priorities for tasks in rankedTasks (P1, P2) and P3
     // This could be optimized to only update changed tasks, but for simplicity, re-evaluate all.
-    const updatePriorities = async (tasks: TodoistTask[], startPriority: number) => {
-      for (let i = 0; i < tasks.length; i++) {
-        const task = tasks[i];
-        let newPriority = startPriority;
-        if (startPriority === 4 && i >= 4) { // P1 tasks are top 4
-          newPriority = 3; // P2 tasks
-        } else if (startPriority === 3 && i >= 20) { // P2 tasks are next 20
-          newPriority = 2; // P3 tasks
-        } else if (startPriority === 1) { // P3 tasks
-          newPriority = 1;
-        }
-
-        if (task.priority !== newPriority) {
-          await handleApiCall(() => updateTask(task.id, { priority: newPriority }), `Atualizando prioridade para ${task.content}...`);
+    const updatePriorities = async (tasks: TodoistTask[], targetPriority: number) => {
+      for (const task of tasks) {
+        if (task.priority !== targetPriority) {
+          await handleApiCall(() => updateTask(task.id, { priority: targetPriority }), `Atualizando prioridade para ${task.content}...`);
         }
       }
     };
 
-    await updatePriorities(newRankedTasks.slice(0, 4), 4); // P1
-    await updatePriorities(newRankedTasks.slice(4, RANKING_SIZE), 3); // P2
+    // Update priorities based on their final position in the ranked list
+    const p1Tasks = newRankedTasks.slice(0, 4);
+    const p2Tasks = newRankedTasks.slice(4, RANKING_SIZE);
+
+    await updatePriorities(p1Tasks, 4); // P1
+    await updatePriorities(p2Tasks, 3); // P2
     await updatePriorities(newP3Tasks, 2); // P3
 
     if (!currentChallenger && tournamentQueue.length === 0 && nextOpponentIndex === null) {
       setCurrentStep('result');
+      localStorage.removeItem(SEITON_PROGRESS_KEY); // Clear progress when done
     } else if (!currentChallenger && tournamentQueue.length > 0) {
       startNextTournamentComparison(); // Start next comparison if challenger found its place
     }
