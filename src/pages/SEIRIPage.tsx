@@ -12,9 +12,7 @@ import { getTasks, getProjects, completeTask, reopenTask, handleApiCall } from "
 import { TodoistTask, TodoistProject } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns";
-import { ptBR } from "date-fns/locale";
-// Removendo importações de date-fns-tz para usar o fuso horário local do navegador
+import { formatDateForDisplay } from "@/lib/utils"; // Importar a nova função
 
 const SEIRIPage = () => {
   const navigate = useNavigate();
@@ -31,42 +29,6 @@ const SEIRIPage = () => {
 
   const currentTask = allTasks[currentTaskIndex];
   const totalTasks = allTasks.length;
-
-  /**
-   * Formats a date string, relying on parseISO to interpret it in the local timezone.
-   * Displays time (HH:mm) if present in the original date string.
-   * @param due The TodoistTask['due'] object containing date and string representations.
-   * @returns Formatted date string (e.g., "dd/MM/yyyy HH:mm") or "Sem vencimento" / "Data inválida" / "Erro de data".
-   */
-  const formatDueDate = (due: TodoistTask['due']) => {
-    if (!due || !due.date) return "Sem vencimento";
-    
-    const dateString = due.date;
-    const rawDueString = due.string; // Use this for robust time detection
-
-    if (typeof dateString !== 'string' || dateString.trim() === '') {
-      console.warn("formatDueDate received non-string or empty date:", dateString);
-      return "Data inválida";
-    }
-
-    try {
-      const parsedDate = parseISO(dateString); // parseISO interpreta no fuso horário local se não houver offset/Z
-
-      if (isNaN(parsedDate.getTime())) {
-        console.warn("Invalid date string after parseISO:", dateString);
-        return "Data inválida";
-      }
-
-      // Use rawDueString for time detection as it might contain more explicit time info
-      const hasTime = /\d{1,2}:\d{2}/.test(rawDueString); // More flexible regex for HH:MM or H:MM
-      const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
-
-      return format(parsedDate, formatString, { locale: ptBR });
-    } catch (e: any) {
-      console.error("Error formatting date:", dateString, "Error details:", e.message, e);
-      return "Erro de data";
-    }
-  };
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -336,12 +298,12 @@ const SEIRIPage = () => {
                   </p>
                   {currentTask.due?.date && (
                     <p className="text-sm text-gray-500">
-                      Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due)}</span>
+                      Vencimento: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.due)}</span>
                     </p>
                   )}
                   {currentTask.deadline && (
                     <p className="text-sm text-gray-500">
-                      Data Limite: <span className="font-medium text-gray-700">{formatDueDate(currentTask.deadline)}</span>
+                      Data Limite: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.deadline)}</span>
                     </p>
                   )}
                 </div>

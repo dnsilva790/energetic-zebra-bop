@@ -20,7 +20,7 @@ import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { cn, formatDateForDisplay } from "@/lib/utils"; // Importar a nova função
 import SeitonRankingDisplay from "@/components/SeitonRankingDisplay"; // Import the new component
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
@@ -97,42 +97,6 @@ const SEISOPage = () => {
     const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
     setHasLastSeitonRanking(!!savedRanking);
   }, []);
-
-  /**
-   * Formats a date string, relying on parseISO to interpret it in the local timezone.
-   * Displays time (HH:mm) if present in the original date string.
-   * @param due The TodoistTask['due'] object containing date and string representations.
-   * @returns Formatted date string (e.g., "dd/MM/yyyy HH:mm") or "Sem vencimento" / "Data inválida" / "Erro de data".
-   */
-  const formatDueDate = (due: TodoistTask['due']) => {
-    if (!due || !due.date) return "Sem vencimento";
-    
-    const dateString = due.date;
-    const rawDueString = due.string; // Use this for robust time detection
-
-    if (typeof dateString !== 'string' || dateString.trim() === '') {
-      console.warn("formatDueDate received non-string or empty date:", dateString);
-      return "Data inválida";
-    }
-
-    try {
-      const parsedDate = parseISO(dateString); // parseISO interpreta no fuso horário local se não houver offset/Z
-
-      if (isNaN(parsedDate.getTime())) {
-        console.warn("Invalid date string after parseISO:", dateString);
-        return "Data inválida";
-      }
-
-      // Use rawDueString for time detection as it might contain more explicit time info
-      const hasTime = /\d{1,2}:\d{2}/.test(rawDueString); // More flexible regex for HH:MM or H:MM
-      const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
-
-      return format(parsedDate, formatString, { locale: ptBR });
-    } catch (e: any) {
-      console.error("Error formatting date:", dateString, "Error details:", e.message, e);
-      return "Erro de data";
-    }
-  };
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -550,12 +514,12 @@ const SEISOPage = () => {
                 </p>
                 {currentTask.due?.date && (
                   <p className="text-sm text-gray-500">
-                    Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due)}</span>
+                    Vencimento: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.due)}</span>
                   </p>
                 )}
                 {currentTask.deadline && (
                   <p className="text-sm text-gray-500">
-                    Data Limite: <span className="font-medium text-gray-700">{formatDueDate(currentTask.deadline)}</span>
+                    Data Limite: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.deadline)}</span>
                   </p>
                 )}
                 {isUsingSeitonRanking && (
