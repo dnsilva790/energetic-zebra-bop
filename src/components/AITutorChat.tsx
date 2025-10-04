@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ArrowLeft, Send, Loader2, User, Bot } from 'lucide-react';
 import { MadeWithDyad } from '@/components/made-with-dyad';
@@ -16,11 +15,13 @@ interface ChatMessage {
   content: string;
 }
 
-const AITutorChat: React.FC = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { taskTitle, taskDescription } = location.state as { taskTitle: string; taskDescription: string };
+interface AITutorChatProps {
+  taskTitle: string;
+  taskDescription: string;
+  onClose: () => void;
+}
 
+const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, onClose }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -128,64 +129,61 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 to-pink-100 p-4">
-      <Card className="w-full max-w-2xl shadow-lg bg-white/80 backdrop-blur-sm flex flex-col h-[80vh]">
-        <CardHeader className="text-center border-b p-4 flex flex-row items-center justify-between">
-          <Button variant="ghost" onClick={() => navigate(-1)} className="text-purple-800 hover:bg-purple-200">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
-          </Button>
-          <CardTitle className="text-3xl font-extrabold text-purple-800 flex-grow">
-            Tutor de IA (Gemini)
-          </CardTitle>
-          <div className="w-20"></div> {/* Placeholder for alignment */}
-        </CardHeader>
-        <CardContent className="flex-grow p-4 overflow-hidden">
-          <ScrollArea className="h-full pr-4" viewportRef={scrollAreaRef}>
-            <div className="space-y-4">
-              {messages.filter(msg => msg.role !== 'system').map((msg, index) => ( // Filter out system instruction from display
-                <div key={index} className={cn(
-                  "flex items-start gap-3",
-                  msg.role === 'user' ? "justify-end" : "justify-start"
+    <Card className="w-full max-w-2xl shadow-lg bg-white/80 backdrop-blur-sm flex flex-col h-[80vh]">
+      <CardHeader className="text-center border-b p-4 flex flex-row items-center justify-between">
+        <Button variant="ghost" onClick={onClose} className="text-purple-800 hover:bg-purple-200">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+        </Button>
+        <CardTitle className="text-3xl font-extrabold text-purple-800 flex-grow">
+          Tutor de IA (Gemini)
+        </CardTitle>
+        <div className="w-20"></div> {/* Placeholder for alignment */}
+      </CardHeader>
+      <CardContent className="flex-grow p-4 overflow-hidden">
+        <ScrollArea className="h-full pr-4" viewportRef={scrollAreaRef}>
+          <div className="space-y-4">
+            {messages.filter(msg => msg.role !== 'system').map((msg, index) => ( // Filter out system instruction from display
+              <div key={index} className={cn(
+                "flex items-start gap-3",
+                msg.role === 'user' ? "justify-end" : "justify-start"
+              )}>
+                {msg.role === 'model' && <Bot className="h-6 w-6 text-purple-600 flex-shrink-0" />}
+                <div className={cn(
+                  "p-3 rounded-lg max-w-[70%]",
+                  msg.role === 'user'
+                    ? "bg-blue-500 text-white rounded-br-none"
+                    : "bg-gray-200 text-gray-800 rounded-bl-none"
                 )}>
-                  {msg.role === 'model' && <Bot className="h-6 w-6 text-purple-600 flex-shrink-0" />}
-                  <div className={cn(
-                    "p-3 rounded-lg max-w-[70%]",
-                    msg.role === 'user'
-                      ? "bg-blue-500 text-white rounded-br-none"
-                      : "bg-gray-200 text-gray-800 rounded-bl-none"
-                  )}>
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                  </div>
-                  {msg.role === 'user' && <User className="h-6 w-6 text-blue-600 flex-shrink-0" />}
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
                 </div>
-              ))}
-              {isLoading && (
-                <div className="flex justify-start items-center gap-3">
-                  <Bot className="h-6 w-6 text-purple-600 animate-pulse" />
-                  <div className="bg-gray-200 text-gray-800 p-3 rounded-lg rounded-bl-none">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </div>
+                {msg.role === 'user' && <User className="h-6 w-6 text-blue-600 flex-shrink-0" />}
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-start items-center gap-3">
+                <Bot className="h-6 w-6 text-purple-600 animate-pulse" />
+                <div className="bg-gray-200 text-gray-800 p-3 rounded-lg rounded-bl-none">
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 </div>
-              )}
-            </div>
-          </ScrollArea>
-        </CardContent>
-        <div className="p-4 border-t flex items-center gap-2">
-          <Input
-            placeholder="Digite sua mensagem..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="flex-grow"
-            disabled={isLoading}
-          />
-          <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''}>
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
-        </div>
-      </Card>
-      <MadeWithDyad />
-    </div>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </CardContent>
+      <div className="p-4 border-t flex items-center gap-2">
+        <Input
+          placeholder="Digite sua mensagem..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="flex-grow"
+          disabled={isLoading}
+        />
+        <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''}>
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </Button>
+      </div>
+    </Card>
   );
 };
 

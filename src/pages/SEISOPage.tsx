@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, ListOrdered
-} from "lucide-react"; // Removido Bot
+} from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall, updateTaskDueDate } from "@/lib/todoistApi";
@@ -22,6 +22,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SeitonRankingDisplay from "@/components/SeitonRankingDisplay";
+import AITutorChat from "@/components/AITutorChat"; // Importar o componente AITutorChat
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
@@ -80,6 +81,7 @@ const SEISOPage = () => {
   const [selectedDueTime, setSelectedDueTime] = useState<string>("");
 
   const [showSeitonRankingDialog, setShowSeitonRankingDialog] = useState(false);
+  const [showAITutorChatDialog, setShowAITutorChatDialog] = useState(false); // Novo estado para o modal do chat
 
   const totalTasks = p1Tasks.length + otherTasks.length;
   const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
@@ -342,17 +344,13 @@ const SEISOPage = () => {
       showError("Nenhuma tarefa selecionada para guiar.");
       return;
     }
-    navigate("/ai-tutor-chat", {
-      state: {
-        taskTitle: currentTask.content,
-        taskDescription: currentTask.description || 'Nenhuma descrição fornecida.',
-      },
-    });
-  }, [currentTask, navigate]);
+    setShowAITutorChatDialog(true); // Abre o modal do chat
+  }, [currentTask]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog) return; // Removido showAIGuidanceDialog
+      // Desativa atalhos de teclado se qualquer modal estiver aberto
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || showSeitonRankingDialog || showAITutorChatDialog) return;
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -373,7 +371,7 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, showSeitonRankingDialog, showAITutorChatDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
@@ -602,7 +600,7 @@ const SEISOPage = () => {
                   onClick={handleGuideMe}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
                 >
-                  {/* Removido o ícone Bot */} Guiar-me (TDAH) (G)
+                  Guiar-me (TDAH) (G)
                 </Button>
               </div>
             </div>
@@ -695,6 +693,19 @@ const SEISOPage = () => {
               <Button variant="outline">Fechar</Button>
             </DialogClose>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Novo Dialog para o AITutorChat */}
+      <Dialog open={showAITutorChatDialog} onOpenChange={setShowAITutorChatDialog}>
+        <DialogContent className="sm:max-w-[800px] h-[90vh] p-0"> {/* Ajuste o tamanho conforme necessário */}
+          {currentTask && (
+            <AITutorChat
+              taskTitle={currentTask.content}
+              taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
+              onClose={() => setShowAITutorChatDialog(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
