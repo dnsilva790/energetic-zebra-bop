@@ -98,6 +98,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   const [parsedMicroSteps, setParsedMicroSteps] = useState<{ content: string; description: string }[]>([]);
   const [initialAiResponseReceived, setInitialAiResponseReceived] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const isMounted = useRef(false); // Ref para controlar a montagem inicial
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
@@ -213,8 +214,17 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     }
   }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini]); // Adicionado localStorageKey às dependências
 
-  // Efeito para salvar mensagens no localStorage
+  // Efeito para marcar que o componente foi montado
   useEffect(() => {
+    isMounted.current = true;
+  }, []);
+
+  // Efeito para salvar mensagens no localStorage, ignorando a primeira montagem
+  useEffect(() => {
+    if (!isMounted.current) {
+      return; // Ignora a primeira execução (montagem inicial)
+    }
+
     if (messages.length > 0) {
       console.log('Salvando histórico. Nova contagem de mensagens:', messages.length); // Log de salvamento
       const historyToStore = JSON.stringify(messages);
