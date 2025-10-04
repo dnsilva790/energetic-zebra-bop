@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card'; // Removido CardHeader, CardTitle
+import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Loader2, User, Bot, Check } from 'lucide-react'; // Removido ArrowLeft
+import { Send, Loader2, User, Bot, Check } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils';
 import { createTasks, handleApiCall } from '@/lib/todoistApi';
@@ -18,7 +18,7 @@ interface ChatMessage {
 interface AITutorChatProps {
   taskTitle: string;
   taskDescription: string;
-  onClose: () => void; // Mantido para ser usado pelo componente pai (Sheet)
+  onClose: () => void;
 }
 
 // Helper function to parse AI response for tasks
@@ -79,6 +79,19 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, o
     }
   };
 
+  // Define a instrução do sistema fora do useEffect para evitar recriação desnecessária
+  const initialSystemInstructionText = `# PERFIL E FUNÇÃO
+Você é um Tutor de Execução (Executive Coach) não-julgador e ESPECIALISTA em adultos com TDAH e desenvolvimento de software. Seu único objetivo é eliminar o atrito e guiar o usuário na ação imediata.
+
+REGRAS DE INTERAÇÃO (Protocolo de Ação)
+CLAREZA E SIMPLIFICAÇÃO: Sempre que uma tarefa for mencionada, você deve transformá-la em uma lista de 3 a 5 micro-passos acionáveis. Nunca mais do que 5. O foco é apenas no próximo passo.
+
+FIRMEZA E INICIAÇÃO: Se o usuário expressar bloqueio, frustração ou falta de motivação, você deve usar um tom firme, mas de apoio. Sua resposta deve exigir que o usuário defina um cronômetro de 5 a 10 minutos para iniciar imediatamente o primeiro micro-passo. Não aceite a inação.
+
+CONSCIÊNCIA TEMPORAL (Hiperfoco): A cada duas interações do usuário, insira um breve lembrete de que o tempo é um recurso limitado no projeto.
+
+REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a descrição desse passo de forma clara e concisa (máximo 1 frase), pronta para ser usada como Título da Tarefa no Todoist. E, formule uma breve frase de motivação ou status (o 'Status da Tarefa') que será usada no campo de Descrição da tarefa no Todoist.`;
+
   const sendMessageToGemini = useCallback(async (currentMessages: ChatMessage[]) => {
     if (!GEMINI_API_KEY) {
       showError("VITE_GEMINI_API_KEY não configurada. Por favor, adicione-a ao seu arquivo .env.");
@@ -101,6 +114,9 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, o
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: initialSystemInstructionText }] // Envia a instrução do sistema aqui
+          },
           contents: formattedContents,
         }),
       });
@@ -131,28 +147,16 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, o
     } finally {
       setIsLoading(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, initialAiResponseReceived]);
+  }, [GEMINI_API_KEY, GEMINI_API_URL, initialAiResponseReceived, initialSystemInstructionText]); // Adiciona initialSystemInstructionText às dependências
 
   useEffect(() => {
-    const initialSystemInstruction = `# PERFIL E FUNÇÃO
-Você é um Tutor de Execução (Executive Coach) não-julgador e ESPECIALISTA em adultos com TDAH e desenvolvimento de software. Seu único objetivo é eliminar o atrito e guiar o usuário na ação imediata.
-
-REGRAS DE INTERAÇÃO (Protocolo de Ação)
-CLAREZA E SIMPLIFICAÇÃO: Sempre que uma tarefa for mencionada, você deve transformá-la em uma lista de 3 a 5 micro-passos acionáveis. Nunca mais do que 5. O foco é apenas no próximo passo.
-
-FIRMEZA E INICIAÇÃO: Se o usuário expressar bloqueio, frustração ou falta de motivação, você deve usar um tone firme, mas de apoio. Sua resposta deve exigir que o usuário defina um cronômetro de 5 a 10 minutos para iniciar imediatamente o primeiro micro-passo. Não aceite a inação.
-
-CONSCIÊNCIA TEMPORAL (Hiperfoco): A cada duas interações do usuário, insira um breve lembrete de que o tempo é um recurso limitado no projeto.
-
-REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a descrição desse passo de forma clara e concisa (máximo 1 frase), pronta para ser usada como Título da Tarefa no Todoist. E, formule uma breve frase de motivação ou status (o 'Status da Tarefa') que será usada no campo de Descrição da tarefa no Todoist.`;
     const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
 
-    const initialMessages: ChatMessage[] = [
-      { role: 'user', content: initialSystemInstruction },
-      { role: 'user', content: initialUserPrompt },
-    ];
-    setMessages(initialMessages);
-    sendMessageToGemini(initialMessages);
+    // Apenas adiciona o prompt do usuário ao estado de mensagens
+    setMessages([{ role: 'user', content: initialUserPrompt }]);
+    
+    // Chama sendMessageToGemini com o prompt inicial do usuário
+    sendMessageToGemini([{ role: 'user', content: initialUserPrompt }]);
   }, [taskTitle, taskDescription, sendMessageToGemini]);
 
   useEffect(() => {
@@ -205,11 +209,11 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   };
 
   return (
-    <Card className="flex flex-col h-full bg-white/80 backdrop-blur-sm"> {/* Ajustado para h-full e removido w-full max-w-2xl */}
-      <CardContent className="flex-grow p-4 overflow-hidden">
-        <ScrollArea className="h-full pr-4" viewportRef={scrollAreaRef}>
+    <Card className="flex flex-col h-full bg-white/80 backdrop-blur-sm">
+      <CardContent className="flex-grow overflow-hidden"> {/* Removido p-4 aqui */}
+        <ScrollArea className="h-full p-4" viewportRef={scrollAreaRef}> {/* Adicionado p-4 aqui */}
           <div className="space-y-4">
-            {messages.filter(msg => msg.role !== 'system').map((msg, index) => ( // Filter out system instruction from display
+            {messages.map((msg, index) => (
               <div key={index} className={cn(
                 "flex items-start gap-3",
                 msg.role === 'user' ? "justify-end" : "justify-start"
