@@ -87,9 +87,16 @@ const SEITONPage = () => {
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => !task.is_completed); // Only active tasks
 
-      setAllTasks(filteredTasks);
-      setThreeMinFilterTasks([...filteredTasks]); // All tasks initially go through 3-min filter
-      setCurrentStep('threeMinFilter');
+      if (filteredTasks.length === 0) {
+        showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
+        setAllTasks([]); // Ensure allTasks is empty
+        setThreeMinFilterTasks([]); // Ensure threeMinFilterTasks is empty
+        setCurrentStep('result'); // Go directly to result if no tasks
+      } else {
+        setAllTasks(filteredTasks);
+        setThreeMinFilterTasks([...filteredTasks]);
+        setCurrentStep('threeMinFilter');
+      }
     } else {
       showError("Não foi possível carregar as tarefas do Todoist.");
       navigate("/main-menu");
