@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Play } from "lucide-react"; // Adicionado Play para SEISO
+import { Settings, Brush, LayoutDashboard, Play, Bot } from "lucide-react"; // Adicionado Bot para o Tutor de IA
 import {
   Card,
   CardContent,
@@ -23,8 +23,10 @@ const MainMenuPage = () => {
       navigate("/5s/seiri");
     } else if (sName === "SEITON") {
       navigate("/5s/seiton");
-    } else if (sName === "SEISO") { // Adicionada lógica para SEISO
+    } else if (sName === "SEISO") {
       navigate("/5s/seiso");
+    } else if (sName === "AITUTOR") { // Nova lógica para o Tutor de IA
+      navigate("/ai-tutor-chat");
     }
     else {
       showSuccess(`Tela em construção - ${sName}`);
@@ -57,12 +59,19 @@ const MainMenuPage = () => {
             colorClass="bg-blue-600 hover:bg-blue-700"
             onClick={() => handleButtonClick("SEITON")}
           />
-          <FiveSButton // Botão para SEISO
+          <FiveSButton
             icon={Play}
             title="SEISO - Executar Tarefas"
             description="Focar e executar tarefas com filtro personalizado"
             colorClass="bg-orange-600 hover:bg-orange-700"
             onClick={() => handleButtonClick("SEISO")}
+          />
+          <FiveSButton // Novo botão para o Tutor de IA
+            icon={Bot}
+            title="Tutor de IA"
+            description="Converse com um tutor para te ajudar com suas tarefas"
+            colorClass="bg-purple-600 hover:bg-purple-700"
+            onClick={() => handleButtonClick("AITUTOR")}
           />
         </CardContent>
       </Card>

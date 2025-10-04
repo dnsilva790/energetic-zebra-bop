@@ -8,7 +8,8 @@ import SetupPage from "./pages/SetupPage";
 import MainMenuPage from "./pages/MainMenuPage";
 import SEIRIPage from "./pages/SEIRIPage";
 import SEITONPage from "./pages/SEITONPage";
-import SEISOPage from "./pages/SEISOPage"; // Import the new SEISOPage
+import SEISOPage from "./pages/SEISOPage";
+import AITutorChatPage from "./pages/AITutorChatPage"; // Import the new AITutorChatPage
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,7 +26,8 @@ const App = () => (
           <Route path="/main-menu" element={<MainMenuPage />} />
           <Route path="/5s/seiri" element={<SEIRIPage />} />
           <Route path="/5s/seiton" element={<SEITONPage />} />
-          <Route path="/5s/seiso" element={<SEISOPage />} /> {/* Add the SEISO route */}
+          <Route path="/5s/seiso" element={<SEISOPage />} />
+          <Route path="/ai-tutor-chat" element={<AITutorChatPage />} /> {/* Add the new AI Tutor Chat route */}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
