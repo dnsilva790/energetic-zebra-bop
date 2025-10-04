@@ -101,7 +101,7 @@ const SEITONPage = () => {
     fetchTasks();
   }, [fetchTasks]);
 
-  const moveToNextFilterTask = () => {
+  const moveToNextFilterTask = useCallback(() => {
     if (currentTaskIndex < threeMinFilterTasks.length - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
     } else {
@@ -113,9 +113,9 @@ const SEITONPage = () => {
         setCurrentStep('result');
       }
     }
-  };
+  }, [currentTaskIndex, threeMinFilterTasks.length, tasksForPriorityAssignment.length]);
 
-  const handleThreeMinFilter = (isLessThanThreeMin: boolean) => {
+  const handleThreeMinFilter = useCallback((isLessThanThreeMin: boolean) => {
     if (!currentTask) return;
 
     if (isLessThanThreeMin) {
@@ -124,9 +124,9 @@ const SEITONPage = () => {
       setTasksForPriorityAssignment((prev) => [...prev, currentTask]);
       moveToNextFilterTask();
     }
-  };
+  }, [currentTask, moveToNextFilterTask]);
 
-  const handleExecuteNow = async (executed: boolean) => {
+  const handleExecuteNow = useCallback(async (executed: boolean) => {
     if (!currentTask) return;
 
     if (executed) {
@@ -140,9 +140,9 @@ const SEITONPage = () => {
     }
     moveToNextFilterTask();
     setCurrentStep('threeMinFilter'); // Return to 3-min filter for the next task
-  };
+  }, [currentTask, moveToNextFilterTask]);
 
-  const handlePriorityAssignment = async (priority: 1 | 2 | 3 | 4) => {
+  const handlePriorityAssignment = useCallback(async (priority: 1 | 2 | 3 | 4) => {
     if (!currentTaskForAssignment) return;
 
     const success = await handleApiCall(() => updateTask(currentTaskForAssignment.id, { priority }), `Definindo prioridade para ${currentTaskForAssignment.content}...`, `Prioridade definida para ${currentTaskForAssignment.content}!`);
@@ -162,7 +162,50 @@ const SEITONPage = () => {
     } else {
       setCurrentStep('result');
     }
-  };
+  }, [currentTaskForAssignment, currentTaskIndex, threeMinFilterTasks.length, tasksForPriorityAssignment.length]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (loading) return;
+
+      if (currentStep === 'threeMinFilter' && currentTask) {
+        if (event.key === 's' || event.key === 'S') {
+          event.preventDefault();
+          handleThreeMinFilter(true);
+        } else if (event.key === 'n' || event.key === 'N') {
+          event.preventDefault();
+          handleThreeMinFilter(false);
+        }
+      } else if (currentStep === 'executeNow' && currentTask) {
+        if (event.key === 'e' || event.key === 'E') {
+          event.preventDefault();
+          handleExecuteNow(true);
+        } else if (event.key === 'x' || event.key === 'X') {
+          event.preventDefault();
+          handleExecuteNow(false);
+        }
+      } else if (currentStep === 'priorityAssignment' && currentTaskForAssignment) {
+        if (event.key === '1') {
+          event.preventDefault();
+          handlePriorityAssignment(4);
+        } else if (event.key === '2') {
+          event.preventDefault();
+          handlePriorityAssignment(3);
+        } else if (event.key === '3') {
+          event.preventDefault();
+          handlePriorityAssignment(2);
+        } else if (event.key === '4') {
+          event.preventDefault();
+          handlePriorityAssignment(1);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [loading, currentStep, currentTask, currentTaskForAssignment, handleThreeMinFilter, handleExecuteNow, handlePriorityAssignment]);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -240,10 +283,10 @@ const SEITONPage = () => {
             </div>
             <div className="flex justify-center space-x-4 mt-6">
               <Button onClick={() => handleThreeMinFilter(true)} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md transition-colors">
-                SIM
+                SIM (S)
               </Button>
               <Button onClick={() => handleThreeMinFilter(false)} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-md transition-colors">
-                NÃO
+                NÃO (N)
               </Button>
             </div>
           </div>
@@ -257,10 +300,10 @@ const SEITONPage = () => {
             </CardDescription>
             <div className="flex justify-center space-x-4 mt-6">
               <Button onClick={() => handleExecuteNow(true)} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
-                <Check className="mr-2 h-5 w-5" /> EXECUTEI
+                <Check className="mr-2 h-5 w-5" /> EXECUTEI (E)
               </Button>
               <Button onClick={() => handleExecuteNow(false)} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
-                <X className="mr-2 h-5 w-5" /> NÃO EXECUTEI
+                <X className="mr-2 h-5 w-5" /> NÃO EXECUTEI (X)
               </Button>
             </div>
           </div>
@@ -293,16 +336,16 @@ const SEITONPage = () => {
             </div>
             <div className="grid grid-cols-2 gap-4 mt-6">
               <Button onClick={() => handlePriorityAssignment(4)} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-colors">
-                P1 (Urgente)
+                P1 (1)
               </Button>
               <Button onClick={() => handlePriorityAssignment(3)} className="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-md transition-colors">
-                P2 (Alta)
+                P2 (2)
               </Button>
               <Button onClick={() => handlePriorityAssignment(2)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors">
-                P3 (Média)
+                P3 (3)
               </Button>
               <Button onClick={() => handlePriorityAssignment(1)} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-md transition-colors">
-                P4 (Baixa)
+                P4 (4)
               </Button>
             </div>
           </div>

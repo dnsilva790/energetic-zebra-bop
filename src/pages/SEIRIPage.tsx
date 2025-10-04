@@ -180,7 +180,7 @@ const SEIRIPage = () => {
     }
   }, [allTasks, currentTaskIndex, totalTasks, saveProgress]);
 
-  const moveToNextTask = () => {
+  const moveToNextTask = useCallback(() => {
     if (undoToastId) {
       toast.dismiss(undoToastId);
       setUndoToastId(null);
@@ -194,9 +194,9 @@ const SEIRIPage = () => {
       setShowSummary(true);
       localStorage.removeItem(SEIRI_PROGRESS_KEY);
     }
-  };
+  }, [currentTaskIndex, totalTasks, undoToastId]);
 
-  const handleKeep = () => {
+  const handleKeep = useCallback(() => {
     if (currentTask) {
       const updatedTasks = allTasks.map((task, idx) =>
         idx === currentTaskIndex ? { ...task, classificacao: 'essencial' } : task
@@ -206,9 +206,9 @@ const SEIRIPage = () => {
       showSuccess("Tarefa marcada como essencial!");
       moveToNextTask();
     }
-  };
+  }, [currentTask, allTasks, currentTaskIndex, keptTasksCount, moveToNextTask]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!currentTask) return;
 
     setLastDeletedTask(currentTask);
@@ -251,9 +251,9 @@ const SEIRIPage = () => {
       setLastDeletedTask(null);
       setLastDeletedTaskOriginalIndex(null);
     }
-  };
+  }, [currentTask, currentTaskIndex, allTasks, saveProgress]);
 
-  const handleUndo = async (toastId: string) => {
+  const handleUndo = useCallback(async (toastId: string) => {
     if (!lastDeletedTask || lastDeletedTaskOriginalIndex === null) {
       toast.dismiss(toastId);
       showError("Não há tarefa para desfazer.");
@@ -287,7 +287,26 @@ const SEIRIPage = () => {
     } else {
       showError("Falha ao restaurar a tarefa.");
     }
-  };
+  }, [lastDeletedTask, lastDeletedTaskOriginalIndex, allTasks, showSummary, saveProgress]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (showSummary || loading || !currentTask) return;
+
+      if (event.key === 'd' || event.key === 'D') {
+        event.preventDefault();
+        handleDelete();
+      } else if (event.key === 'k' || event.key === 'K') {
+        event.preventDefault();
+        handleKeep();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showSummary, loading, currentTask, handleDelete, handleKeep]);
 
   const progressValue = totalTasks > 0 ? ((currentTaskIndex + (showSummary ? 1 : 0)) / totalTasks) * 100 : 0;
 
@@ -377,13 +396,13 @@ const SEIRIPage = () => {
                     onClick={handleDelete}
                     className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center"
                   >
-                    <X className="mr-2 h-5 w-5" /> DELETAR
+                    <X className="mr-2 h-5 w-5" /> DELETAR (D)
                   </Button>
                   <Button
                     onClick={handleKeep}
                     className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center"
                   >
-                    <Check className="mr-2 h-5 w-5" /> MANTER
+                    <Check className="mr-2 h-5 w-5" /> MANTER (K)
                   </Button>
                 </div>
               </div>

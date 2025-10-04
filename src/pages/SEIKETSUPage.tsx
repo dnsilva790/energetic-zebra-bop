@@ -120,13 +120,13 @@ const SEIKETSUPage = () => {
     fetchAndProcessTasks();
   }, [fetchAndProcessTasks]);
 
-  const handleCheckboxChange = (taskId: string, checked: boolean) => {
+  const handleCheckboxChange = useCallback((taskId: string, checked: boolean) => {
     setSelectedPendingTasks((prev) =>
       checked ? [...prev, taskId] : prev.filter((id) => id !== taskId)
     );
-  };
+  }, []);
 
-  const handleReprogramSelected = async () => {
+  const handleReprogramSelected = useCallback(async () => {
     if (selectedPendingTasks.length === 0) {
       showSuccess("Nenhuma tarefa selecionada para reprogramar.");
       return;
@@ -162,7 +162,23 @@ const SEIKETSUPage = () => {
     } else {
       showError("Nenhuma tarefa foi reprogramada com sucesso.");
     }
-  };
+  }, [selectedPendingTasks, pendingTodayTasks, fetchAndProcessTasks]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (loading) return;
+
+      if (event.key === 'r' || event.key === 'R') {
+        event.preventDefault();
+        handleReprogramSelected();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [loading, handleReprogramSelected]);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -289,7 +305,7 @@ const SEIKETSUPage = () => {
             className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-md transition-colors flex items-center justify-center"
             disabled={pendingTodayTasks.length === 0}
           >
-            <CalendarCheck className="mr-2 h-5 w-5" /> REPROGRAMAR SELECIONADAS
+            <CalendarCheck className="mr-2 h-5 w-5" /> REPROGRAMAR SELECIONADAS (R)
           </Button>
         </div>
 

@@ -124,19 +124,19 @@ const SHITSUKEPage = () => {
     fetchP3Tasks();
   }, [fetchP3Tasks]);
 
-  const moveToNextTask = () => {
+  const moveToNextTask = useCallback(() => {
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
     } else {
       setShowSummary(true);
     }
-  };
+  }, [currentTaskIndex, totalTasks]);
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     setIsConfirmationOpen(true);
-  };
+  }, []);
 
-  const confirmDelete = async () => {
+  const confirmDelete = useCallback(async () => {
     setIsConfirmationOpen(false);
     if (currentTask) {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Deletando tarefa...", "Tarefa deletada!");
@@ -152,15 +152,15 @@ const SHITSUKEPage = () => {
         showError("Falha ao deletar a tarefa.");
       }
     }
-  };
+  }, [currentTask, currentTaskIndex, allTasks]);
 
-  const handleKeep = () => {
+  const handleKeep = useCallback(() => {
     setKeptTasksCount(keptTasksCount + 1);
     showSuccess("Tarefa mantida em P3.");
     moveToNextTask();
-  };
+  }, [keptTasksCount, moveToNextTask]);
 
-  const handlePromote = async () => {
+  const handlePromote = useCallback(async () => {
     if (currentTask) {
       const success = await handleApiCall(() => updateTask(currentTask.id, { priority: 3 }), "Promovendo tarefa...", "Tarefa promovida para revisão!");
       if (success) {
@@ -171,11 +171,33 @@ const SHITSUKEPage = () => {
         showError("Falha ao promover a tarefa.");
       }
     }
-  };
+  }, [currentTask, promotedTasksCount, moveToNextTask]);
 
-  const handleRunSeiton = () => {
+  const handleRunSeiton = useCallback(() => {
     navigate("/5s/seiton");
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (loading || showSummary || isConfirmationOpen || !currentTask) return;
+
+      if (event.key === 'd' || event.key === 'D') {
+        event.preventDefault();
+        handleDelete();
+      } else if (event.key === 'm' || event.key === 'M') {
+        event.preventDefault();
+        handleKeep();
+      } else if (event.key === 'p' || event.key === 'P') {
+        event.preventDefault();
+        handlePromote();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [loading, showSummary, isConfirmationOpen, currentTask, handleDelete, handleKeep, handlePromote]);
 
   const progressValue = totalTasks > 0 ? ((currentTaskIndex + (showSummary ? 1 : 0)) / totalTasks) * 100 : 0;
 
@@ -264,21 +286,21 @@ const SHITSUKEPage = () => {
                   onClick={handleDelete}
                   className="bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-md transition-colors flex flex-col items-center h-auto"
                 >
-                  <Trash2 className="h-5 w-5 mb-1" /> DELETAR
+                  <Trash2 className="h-5 w-5 mb-1" /> DELETAR (D)
                   <span className="text-xs opacity-80">Esta tarefa não faz mais sentido</span>
                 </Button>
                 <Button
                   onClick={handleKeep}
                   className="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-3 rounded-md transition-colors flex flex-col items-center h-auto"
                 >
-                  <Archive className="h-5 w-5 mb-1" /> MANTER EM P3
+                  <Archive className="h-5 w-5 mb-1" /> MANTER EM P3 (M)
                   <span className="text-xs opacity-80">Manter no backlog por enquanto</span>
                 </Button>
                 <Button
                   onClick={handlePromote}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-md transition-colors flex flex-col items-center h-auto"
                 >
-                  <ArrowUpCircle className="h-5 w-5 mb-1" /> PROMOVER
+                  <ArrowUpCircle className="h-5 w-5 mb-1" /> PROMOVER (P)
                   <span className="text-xs opacity-80">Quero priorizar esta tarefa</span>
                 </Button>
               </div>

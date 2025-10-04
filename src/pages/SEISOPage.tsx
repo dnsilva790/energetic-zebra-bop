@@ -178,50 +178,50 @@ const SEISOPage = () => {
     };
   }, [isTaskActive]);
 
-  const startPomodoro = () => {
+  const startPomodoro = useCallback(() => {
     if (pomodoroTimeLeft > 0) {
       setIsPomodoroActive(true);
       setIsPomodoroPaused(false);
     }
-  };
+  }, [pomodoroTimeLeft]);
 
-  const pausePomodoro = () => {
+  const pausePomodoro = useCallback(() => {
     setIsPomodoroActive(false);
     setIsPomodoroPaused(true);
     if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
-  };
+  }, []);
 
-  const resetPomodoro = () => {
+  const resetPomodoro = useCallback(() => {
     setIsPomodoroActive(false);
     setIsPomodoroPaused(false);
     setPomodoroTimeLeft(POMODORO_DURATION);
     if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
-  };
+  }, []);
 
-  const startTaskTimer = () => {
+  const startTaskTimer = useCallback(() => {
     setIsTaskActive(true);
     setIsTaskPaused(false);
-  };
+  }, []);
 
-  const pauseTaskTimer = () => {
+  const pauseTaskTimer = useCallback(() => {
     setIsTaskActive(false);
     setIsTaskPaused(true);
     if (taskTimerRef.current) clearInterval(taskTimerRef.current);
-  };
+  }, []);
 
-  const resetTaskTimer = () => {
+  const resetTaskTimer = useCallback(() => {
     setIsTaskActive(false);
     setIsTaskPaused(false);
     setTaskTimeElapsed(0);
     if (taskTimerRef.current) clearInterval(taskTimerRef.current);
-  };
+  }, []);
 
-  const addFifteenMinutes = () => {
+  const addFifteenMinutes = useCallback(() => {
     setCurrentTaskEstimate((prevEstimate) => prevEstimate + 15 * 60);
     showSuccess("+15 minutos adicionados à estimativa da tarefa!");
-  };
+  }, []);
 
-  const stopAllTimers = () => {
+  const stopAllTimers = useCallback(() => {
     setIsPomodoroActive(false);
     setIsPomodoroPaused(false);
     if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
@@ -229,9 +229,9 @@ const SEISOPage = () => {
     setIsTaskActive(false);
     setIsTaskPaused(false);
     if (taskTimerRef.current) clearInterval(taskTimerRef.current);
-  };
+  }, []);
 
-  const moveToNextTask = () => {
+  const moveToNextTask = useCallback(() => {
     stopAllTimers();
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
@@ -240,9 +240,9 @@ const SEISOPage = () => {
       setIsSessionFinished(true);
       setShowCelebration(false);
     }
-  };
+  }, [currentTaskIndex, totalTasks, stopAllTimers]);
 
-  const handleCompleteTask = async () => {
+  const handleCompleteTask = useCallback(async () => {
     if (currentTask) {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
       if (success) {
@@ -253,16 +253,38 @@ const SEISOPage = () => {
         showError("Falha ao concluir a tarefa no Todoist.");
       }
     }
-  };
+  }, [currentTask, stopAllTimers]);
 
-  const handleSkipTask = () => {
+  const handleSkipTask = useCallback(() => {
     showSuccess("Tarefa pulada.");
     moveToNextTask();
-  };
+  }, [moveToNextTask]);
 
-  const handleContinueAfterCelebration = () => {
+  const handleContinueAfterCelebration = useCallback(() => {
     moveToNextTask();
-  };
+  }, [moveToNextTask]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (loading || showCelebration || isSessionFinished || !currentTask) return;
+
+      if (event.key === 'c' || event.key === 'C') {
+        event.preventDefault();
+        handleCompleteTask();
+      } else if (event.key === 'p' || event.key === 'P') {
+        event.preventDefault();
+        handleSkipTask();
+      } else if (event.key === 'a' || event.key === 'A') {
+        event.preventDefault();
+        addFifteenMinutes();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [loading, showCelebration, isSessionFinished, currentTask, handleCompleteTask, handleSkipTask, addFifteenMinutes]);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -444,19 +466,19 @@ const SEISOPage = () => {
                   onClick={handleCompleteTask}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
                 >
-                  <Check className="mr-2 h-5 w-5" /> CONCLUÍDA
+                  <Check className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
                 </Button>
                 <Button
                   onClick={handleSkipTask}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
                 >
-                  <SkipForward className="mr-2 h-5 w-5" /> PRÓXIMA
+                  <SkipForward className="mr-2 h-5 w-5" /> PRÓXIMA (P)
                 </Button>
                 <Button
                   onClick={addFifteenMinutes}
                   className="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
                 >
-                  <TimerIcon className="mr-2 h-5 w-5" /> +15MIN
+                  <TimerIcon className="mr-2 h-5 w-5" /> +15MIN (A)
                 </Button>
               </div>
             </div>
