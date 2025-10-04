@@ -27,7 +27,8 @@ const AITutorChat: React.FC = () => {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+  // Atualizado o nome do modelo para gemini-2.5-flash e removido 'v1beta'
+  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
