@@ -12,8 +12,8 @@ import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import utcToZonedTime from "date-fns-tz/utcToZonedTime"; // Importar diretamente
-import formatInTimeZone from "date-fns-tz/formatInTimeZone"; // Importar diretamente
+import { utcToZonedTime } from "date-fns-tz/utcToZonedTime"; // Importar como named export
+import { formatInTimeZone } from "date-fns-tz/formatInTimeZone"; // Importar como named export
 
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo';
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
