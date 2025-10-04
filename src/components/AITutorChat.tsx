@@ -214,9 +214,9 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   };
 
   return (
-    <Card className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}> {/* Aplica className aqui */}
-      <CardContent className="flex-grow p-0 overflow-hidden">
-        <ScrollArea className="h-full p-4" viewportRef={scrollAreaRef}>
+    <Card className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
+      <CardContent className="flex-grow p-0 overflow-hidden flex flex-col"> {/* Adicionado flex flex-col aqui */}
+        <ScrollArea className="flex-1 p-4" viewportRef={scrollAreaRef}> {/* Alterado para flex-1 */}
           <div className="space-y-4">
             {messages.map((msg, index) => (
               <div key={index} className={cn(
