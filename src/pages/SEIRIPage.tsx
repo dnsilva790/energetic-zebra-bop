@@ -55,7 +55,8 @@ const SEIRIPage = () => {
         return "Data inválida";
       }
 
-      const hasTime = dateString.includes('T') || dateString.includes(':');
+      // Use regex to robustly check for a time pattern (HH:MM) in the date string
+      const hasTime = /\d{2}:\d{2}/.test(dateString);
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
       return format(parsedDate, formatString, { locale: ptBR });
