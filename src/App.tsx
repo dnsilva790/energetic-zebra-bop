@@ -8,6 +8,7 @@ import SetupPage from "./pages/SetupPage";
 import MainMenuPage from "./pages/MainMenuPage";
 import SEIRIPage from "./pages/SEIRIPage";
 import SEITONPage from "./pages/SEITONPage";
+import SEISOPage from "./pages/SEISOPage"; // Import the new SEISOPage
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/main-menu" element={<MainMenuPage />} />
           <Route path="/5s/seiri" element={<SEIRIPage />} />
           <Route path="/5s/seiton" element={<SEITONPage />} />
+          <Route path="/5s/seiso" element={<SEISOPage />} /> {/* Add the SEISO route */}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

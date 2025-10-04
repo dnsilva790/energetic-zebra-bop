@@ -44,10 +44,16 @@ export async function handleApiCall<T>(apiFunction: () => Promise<T>, loadingMes
 }
 
 // Funções específicas da API do Todoist
-export async function getTasks(): Promise<TodoistTask[]> {
+export async function getTasks(filter?: string): Promise<TodoistTask[]> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
-  const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks`, { headers });
+  
+  let url = `${TODOIST_CONFIG.baseURL}/tasks`;
+  if (filter) {
+    url += `?filter=${encodeURIComponent(filter)}`;
+  }
+
+  const response = await fetch(url, { headers });
   if (!response.ok) {
     const errorData = await response.json();
     throw new Error(errorData.error || `Erro ao buscar tarefas: ${response.statusText}`);

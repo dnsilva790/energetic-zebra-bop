@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard } from "lucide-react"; // Removidos Zap, ClipboardCheck, TrendingUp
+import { Settings, Brush, LayoutDashboard, Play } from "lucide-react"; // Adicionado Play para SEISO
 import {
   Card,
   CardContent,
@@ -23,6 +23,8 @@ const MainMenuPage = () => {
       navigate("/5s/seiri");
     } else if (sName === "SEITON") {
       navigate("/5s/seiton");
+    } else if (sName === "SEISO") { // Adicionada lógica para SEISO
+      navigate("/5s/seiso");
     }
     else {
       showSuccess(`Tela em construção - ${sName}`);
@@ -55,7 +57,13 @@ const MainMenuPage = () => {
             colorClass="bg-blue-600 hover:bg-blue-700"
             onClick={() => handleButtonClick("SEITON")}
           />
-          {/* Removidos botões para SEISO, SEIKETSU, SHITSUKE */}
+          <FiveSButton // Botão para SEISO
+            icon={Play}
+            title="SEISO - Executar Tarefas"
+            description="Focar e executar tarefas com filtro personalizado"
+            colorClass="bg-orange-600 hover:bg-orange-700"
+            onClick={() => handleButtonClick("SEISO")}
+          />
         </CardContent>
       </Card>
 
