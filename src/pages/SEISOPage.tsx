@@ -13,7 +13,7 @@ import { format, parseISO, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import * as dateFnsTz from "date-fns-tz"; // Importar date-fns-tz como wildcard
+import { utcToZonedTime, formatInTimeZone } from "date-fns-tz"; // Importar diretamente as funções
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
@@ -87,13 +87,13 @@ const SEISOPage = () => {
       }
 
       // Convert the parsed date to the Brasília timezone for display.
-      const zonedDate = dateFnsTz.utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
+      const zonedDate = utcToZonedTime(parsedDate, BRASILIA_TIMEZONE); // Usar utcToZonedTime diretamente
 
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
       // Format the date in the Brasília timezone
-      return dateFnsTz.formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
+      return formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR }); // Usar formatInTimeZone diretamente
     } catch (e: any) {
       console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";
@@ -110,8 +110,8 @@ const SEISOPage = () => {
           // Para verificar se é "hoje" no fuso horário de Brasília
           const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
           if (taskDueDate) {
-            const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
-            const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
+            const zonedTaskDate = utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE); // Usar utcToZonedTime diretamente
+            const nowZoned = utcToZonedTime(new Date(), BRASILIA_TIMEZONE); // Usar utcToZonedTime diretamente
             return isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
           }
           return !task.due; // Inclui tarefas sem data de vencimento
@@ -387,9 +387,6 @@ const SEISOPage = () => {
                 )}
                 <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
                   Prioridade: {getPriorityLabel(currentTask.priority)}
-                </p>
-                <p className="text-md text-gray-600">
-                  Estimativa: <span className="font-medium">{formatTime(currentTaskEstimate)}</span>
                 </p>
                 {currentTask.due?.date && (
                   <p className="text-sm text-gray-500">
