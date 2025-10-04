@@ -25,6 +25,7 @@ import SeitonRankingDisplay from "@/components/SeitonRankingDisplay"; // Import 
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking'; // Chave para o último ranking do Seiton
+const SEITON_FALLBACK_TASK_LIMIT = 12; // Define o limite para tarefas do ranking Seiton no fallback
 
 interface SeitonRankingData {
   rankedTasks: TodoistTask[];
@@ -138,17 +139,13 @@ const SEISOPage = () => {
         if (savedRanking) {
           try {
             const parsedRanking: SeitonRankingData = JSON.parse(savedRanking);
-            // Combine P1, P2, P3 tasks from Seiton ranking
-            const seitonTasks = [
-              ...parsedRanking.rankedTasks.filter(t => t.priority === 4), // P1
-              ...parsedRanking.rankedTasks.filter(t => t.priority === 3), // P2
-              ...parsedRanking.p3Tasks.filter(t => t.priority === 2) // P3
-            ];
+            // Take the top N tasks from the rankedTasks array, which is already ordered by the tournament
+            const seitonTopTasks = parsedRanking.rankedTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
 
-            if (seitonTasks.length > 0) {
-              tasksToProcess = seitonTasks;
+            if (seitonTopTasks.length > 0) {
+              tasksToProcess = seitonTopTasks;
               usingSeitonFallback = true;
-              showSuccess("Filtro esgotado. Continuando com tarefas do último ranking SEITON.");
+              showSuccess(`Filtro esgotado. Continuando com as ${seitonTopTasks.length} tarefas principais do último ranking SEITON.`);
             }
           } catch (e) {
             console.error("Error parsing last Seiton ranking for fallback:", e);
@@ -163,29 +160,37 @@ const SEISOPage = () => {
           .filter((task: TodoistTask) => !task.is_completed);
 
         const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
-        const others = shuffleArray(filteredAndCleanedTasks.filter(task => task.priority !== 4));
+        const nonP1Tasks = filteredAndCleanedTasks.filter(task => task.priority !== 4);
+
+        let others: TodoistTask[];
+        if (usingSeitonFallback) {
+          // If using Seiton ranking, preserve the order from the ranking
+          others = nonP1Tasks;
+        } else {
+          // Otherwise, shuffle tasks from the regular filter
+          others = shuffleArray(nonP1Tasks);
+        }
 
         setP1Tasks(p1);
         setOtherTasks(others);
         setAllTasks([...p1, ...others]);
-        setIsUsingSeitonRanking(usingSeitonFallback); // Set the new state
+        setIsUsingSeitonRanking(usingSeitonFallback);
         setSessionStarted(true);
         setCurrentTaskIndex(0);
         setTasksCompleted(0);
         setIsSessionFinished(false);
       } else {
-        // No tasks from filter and no tasks from Seiton ranking
         showSuccess("Nenhuma tarefa encontrada. Tente outro filtro ou complete o SEITON.");
         setIsSessionFinished(true);
         setSessionStarted(false);
-        setIsUsingSeitonRanking(false); // Ensure this is false if no tasks are loaded
+        setIsUsingSeitonRanking(false);
       }
     } catch (error: any) {
       console.error("SEISO: Erro em fetchTasksAndFilter:", error);
       setFilterError(error.message || "Ocorreu um erro inesperado ao carregar dados.");
       showError("Ocorreu um erro inesperado ao carregar dados.");
       setSessionStarted(false);
-      setIsUsingSeitonRanking(false); // Ensure this is false on error
+      setIsUsingSeitonRanking(false);
     } finally {
       setLoading(false);
     }
