@@ -16,6 +16,7 @@ import { ptBR } from "date-fns/locale";
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 const SEITON_PROGRESS_KEY = 'seiton_progress';
+const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking'; // Nova chave para o último ranking
 
 type SeitonStep = 'loading' | 'tournamentComparison' | 'result';
 
@@ -203,7 +204,6 @@ const SEITONPage = () => {
       navigate("/main-menu");
     } finally {
       setLoading(false);
-      console.log("SEITONPage - fetchAndSetupTasks: Finished, setLoading(false).");
     }
   }, [navigate, loadProgress]);
 
@@ -428,6 +428,19 @@ const SEITONPage = () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison]);
+
+  // Effect to save final ranking when currentStep becomes 'result'
+  useEffect(() => {
+    if (currentStep === 'result') {
+      const finalRanking = {
+        rankedTasks: rankedTasks,
+        p3Tasks: p3Tasks,
+      };
+      localStorage.setItem(SEITON_LAST_RANKING_KEY, JSON.stringify(finalRanking));
+      console.log("SEITONPage - Final ranking saved:", finalRanking);
+    }
+  }, [currentStep, rankedTasks, p3Tasks]);
+
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {

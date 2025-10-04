@@ -24,6 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils"; // Para estilização do popover do calendário
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
+const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking'; // Chave para o último ranking do Seiton
 
 const formatTime = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
@@ -57,6 +58,9 @@ const SEISOPage = () => {
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
+
+  // New state for last Seiton ranking
+  const [lastSeitonRanking, setLastSeitonRanking] = useState<{ rankedTasks: TodoistTask[]; p3Tasks: TodoistTask[] } | null>(null);
 
   // New Countdown Timer states
   const [countdownInputDuration, setCountdownInputDuration] = useState("25"); // em minutos
@@ -127,6 +131,7 @@ const SEISOPage = () => {
   const fetchTasksAndFilter = useCallback(async () => {
     setLoading(true);
     setFilterError("");
+    setLastSeitonRanking(null); // Clear previous ranking when fetching new tasks
     try {
       const fetchedTasks = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas...");
 
@@ -143,7 +148,20 @@ const SEISOPage = () => {
         setAllTasks([...p1, ...others]);
 
         if (p1.length === 0 && others.length === 0) {
-          showSuccess("Nenhuma tarefa encontrada com o filtro fornecido. Tente outro!");
+          // No tasks found for the current filter, try to load last Seiton ranking
+          const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
+          if (savedRanking) {
+            try {
+              const parsedRanking = JSON.parse(savedRanking);
+              setLastSeitonRanking(parsedRanking);
+              showSuccess("Nenhuma tarefa encontrada com o filtro. Exibindo o último ranking do SEITON.");
+            } catch (e) {
+              console.error("Error parsing last Seiton ranking from localStorage:", e);
+              showError("Nenhuma tarefa encontrada com o filtro. Erro ao carregar ranking anterior.");
+            }
+          } else {
+            showSuccess("Nenhuma tarefa encontrada com o filtro fornecido. Tente outro!");
+          }
           setIsSessionFinished(true);
           setSessionStarted(false);
         } else {
@@ -359,9 +377,51 @@ const SEISOPage = () => {
       <div className="min-h-screen flex flex-col items-center justify-center bg-orange-100 p-4">
         <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
           <CardTitle className="text-3xl font-bold text-gray-800">Sessão Concluída!</CardTitle>
-          <CardDescription className="text-lg text-gray-600">
-            Você concluiu {tasksCompleted} de {allTasks.length} tarefas.
-          </CardDescription>
+          {lastSeitonRanking ? (
+            <>
+              <CardDescription className="text-lg text-gray-600">
+                Nenhuma tarefa encontrada com o filtro atual. <br />
+                Exibindo o último ranking do SEITON:
+              </CardDescription>
+
+              {lastSeitonRanking.rankedTasks.slice(0, 4).length > 0 && (
+                <div className="text-left p-4 border rounded-md bg-red-50/50">
+                  <h3 className="text-xl font-bold text-red-700 mb-2">P1 (Urgente)</h3>
+                  <ul className="list-disc list-inside space-y-1">
+                    {lastSeitonRanking.rankedTasks.slice(0, 4).map((task) => (
+                      <li key={task.id} className="text-gray-800">{task.content}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {lastSeitonRanking.rankedTasks.slice(4).length > 0 && (
+                <div className="text-left p-4 border rounded-md bg-yellow-50/50">
+                  <h3 className="text-xl font-bold text-yellow-700 mb-2">P2 (Alta)</h3>
+                  <ul className="list-disc list-inside space-y-1">
+                    {lastSeitonRanking.rankedTasks.slice(4).map((task) => (
+                      <li key={task.id} className="text-gray-800">{task.content}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {lastSeitonRanking.p3Tasks.length > 0 && (
+                <div className="text-left p-4 border rounded-md bg-blue-50/50">
+                  <h3 className="text-xl font-bold text-blue-700 mb-2">P3 (Média)</h3>
+                  <ul className="list-disc list-inside space-y-1">
+                    {lastSeitonRanking.p3Tasks.map((task) => (
+                      <li key={task.id}>{task.content}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          ) : (
+            <CardDescription className="text-lg text-gray-600">
+              Você concluiu {tasksCompleted} de {allTasks.length} tarefas.
+            </CardDescription>
+          )}
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
           </Button>
