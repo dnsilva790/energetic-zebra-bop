@@ -36,7 +36,7 @@ const MainMenuPage = () => {
       <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-4xl font-extrabold text-gray-800">
-            Menu Principal - 5S para TDAH
+            ADHD Todoist task manager
           </CardTitle>
           <CardDescription className="text-xl text-gray-600 mt-2">
             Escolha por onde começar hoje
