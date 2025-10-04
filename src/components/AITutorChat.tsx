@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// Removido Card, pois não será mais o wrapper externo
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Loader2, User, Bot, Check, X, AlertCircle } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
@@ -222,7 +221,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   };
 
   return (
-    <div className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}> {/* Alterado de Card para div, removido bg/backdrop */}
+    <div className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
       <div className="p-4 border-b flex items-center justify-between">
         <h2 className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</h2>
         <Button variant="ghost" onClick={onClose} className="p-2">
@@ -266,7 +265,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="flex-grow"
+          className="flex-grow min-w-0"
           disabled={isLoading}
         />
         <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''}>
