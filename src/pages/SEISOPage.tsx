@@ -596,12 +596,12 @@ const SEISOPage = () => {
       <MadeWithDyad />
 
       <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
-        <SheetContent className="flex flex-col"> {/* Removido p-0 e larguras explícitas */}
-          {/* Removido SheetHeader */}
+        <SheetContent className="flex flex-col">
           {currentTask && (
             <AITutorChat
               taskTitle={currentTask.content}
               taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
+              taskId={currentTask.id} {/* Passando o ID da tarefa aqui */}
               onClose={() => setIsAITutorChatOpen(false)}
               className="flex-grow"
             />

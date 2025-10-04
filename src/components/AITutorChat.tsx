@@ -17,6 +17,7 @@ interface ChatMessage {
 interface AITutorChatProps {
   taskTitle: string;
   taskDescription: string;
+  taskId: string; // Adicionado taskId para persistência
   onClose: () => void;
   className?: string;
 }
@@ -53,7 +54,7 @@ const parseAiResponseForTasks = (responseText: string): { content: string; descr
   return tasks;
 };
 
-const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, onClose, className }) => {
+const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, taskId, onClose, className }) => {
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
   // --- Early exit if API key is missing ---
@@ -83,8 +84,26 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, o
   // --- End early exit ---
 
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const localStorageKey = `chat-history-${taskId}`; // Chave de armazenamento única por tarefa
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window !== 'undefined') {
+      const savedHistory = localStorage.getItem(localStorageKey);
+      if (savedHistory) {
+        try {
+          const parsedHistory = JSON.parse(savedHistory);
+          if (Array.isArray(parsedHistory)) {
+            return parsedHistory;
+          }
+        } catch (e) {
+          console.error("Falha ao analisar o histórico do chat do localStorage", e);
+          localStorage.removeItem(localStorageKey); // Limpa dados corrompidos
+        }
+      }
+    }
+    return []; // Retorna vazio se não houver histórico ou erro
+  });
+
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [parsedMicroSteps, setParsedMicroSteps] = useState<{ content: string; description: string }[]>([]);
@@ -165,11 +184,28 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     }
   }, [GEMINI_API_URL, initialAiResponseReceived, initialSystemInstructionText]);
 
+  // Efeito para carregar o histórico e enviar a mensagem inicial
   useEffect(() => {
-    const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
-    setMessages([{ role: 'user', content: initialUserPrompt }]);
-    sendMessageToGemini([{ role: 'user', content: initialUserPrompt }]);
-  }, [taskTitle, taskDescription, sendMessageToGemini]);
+    // Resetar estados relacionados à tarefa quando taskId muda
+    setInitialAiResponseReceived(false);
+    setParsedMicroSteps([]);
+
+    // Se não houver mensagens carregadas para esta tarefa, enviar a mensagem inicial
+    if (messages.length === 0 && !isLoading) {
+      const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
+      setMessages([{ role: 'user', content: initialUserPrompt }]);
+      sendMessageToGemini([{ role: 'user', content: initialUserPrompt }]);
+    }
+  }, [taskId, messages.length, taskTitle, taskDescription, sendMessageToGemini, isLoading]);
+
+  // Efeito para salvar mensagens no localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(localStorageKey, JSON.stringify(messages));
+    } else {
+      localStorage.removeItem(localStorageKey); // Remove a chave se o chat estiver vazio
+    }
+  }, [messages, localStorageKey]);
 
   useEffect(() => {
     scrollToBottom();
