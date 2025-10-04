@@ -342,7 +342,6 @@ const SEISOPage = () => {
     }
   }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
 
-  // New AI Guidance function
   const handleGuideMe = useCallback(async () => {
     if (!currentTask) return;
 
@@ -350,39 +349,49 @@ const SEISOPage = () => {
     setAiGuidanceContent("");
     setShowAIGuidanceDialog(true);
 
-    const tessAiKey = import.meta.env.VITE_TESS_AI_KEY;
-    if (!tessAiKey) {
-      setAiGuidanceContent("Erro: TESS_AI_KEY não configurada. Por favor, adicione-a ao seu arquivo .env.");
+    const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!geminiApiKey) {
+      setAiGuidanceContent("Erro: VITE_GEMINI_API_KEY não configurada. Por favor, adicione-a ao seu arquivo .env.");
       setIsAIGuidanceLoading(false);
       return;
     }
 
-    // Novo prompt formatado conforme a especificação
-    const prompt = `A tarefa atual é: ${currentTask.content}. A descrição é: ${currentTask.description || 'Nenhuma descrição fornecida.'}. Por favor, me guie em micro-passos.`;
+    const systemInstruction = "Você é um tutor especialista em produtividade e TDAH. Seu único objetivo é pegar a tarefa que o usuário fornecer e transformá-la em 3 a 5 micro-passos simples e imediatos. Sua resposta deve ser apenas a lista de micro-passos, sem introdução ou conclusão. O input do usuário é o título e a descrição da tarefa.";
+    const userInput = `A tarefa atual é: ${currentTask.content}. A descrição é: ${currentTask.description || 'Nenhuma descrição fornecida.'}.`;
+    
+    const fullPrompt = `${systemInstruction}\n\n${userInput}`;
 
     try {
-      const response = await fetch("https://tess.pareto.io/api/agents/32502/execute", {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${tessAiKey}`,
         },
         body: JSON.stringify({
-          messages: [{ role: "user", content: prompt }], // Payload adaptado
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: fullPrompt,
+                },
+              ],
+            },
+          ],
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || `Erro na API Tess.ai: ${response.statusText}`);
+        throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
       }
 
       const data = await response.json();
-      const aiResponseContent = data.text || data.message || "Não foi possível obter uma resposta do Tutor de IA.";
+      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter uma resposta do Tutor de IA.";
       setAiGuidanceContent(aiResponseContent);
       showSuccess("Dicas do Tutor de IA recebidas!");
     } catch (error: any) {
-      console.error("Erro ao se comunicar com Tess.ai para guia:", error);
+      console.error("Erro ao se comunicar com Gemini para guia:", error);
       setAiGuidanceContent(`Erro ao obter dicas do Tutor de IA: ${error.message}`);
       showError(`Erro ao obter dicas do Tutor de IA: ${error.message}`);
     } finally {
