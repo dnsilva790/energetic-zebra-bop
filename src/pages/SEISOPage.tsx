@@ -14,7 +14,7 @@ import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
-import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
+// import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Não será mais usado para esta lógica específica
 import * as dateFnsTz from "date-fns-tz"; // Importar como wildcard
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
@@ -58,7 +58,7 @@ const SEISOPage = () => {
   const [otherTasks, setOtherTasks] = useState<TodoistTask[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [tasksCompleted, setTasksCompleted] = useState(0);
-  const [showCelebration, setShowCelebration] = useState(false);
+  // const [showCelebration, setShowCelebration] = useState(false); // Removido
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
@@ -143,8 +143,8 @@ const SEISOPage = () => {
 
       if (fetchedTasks) {
         const filteredAndCleanedTasks = fetchedTasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-          .filter((task: TodoistTask) => !task.is_completed);
+          .filter((task: TodoistTask) => task.parent_id === null) // Excluir apenas subtarefas
+          .filter((task: TodoistTask) => !task.is_completed); // Excluir tarefas concluídas
 
         const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
         const others = shuffleArray(filteredAndCleanedTasks.filter(task => task.priority !== 4));
@@ -161,7 +161,7 @@ const SEISOPage = () => {
           setSessionStarted(true);
           setCurrentTaskIndex(0);
           setTasksCompleted(0);
-          setShowCelebration(false);
+          // setShowCelebration(false); // Removido
           setIsSessionFinished(false);
           showSuccess(`Sessão iniciada com ${p1.length + others.length} tarefas.`);
         }
@@ -282,10 +282,10 @@ const SEISOPage = () => {
     stopAllTimers();
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
-      setShowCelebration(false);
+      // setShowCelebration(false); // Removido
     } else {
       setIsSessionFinished(true);
-      setShowCelebration(false);
+      // setShowCelebration(false); // Removido
     }
   }, [currentTaskIndex, totalTasks, stopAllTimers]);
 
@@ -294,26 +294,28 @@ const SEISOPage = () => {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
       if (success) {
         setTasksCompleted(tasksCompleted + 1);
-        setShowCelebration(true);
+        // setShowCelebration(true); // Removido
         stopAllTimers();
+        moveToNextTask(); // Move directly to the next task
       } else {
         showError("Falha ao concluir a tarefa no Todoist.");
       }
     }
-  }, [currentTask, stopAllTimers]);
+  }, [currentTask, stopAllTimers, moveToNextTask]);
 
   const handleSkipTask = useCallback(() => {
     showSuccess("Tarefa pulada.");
     moveToNextTask();
   }, [moveToNextTask]);
 
-  const handleContinueAfterCelebration = useCallback(() => {
-    moveToNextTask();
-  }, [moveToNextTask]);
+  // const handleContinueAfterCelebration = useCallback(() => { // Removido
+  //   moveToNextTask();
+  // }, [moveToNextTask]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || showCelebration || isSessionFinished || !currentTask || !sessionStarted) return;
+      // if (loading || showCelebration || isSessionFinished || !currentTask || !sessionStarted) return; // showCelebration removido
+      if (loading || isSessionFinished || !currentTask || !sessionStarted) return;
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -331,7 +333,7 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, showCelebration, isSessionFinished, currentTask, sessionStarted, handleCompleteTask, handleSkipTask, addFifteenMinutes]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, handleCompleteTask, handleSkipTask, addFifteenMinutes]); // showCelebration removido
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const pomodoroProgressValue = ((POMODORO_DURATION - pomodoroTimeLeft) / POMODORO_DURATION) * 100;
@@ -422,135 +424,126 @@ const SEISOPage = () => {
         </Card>
       ) : (
         <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
-          {showCelebration ? (
-            <div className="text-center space-y-4">
-              <CardTitle className="text-4xl font-bold text-green-600">Parabéns! 🎉</CardTitle>
-              <CardDescription className="2xl text-gray-800">Tarefa concluída!</CardDescription>
-              <Button onClick={handleContinueAfterCelebration} className="mt-4 bg-blue-600 hover:bg-blue-700">
-                Continuar
-              </Button>
-            </div>
-          ) : (
-            currentTask && (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
-                    {currentTask.content}
-                    {currentTask.due?.is_recurring && (
-                      <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
-                    )}
-                    <a
-                      href={`https://todoist.com/app/task/${currentTask.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-gray-400 hover:text-blue-600 transition-colors"
-                      aria-label="Abrir no Todoist"
-                    >
-                      <ExternalLink className="h-5 w-5" />
-                    </a>
-                  </CardTitle>
-                  {currentTask.description && (
-                    <CardDescription className="text-gray-700 mb-2">
-                      {currentTask.description}
-                    </CardDescription>
+          {/* showCelebration removido, agora a transição é direta */}
+          {currentTask && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
+                  {currentTask.content}
+                  {currentTask.due?.is_recurring && (
+                    <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
                   )}
-                  <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
-                    Prioridade: {getPriorityLabel(currentTask.priority)}
+                  <a
+                    href={`https://todoist.com/app/task/${currentTask.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-blue-600 transition-colors"
+                    aria-label="Abrir no Todoist"
+                  >
+                    <ExternalLink className="h-5 w-5" />
+                  </a>
+                </CardTitle>
+                {currentTask.description && (
+                  <CardDescription className="text-gray-700 mb-2">
+                    {currentTask.description}
+                  </CardDescription>
+                )}
+                <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
+                  Prioridade: {getPriorityLabel(currentTask.priority)}
+                </p>
+                {currentTask.due?.date && (
+                  <p className="text-sm text-gray-500">
+                    Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due.date)}</span>
                   </p>
-                  {currentTask.due?.date && (
-                    <p className="text-sm text-gray-500">
-                      Vencimento: <span className="font-medium text-gray-700">{formatDueDate(currentTask.due.date)}</span>
-                    </p>
-                  )}
-                  {currentTask.deadline && (
-                    <p className="text-sm text-gray-500">
-                      Data Limite: <span className="font-medium text-gray-700">{formatDueDate(currentTask.deadline)}</span>
-                    </p>
-                  )}
-                </div>
+                )}
+                {currentTask.deadline && (
+                  <p className="text-sm text-gray-500">
+                    Data Limite: <span className="font-medium text-gray-700">{formatDueDate(currentTask.deadline)}</span>
+                  </p>
+                )}
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                  <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
-                    <h3 className="text-xl font-bold text-red-700">Pomodoro</h3>
-                    <div className="text-6xl font-bold text-red-800">
-                      {formatTime(pomodoroTimeLeft)}
-                    </div>
-                    <Progress value={pomodoroProgressValue} className="w-full h-2 bg-red-200 [&>*]:bg-red-600" />
-                    <div className="flex space-x-2">
-                      {!isPomodoroActive && !isPomodoroPaused && (
-                        <Button onClick={startPomodoro} className="bg-green-600 hover:bg-green-700 text-white">
-                          <Play className="h-5 w-5" />
-                        </Button>
-                      )}
-                      {isPomodoroActive && (
-                        <Button onClick={pausePomodoro} className="bg-yellow-600 hover:bg-yellow-700 text-white">
-                          <Pause className="h-5 w-5" />
-                        </Button>
-                      )}
-                      {isPomodoroPaused && (
-                        <Button onClick={startPomodoro} className="bg-green-600 hover:bg-green-700 text-white">
-                          <Play className="h-5 w-5" />
-                        </Button>
-                      )}
-                      <Button onClick={resetPomodoro} className="bg-gray-600 hover:bg-gray-700 text-white">
-                        <Square className="h-5 w-5" />
-                      </Button>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
+                  <h3 className="text-xl font-bold text-red-700">Pomodoro</h3>
+                  <div className="text-6xl font-bold text-red-800">
+                    {formatTime(pomodoroTimeLeft)}
                   </div>
-
-                  <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-blue-50/50">
-                    <h3 className="text-xl font-bold text-blue-700">Tempo na Tarefa</h3>
-                    <div className="text-6xl font-bold text-blue-800">
-                      {formatTime(taskTimeElapsed)}
-                    </div>
-                    <Progress value={taskTimeProgressValue} className="w-full h-2 bg-blue-200 [&>*]:bg-blue-600" />
-                    <div className="flex space-x-2">
-                      {!isTaskActive && !isTaskPaused && (
-                        <Button onClick={startTaskTimer} className="bg-green-600 hover:bg-green-700 text-white">
-                          <Play className="h-5 w-5" />
-                        </Button>
-                      )}
-                      {isTaskActive && (
-                        <Button onClick={pauseTaskTimer} className="bg-yellow-600 hover:bg-yellow-700 text-white">
-                          <Pause className="h-5 w-5" />
-                        </Button>
-                      )}
-                      {isTaskPaused && (
-                        <Button onClick={startTaskTimer} className="bg-green-600 hover:bg-green-700 text-white">
-                          <Play className="h-5 w-5" />
-                        </Button>
-                      )}
-                      <Button onClick={resetTaskTimer} className="bg-gray-600 hover:bg-gray-700 text-white">
-                        <Square className="h-5 w-5" />
+                  <Progress value={pomodoroProgressValue} className="w-full h-2 bg-red-200 [&>*]:bg-red-600" />
+                  <div className="flex space-x-2">
+                    {!isPomodoroActive && !isPomodoroPaused && (
+                      <Button onClick={startPomodoro} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" />
                       </Button>
-                    </div>
+                    )}
+                    {isPomodoroActive && (
+                      <Button onClick={pausePomodoro} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+                        <Pause className="h-5 w-5" />
+                      </Button>
+                    )}
+                    {isPomodoroPaused && (
+                      <Button onClick={startPomodoro} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" />
+                      </Button>
+                    )}
+                    <Button onClick={resetPomodoro} className="bg-gray-600 hover:bg-gray-700 text-white">
+                      <Square className="h-5 w-5" />
+                    </Button>
                   </div>
                 </div>
 
-                <div className="flex justify-center space-x-4 mt-6">
-                  <Button
-                    onClick={handleCompleteTask}
-                    className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-                  >
-                    <Check className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
-                  </Button>
-                  <Button
-                    onClick={handleSkipTask}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-                  >
-                    <SkipForward className="mr-2 h-5 w-5" /> PRÓXIMA (P)
-                  </Button>
-                  <Button
-                    onClick={addFifteenMinutes}
-                    className="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-                  >
-                    <TimerIcon className="mr-2 h-5 w-5" /> +15MIN (A)
-                  </Button>
+                <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-blue-50/50">
+                  <h3 className="text-xl font-bold text-blue-700">Tempo na Tarefa</h3>
+                  <div className="text-6xl font-bold text-blue-800">
+                    {formatTime(taskTimeElapsed)}
+                  </div>
+                  <Progress value={taskTimeProgressValue} className="w-full h-2 bg-blue-200 [&>*]:bg-blue-600" />
+                  <div className="flex space-x-2">
+                    {!isTaskActive && !isTaskPaused && (
+                      <Button onClick={startTaskTimer} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" />
+                      </Button>
+                    )}
+                    {isTaskActive && (
+                      <Button onClick={pauseTaskTimer} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+                        <Pause className="h-5 w-5" />
+                      </Button>
+                    )}
+                    {isTaskPaused && (
+                      <Button onClick={startTaskTimer} className="bg-green-600 hover:bg-green-700 text-white">
+                        <Play className="h-5 w-5" />
+                      </Button>
+                    )}
+                    <Button onClick={resetTaskTimer} className="bg-gray-600 hover:bg-gray-700 text-white">
+                      <Square className="h-5 w-5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
-            )
+
+              <div className="flex justify-center space-x-4 mt-6">
+                <Button
+                  onClick={handleCompleteTask}
+                  className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  <Check className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
+                </Button>
+                <Button
+                  onClick={handleSkipTask}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  <SkipForward className="mr-2 h-5 w-5" /> PRÓXIMA (P)
+                </Button>
+                <Button
+                  onClick={addFifteenMinutes}
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  <TimerIcon className="mr-2 h-5 w-5" /> +15MIN (A)
+                </Button>
+              </div>
+            </div>
           )}
-          {!showCelebration && !isSessionFinished && currentTask && (
+          {!isSessionFinished && currentTask && ( // showCelebration removido
             <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
               <p className="text-sm text-gray-600 mb-2">
                 Tarefa {currentTaskIndex + 1} de {totalTasks}
