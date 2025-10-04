@@ -62,9 +62,9 @@ const SEITONPage = () => {
     console.log("SEITONPage - currentStep changed to:", currentStep);
     console.log("SEITONPage - currentChallenger:", currentChallenger?.content || "Nenhum");
     console.log("SEITONPage - currentOpponentIndex:", currentOpponentIndex);
-    console.log("SEITONPage - rankedTasks length:", rankedTasks.length, "IDs:", rankedTasks.map(t => t.id));
-    console.log("SEITONPage - p3Tasks length:", p3Tasks.length, "IDs:", p3Tasks.map(t => t.id));
-    console.log("SEITONPage - tournamentQueue length:", tournamentQueue.length, "IDs:", tournamentQueue.map(t => t.id));
+    console.log("SEITONPage - rankedTasks length:", rankedTasks.length, "Contents:", rankedTasks.map(t => t.content));
+    console.log("SEITONPage - p3Tasks length:", p3Tasks.length, "Contents:", p3Tasks.map(t => t.content));
+    console.log("SEITONPage - tournamentQueue length:", tournamentQueue.length, "Contents:", tournamentQueue.map(t => t.content));
   }, [currentStep, currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue]);
 
   const formatDueDate = (dateString: string | undefined | null) => {
@@ -145,8 +145,6 @@ const SEITONPage = () => {
       .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
       .filter((task: TodoistTask) => !task.is_completed);
     console.log("SEITONPage - Active tasks from API:", activeTasks.map(t => t.content));
-
-    setAllFetchedTasks(activeTasks);
 
     const savedProgress = loadProgress();
 
@@ -364,6 +362,11 @@ const SEITONPage = () => {
 
     newRankedTasks = [...updatedP1Tasks, ...updatedP2Tasks];
     newP3Tasks = updatedP3Tasks;
+
+    // Log final state of lists before setting state
+    console.log("SEITONPage - Final state of lists before setting state:");
+    console.log("  newRankedTasks (contents):", newRankedTasks.map(t => t.content));
+    console.log("  newP3Tasks (contents):", newP3Tasks.map(t => t.content));
 
     setRankedTasks(newRankedTasks);
     setP3Tasks(newP3Tasks);
