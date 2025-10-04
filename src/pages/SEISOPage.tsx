@@ -106,53 +106,60 @@ const SEISOPage = () => {
   const fetchTasksForToday = useCallback(async () => {
     console.log("SEISOPage - fetchTasksForToday called.");
     setLoading(true);
-    const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para hoje...");
-    console.log("SEISOPage - fetchTasksForToday: handleApiCall returned:", fetchedTasks ? `${fetchedTasks.length} tasks` : "undefined");
+    try {
+      const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para hoje...");
+      console.log("SEISOPage - fetchTasksForToday: handleApiCall returned:", fetchedTasks ? `${fetchedTasks.length} tasks` : "undefined");
 
-    if (fetchedTasks) {
-      const filteredTasks = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-        .filter((task: TodoistTask) => !task.is_completed)
-        .filter((task: TodoistTask) => {
-          try {
-            const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
-            if (taskDueDate) {
-              const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
-              const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
-              const isTaskDueToday = isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
-              console.log(`SEISOPage - Task: ${task.content}, DueDate: ${task.due?.date}, ZonedDate: ${zonedTaskDate}, IsToday: ${isTaskDueToday}`);
-              return isTaskDueToday;
+      if (fetchedTasks) {
+        const filteredTasks = fetchedTasks
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
+          .filter((task: TodoistTask) => !task.is_completed)
+          .filter((task: TodoistTask) => {
+            try {
+              const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
+              if (taskDueDate) {
+                const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
+                const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
+                const isTaskDueToday = isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
+                console.log(`SEISOPage - Task: ${task.content}, DueDate: ${task.due?.date}, ZonedDate: ${zonedTaskDate}, IsToday: ${isTaskDueToday}`);
+                return isTaskDueToday;
+              }
+              // Inclui tarefas sem data de vencimento
+              console.log(`SEISOPage - Task: ${task.content}, No DueDate. Including.`);
+              return !task.due; 
+            } catch (e: any) {
+              console.error("SEISOPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
+              return false; // Exclui a tarefa se houver erro no processamento da data
             }
-            // Inclui tarefas sem data de vencimento
-            console.log(`SEISOPage - Task: ${task.content}, No DueDate. Including.`);
-            return !task.due; 
-          } catch (e: any) {
-            console.error("SEISOPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
-            return false; // Exclui a tarefa se houver erro no processamento da data
-          }
-        });
+          });
 
-      console.log("SEISOPage - fetchTasksForToday: Filtered tasks count:", filteredTasks.length);
-      if (filteredTasks.length === 0) {
-        showSuccess("Nenhuma tarefa para hoje! Aproveite o dia ou adicione novas tarefas.");
-        setIsSessionFinished(true);
-        setAllTasks([]); // Explicitamente define como array vazio
-        console.log("SEISOPage - fetchTasksForToday: No tasks, setting isSessionFinished to true and allTasks to empty.");
+        console.log("SEISOPage - fetchTasksForToday: Filtered tasks count:", filteredTasks.length);
+        if (filteredTasks.length === 0) {
+          showSuccess("Nenhuma tarefa para hoje! Aproveite o dia ou adicione novas tarefas.");
+          setIsSessionFinished(true);
+          setAllTasks([]); // Explicitamente define como array vazio
+          console.log("SEISOPage - fetchTasksForToday: No tasks, setting isSessionFinished to true and allTasks to empty.");
+        } else {
+          setAllTasks(filteredTasks);
+          setIsSessionFinished(false); // Garante que não está no estado de sessão finalizada
+          setCurrentTaskIndex(0); // Reseta o índice para a primeira tarefa
+          console.log("SEISOPage - fetchTasksForToday: Tasks found, setting allTasks and resetting index.");
+        }
       } else {
-        setAllTasks(filteredTasks);
-        setIsSessionFinished(false); // Garante que não está no estado de sessão finalizada
-        setCurrentTaskIndex(0); // Reseta o índice para a primeira tarefa
-        console.log("SEISOPage - fetchTasksForToday: Tasks found, setting allTasks and resetting index.");
+        showError("Não foi possível carregar as tarefas do Todoist.");
+        navigate("/main-menu");
+        setAllTasks([]); // Explicitamente define como array vazio em caso de erro
+        setIsSessionFinished(false); // Garante que não está no estado de sessão finalizada em caso de erro
+        console.log("SEISOPage - fetchTasksForToday: API call failed, navigating to main-menu.");
       }
-    } else {
-      showError("Não foi possível carregar as tarefas do Todoist.");
+    } catch (error) {
+      console.error("SEISOPage - Uncaught error in fetchTasksForToday:", error);
+      showError("Ocorreu um erro inesperado ao carregar as tarefas.");
       navigate("/main-menu");
-      setAllTasks([]); // Explicitamente define como array vazio em caso de erro
-      setIsSessionFinished(false); // Garante que não está no estado de sessão finalizada em caso de erro
-      console.log("SEISOPage - fetchTasksForToday: API call failed, navigating to main-menu.");
+    } finally {
+      setLoading(false);
+      console.log("SEISOPage - fetchTasksForToday: Finished, setLoading(false).");
     }
-    setLoading(false);
-    console.log("SEISOPage - fetchTasksForToday: Finished, setLoading(false).");
   }, [navigate]);
 
   useEffect(() => {

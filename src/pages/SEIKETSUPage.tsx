@@ -87,38 +87,45 @@ const SEIKETSUPage = () => {
 
   const fetchAndProcessTasks = useCallback(async () => {
     setLoading(true);
-    const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas do dia...");
-    if (fetchedTasks) {
-      const tasksDueToday = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-        .filter((task: TodoistTask) => {
-          try {
-            // Para verificar se é "hoje" no fuso horário de Brasília
-            const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
-            if (taskDueDate) {
-              const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
-              const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
-              return isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
+    try {
+      const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas do dia...");
+      if (fetchedTasks) {
+        const tasksDueToday = fetchedTasks
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
+          .filter((task: TodoistTask) => {
+            try {
+              // Para verificar se é "hoje" no fuso horário de Brasília
+              const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
+              if (taskDueDate) {
+                const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
+                const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
+                return isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
+              }
+              return false; // Tarefas sem data de vencimento não são consideradas "para hoje" nesta tela
+            } catch (e: any) {
+              console.error("SEIKETSUPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
+              return false; // Exclui a tarefa se houver erro no processamento da data
             }
-            return false; // Tarefas sem data de vencimento não são consideradas "para hoje" nesta tela
-          } catch (e: any) {
-            console.error("SEIKETSUPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
-            return false; // Exclui a tarefa se houver erro no processamento da data
-          }
-        });
-      setTasksForToday(tasksDueToday);
+          });
+        setTasksForToday(tasksDueToday);
 
-      const completed = tasksDueToday.filter(task => task.is_completed).length;
-      setCompletedTodayCount(completed);
+        const completed = tasksDueToday.filter(task => task.is_completed).length;
+        setCompletedTodayCount(completed);
 
-      const pending = tasksDueToday.filter(task => !task.is_completed);
-      setPendingTodayTasks(pending);
+        const pending = tasksDueToday.filter(task => !task.is_completed);
+        setPendingTodayTasks(pending);
 
-    } else {
-      showError("Não foi possível carregar as tarefas do Todoist.");
+      } else {
+        showError("Não foi possível carregar as tarefas do Todoist.");
+        navigate("/main-menu");
+      }
+    } catch (error) {
+      console.error("SEIKETSUPage - Uncaught error in fetchAndProcessTasks:", error);
+      showError("Ocorreu um erro inesperado ao carregar as tarefas.");
       navigate("/main-menu");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [navigate]);
 
   useEffect(() => {

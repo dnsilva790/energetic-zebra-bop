@@ -88,41 +88,48 @@ const SHITSUKEPage = () => {
 
   const fetchP3Tasks = useCallback(async () => {
     setLoading(true);
-    const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para revisão...");
-    if (fetchedTasks) {
-      const p3Tasks = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-        .filter((task: TodoistTask) => {
-          try {
-            const isLowPriority = task.priority === 1 || task.priority === 2;
-            const hasNoDueDate = !task.due;
-            
-            // Para verificar se está "atrasada" no fuso horário de Brasília
-            let isOverdue = false;
-            const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
-            if (taskDueDate) {
-              const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
-              const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
-              isOverdue = isPast(zonedTaskDate, { now: nowZoned });
+    try {
+      const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para revisão...");
+      if (fetchedTasks) {
+        const p3Tasks = fetchedTasks
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
+          .filter((task: TodoistTask) => {
+            try {
+              const isLowPriority = task.priority === 1 || task.priority === 2;
+              const hasNoDueDate = !task.due;
+              
+              // Para verificar se está "atrasada" no fuso horário de Brasília
+              let isOverdue = false;
+              const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
+              if (taskDueDate) {
+                const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
+                const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
+                isOverdue = isPast(zonedTaskDate, { now: nowZoned });
+              }
+
+              return isLowPriority || hasNoDueDate || isOverdue;
+            } catch (e: any) {
+              console.error("SHITSUKEPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
+              return false; // Exclui a tarefa se houver erro no processamento da data
             }
+          });
 
-            return isLowPriority || hasNoDueDate || isOverdue;
-          } catch (e: any) {
-            console.error("SHITSUKEPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
-            return false; // Exclui a tarefa se houver erro no processamento da data
-          }
-        });
-
-      if (p3Tasks.length === 0) {
-        showSuccess("Nenhuma tarefa para revisão semanal encontrada. Bom trabalho!");
-        setShowSummary(true);
+        if (p3Tasks.length === 0) {
+          showSuccess("Nenhuma tarefa para revisão semanal encontrada. Bom trabalho!");
+          setShowSummary(true);
+        }
+        setAllTasks(p3Tasks);
+      } else {
+        showError("Não foi possível carregar as tarefas do Todoist.");
+        navigate("/main-menu");
       }
-      setAllTasks(p3Tasks);
-    } else {
-      showError("Não foi possível carregar as tarefas do Todoist.");
+    } catch (error) {
+      console.error("SHITSUKEPage - Uncaught error in fetchP3Tasks:", error);
+      showError("Ocorreu um erro inesperado ao carregar as tarefas.");
       navigate("/main-menu");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [navigate]);
 
   useEffect(() => {

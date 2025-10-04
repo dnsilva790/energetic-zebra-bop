@@ -133,77 +133,83 @@ const SEITONPage = () => {
   const fetchAndSetupTasks = useCallback(async () => {
     setLoading(true);
     console.log("SEITONPage - fetchAndSetupTasks: Starting API call to get tasks.");
-    const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas...");
-    if (!fetchedTasks) {
-      showError("Não foi possível carregar as tarefas do Todoist.");
-      navigate("/main-menu");
-      setLoading(false);
-      return;
-    }
-
-    const activeTasks = fetchedTasks
-      .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-      .filter((task: TodoistTask) => !task.is_completed);
-    console.log("SEITONPage - Active tasks from API:", activeTasks.map(t => t.content));
-
-    setAllFetchedTasks(activeTasks);
-
-    const savedProgress = loadProgress();
-
-    let currentTournamentQueue: TodoistTask[] = [];
-    let currentRankedTasks: TodoistTask[] = [];
-    let currentP3Tasks: TodoistTask[] = [];
-    let currentChallenger: TodoistTask | null = null;
-    let currentOpponentIndex: number | null = null;
-    let currentStepState: SeitonStep = 'loading';
-    let currentComparisonHistory: ComparisonEntry[] = [];
-
-    if (savedProgress) {
-      currentTournamentQueue = savedProgress.tournamentQueue;
-      currentRankedTasks = savedProgress.rankedTasks;
-      currentP3Tasks = savedProgress.p3Tasks;
-      currentChallenger = savedProgress.currentChallenger;
-      currentOpponentIndex = savedProgress.currentOpponentIndex;
-      currentStepState = savedProgress.currentStep;
-      currentComparisonHistory = savedProgress.comparisonHistory || []; // Carregar histórico
-      console.log("SEITONPage - Loaded progress applied. Queue:", currentTournamentQueue.map(t => t.content), "Ranked:", currentRankedTasks.map(t => t.content), "P3:", currentP3Tasks.map(t => t.content));
-    }
-
-    const processedTaskIds = new Set<string>();
-    currentTournamentQueue.forEach(t => processedTaskIds.add(t.id));
-    currentRankedTasks.forEach(t => processedTaskIds.add(t.id));
-    currentP3Tasks.forEach(t => processedTaskIds.add(t.id));
-    if (currentChallenger) processedTaskIds.add(currentChallenger.id);
-    console.log("SEITONPage - Processed Task IDs (from loaded state):", Array.from(processedTaskIds));
-
-    const newTasks = activeTasks.filter(task => !processedTaskIds.has(task.id));
-    console.log("SEITONPage - New tasks to add to queue:", newTasks.map(t => t.content));
-
-    if (newTasks.length > 0) {
-      currentTournamentQueue = [...currentTournamentQueue, ...newTasks];
-      if (currentStepState === 'result' || (savedProgress && savedProgress.tournamentQueue.length === 0 && newTasks.length > 0)) {
-        currentStepState = 'tournamentComparison';
+    try {
+      const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas...");
+      if (!fetchedTasks) {
+        showError("Não foi possível carregar as tarefas do Todoist.");
+        navigate("/main-menu");
+        return;
       }
-      showSuccess(`${newTasks.length} novas tarefas adicionadas para triagem.`);
-    }
 
-    setTournamentQueue(currentTournamentQueue);
-    setRankedTasks(currentRankedTasks);
-    setP3Tasks(currentP3Tasks);
-    setCurrentChallenger(currentChallenger);
-    setCurrentOpponentIndex(currentOpponentIndex);
-    setCurrentStep(currentStepState);
-    setComparisonHistory(currentComparisonHistory); // Definir histórico
+      const activeTasks = fetchedTasks
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
+        .filter((task: TodoistTask) => !task.is_completed);
+      console.log("SEITONPage - Active tasks from API:", activeTasks.map(t => t.content));
 
-    if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0) {
-      showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
-      setCurrentStep('result');
-      localStorage.removeItem(SEITON_PROGRESS_KEY);
-    } else if (currentStepState === 'loading' && currentTournamentQueue.length > 0) {
-      setCurrentStep('tournamentComparison');
+      setAllFetchedTasks(activeTasks);
+
+      const savedProgress = loadProgress();
+
+      let currentTournamentQueue: TodoistTask[] = [];
+      let currentRankedTasks: TodoistTask[] = [];
+      let currentP3Tasks: TodoistTask[] = [];
+      let currentChallenger: TodoistTask | null = null;
+      let currentOpponentIndex: number | null = null;
+      let currentStepState: SeitonStep = 'loading';
+      let currentComparisonHistory: ComparisonEntry[] = [];
+
+      if (savedProgress) {
+        currentTournamentQueue = savedProgress.tournamentQueue;
+        currentRankedTasks = savedProgress.rankedTasks;
+        currentP3Tasks = savedProgress.p3Tasks;
+        currentChallenger = savedProgress.currentChallenger;
+        currentOpponentIndex = savedProgress.currentOpponentIndex;
+        currentStepState = savedProgress.currentStep;
+        currentComparisonHistory = savedProgress.comparisonHistory || []; // Carregar histórico
+        console.log("SEITONPage - Loaded progress applied. Queue:", currentTournamentQueue.map(t => t.content), "Ranked:", currentRankedTasks.map(t => t.content), "P3:", currentP3Tasks.map(t => t.content));
+      }
+
+      const processedTaskIds = new Set<string>();
+      currentTournamentQueue.forEach(t => processedTaskIds.add(t.id));
+      currentRankedTasks.forEach(t => processedTaskIds.add(t.id));
+      currentP3Tasks.forEach(t => processedTaskIds.add(t.id));
+      if (currentChallenger) processedTaskIds.add(currentChallenger.id);
+      console.log("SEITONPage - Processed Task IDs (from loaded state):", Array.from(processedTaskIds));
+
+      const newTasks = activeTasks.filter(task => !processedTaskIds.has(task.id));
+      console.log("SEITONPage - New tasks to add to queue:", newTasks.map(t => t.content));
+
+      if (newTasks.length > 0) {
+        currentTournamentQueue = [...currentTournamentQueue, ...newTasks];
+        if (currentStepState === 'result' || (savedProgress && savedProgress.tournamentQueue.length === 0 && newTasks.length > 0)) {
+          currentStepState = 'tournamentComparison';
+        }
+        showSuccess(`${newTasks.length} novas tarefas adicionadas para triagem.`);
+      }
+
+      setTournamentQueue(currentTournamentQueue);
+      setRankedTasks(currentRankedTasks);
+      setP3Tasks(currentP3Tasks);
+      setCurrentChallenger(currentChallenger);
+      setCurrentOpponentIndex(currentOpponentIndex);
+      setCurrentStep(currentStepState);
+      setComparisonHistory(currentComparisonHistory); // Definir histórico
+
+      if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0) {
+        showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
+        setCurrentStep('result');
+        localStorage.removeItem(SEITON_PROGRESS_KEY);
+      } else if (currentStepState === 'loading' && currentTournamentQueue.length > 0) {
+        setCurrentStep('tournamentComparison');
+      }
+    } catch (error) {
+      console.error("SEITONPage - Uncaught error in fetchAndSetupTasks:", error);
+      showError("Ocorreu um erro inesperado ao carregar as tarefas.");
+      navigate("/main-menu");
+    } finally {
+      setLoading(false);
+      console.log("SEITONPage - fetchAndSetupTasks: Finished, setLoading(false).");
     }
-    setLoading(false);
-    console.log("SEITONPage - fetchAndSetupTasks: Finished loading tasks. Final Queue:", currentTournamentQueue.map(t => t.content));
   }, [navigate, loadProgress]);
 
   useEffect(() => {
@@ -573,7 +579,7 @@ const SEITONPage = () => {
                 <h3 className="text-xl font-bold text-blue-700 mb-2">P3 (Média)</h3>
                 <ul className="list-disc list-inside space-y-1">
                   {p3Tasks.map((task) => (
-                    <li key={task.id} className="text-gray-800">{task.content}</li>
+                    <li key={task.id}>{task.content}</li>
                   ))}
                 </ul>
               </div>
