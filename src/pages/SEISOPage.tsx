@@ -64,32 +64,38 @@ const SEISOPage = () => {
    */
   const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
+    
+    // Ensure it's a non-empty string
+    if (typeof dateString !== 'string' || dateString.trim() === '') {
+      console.warn("formatDueDate received non-string or empty string:", dateString);
+      return "Data inválida";
+    }
+
     try {
       let dateToParse = dateString;
-      // Se a string de data tem componente de tempo mas não tem fuso horário explícito,
-      // assumimos que é UTC conforme a requisição do usuário ("todoist é utc 0").
+      // If the date string has a time component but no explicit timezone,
+      // assume it's UTC and append 'Z' to force parse as UTC.
       if (dateString.includes('T') && !dateString.endsWith('Z') && !dateString.includes('+') && !dateString.includes('-')) {
-        dateToParse = dateString + 'Z'; // Adiciona 'Z' para forçar parse como UTC
+        dateToParse = dateString + 'Z';
       }
 
       const parsedDate = parseISO(dateToParse);
 
       if (isNaN(parsedDate.getTime())) {
-        console.warn("Invalid date string received for formatting:", dateString);
+        console.warn("Invalid date string after parseISO:", dateToParse);
         return "Data inválida";
       }
 
-      // Converte a data parseada (agora corretamente interpretada como UTC ou seu fuso original)
-      // para o fuso horário de Brasília para exibição.
+      // Convert the parsed date to the Brasília timezone for display.
       const zonedDate = dateFnsTz.utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
 
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
-      // Formata a data já no fuso horário de Brasília
+      // Format the date in the Brasília timezone
       return dateFnsTz.formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
-    } catch (e) {
-      console.error("Error formatting date:", dateString, e);
+    } catch (e: any) {
+      console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";
     }
   };
