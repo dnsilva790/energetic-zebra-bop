@@ -12,7 +12,7 @@ import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import dateFnsTz from "date-fns-tz"; // Importar como default
+import * as dateFnsTz from "date-fns-tz"; // Importar como namespace
 
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)

@@ -23,7 +23,7 @@ import { isPast, parseISO, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import dateFnsTz from "date-fns-tz"; // Importar como default
+import * as dateFnsTz from "date-fns-tz"; // Importar como namespace
 
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
 
