@@ -215,37 +215,46 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
 
   return (
     <Card className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
-      <CardContent className="flex-grow p-0 overflow-hidden flex flex-col"> {/* Adicionado flex flex-col aqui */}
-        <ScrollArea className="flex-1 p-4" viewportRef={scrollAreaRef}> {/* Alterado para flex-1 */}
-          <div className="space-y-4">
-            {messages.map((msg, index) => (
-              <div key={index} className={cn(
-                "flex items-start gap-3",
-                msg.role === 'user' ? "justify-end" : "justify-start"
+      {/* Header div - atua como CardHeader */}
+      <div className="p-4 border-b flex items-center justify-between">
+        <h2 className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</h2>
+        <Button variant="ghost" onClick={onClose} className="p-2">
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Área de mensagens rolante - agora é o flex-1 direto */}
+      <ScrollArea className="flex-1 p-4" viewportRef={scrollAreaRef}>
+        <div className="space-y-4">
+          {messages.map((msg, index) => (
+            <div key={index} className={cn(
+              "flex items-start gap-3",
+              msg.role === 'user' ? "justify-end" : "justify-start"
+            )}>
+              {msg.role === 'model' && <Bot className="h-6 w-6 text-purple-600 flex-shrink-0" />}
+              <div className={cn(
+                "p-3 rounded-lg max-w-[70%]",
+                msg.role === 'user'
+                  ? "bg-blue-500 text-white rounded-br-none"
+                  : "bg-gray-200 text-gray-800 rounded-bl-none"
               )}>
-                {msg.role === 'model' && <Bot className="h-6 w-6 text-purple-600 flex-shrink-0" />}
-                <div className={cn(
-                  "p-3 rounded-lg max-w-[70%]",
-                  msg.role === 'user'
-                    ? "bg-blue-500 text-white rounded-br-none"
-                    : "bg-gray-200 text-gray-800 rounded-bl-none"
-                )}>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                </div>
-                {msg.role === 'user' && <User className="h-6 w-6 text-blue-600 flex-shrink-0" />}
+                <p className="whitespace-pre-wrap">{msg.content}</p>
               </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start items-center gap-3">
-                <Bot className="h-6 w-6 text-purple-600 animate-pulse" />
-                <div className="bg-gray-200 text-gray-800 p-3 rounded-lg rounded-bl-none">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
+              {msg.role === 'user' && <User className="h-6 w-6 text-blue-600 flex-shrink-0" />}
+            </div>
+          ))}
+          {isLoading && (
+            <div className="flex justify-start items-center gap-3">
+              <Bot className="h-6 w-6 text-purple-600 animate-pulse" />
+              <div className="bg-gray-200 text-gray-800 p-3 rounded-lg rounded-bl-none">
+                <Loader2 className="h-4 w-4 animate-spin" />
               </div>
-            )}
-          </div>
-        </ScrollArea>
-      </CardContent>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      {/* Rodapé com input e botões */}
       <div className="p-4 border-t flex items-center gap-2">
         <Input
           placeholder="Digite sua mensagem..."
