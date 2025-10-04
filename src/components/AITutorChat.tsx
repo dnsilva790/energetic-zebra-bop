@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Send } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner"; // Importar toast para feedback ao usuário
 
 interface Message {
   role: "user" | "ai";
@@ -15,6 +16,7 @@ interface Message {
 const AITutorChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputContent, setInputContent] = useState<string>("");
+  const [isSending, setIsSending] = useState<boolean>(false); // Novo estado para controlar o envio
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -25,17 +27,63 @@ const AITutorChat: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (inputContent.trim()) {
-      const newUserMessage: Message = { role: "user", content: inputContent.trim() };
-      setMessages((prevMessages) => [...prevMessages, newUserMessage]);
-      setInputContent("");
+  const sendMessageToTessAI = useCallback(async (currentConversation: Message[]) => {
+    setIsSending(true);
+    const tessAiKey = import.meta.env.VITE_TESS_AI_KEY; // Acessando a variável de ambiente
 
-      // Simulate AI response
-      setTimeout(() => {
-        const aiResponse: Message = { role: "ai", content: `Olá! Você disse: "${newUserMessage.content}". Como posso ajudar?` };
-        setMessages((prevMessages) => [...prevMessages, aiResponse]);
-      }, 1000);
+    if (!tessAiKey) {
+      toast.error("TESS_AI_KEY não configurada. Por favor, adicione-a ao seu arquivo .env (ex: VITE_TESS_AI_KEY=sua_chave).");
+      setIsSending(false);
+      return;
+    }
+
+    const loadingToastId = toast.loading("Aguardando resposta do Tutor de IA...");
+
+    try {
+      const response = await fetch("https://tess.pareto.io/api/agents/32502/execute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${tessAiKey}`,
+        },
+        body: JSON.stringify({
+          messages: currentConversation, // Envia o histórico COMPLETO
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Erro na API Tess.ai: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      // Assumindo que a resposta da IA está em data.text ou data.message
+      const aiResponseContent = data.text || data.message || "Não foi possível obter uma resposta do Tutor de IA.";
+
+      setMessages((prevMessages) => [...prevMessages, { role: "ai", content: aiResponseContent }]);
+      toast.dismiss(loadingToastId);
+      toast.success("Resposta do Tutor de IA recebida!");
+    } catch (error: any) {
+      console.error("Erro ao se comunicar com Tess.ai:", error);
+      toast.dismiss(loadingToastId);
+      toast.error(`Erro ao se comunicar com o Tutor de IA: ${error.message}`);
+    } finally {
+      setIsSending(false);
+    }
+  }, []);
+
+  const handleSendMessage = () => {
+    if (inputContent.trim() && !isSending) {
+      const newUserMessage: Message = { role: "user", content: inputContent.trim() };
+      
+      // Adiciona a mensagem do usuário imediatamente
+      setMessages((prevMessages) => {
+        const updatedMessages = [...prevMessages, newUserMessage];
+        // Chama a função de envio da API com o histórico atualizado
+        sendMessageToTessAI(updatedMessages);
+        return updatedMessages;
+      });
+      setInputContent("");
     }
   };
 
@@ -88,9 +136,10 @@ const AITutorChat: React.FC = () => {
           onChange={(e) => setInputContent(e.target.value)}
           onKeyDown={handleKeyDown}
           className="flex-grow mr-2"
+          disabled={isSending}
         />
-        <Button onClick={handleSendMessage} disabled={!inputContent.trim()}>
-          <Send className="h-4 w-4 mr-2" /> Enviar
+        <Button onClick={handleSendMessage} disabled={!inputContent.trim() || isSending}>
+          <Send className="h-4 w-4 mr-2" /> {isSending ? "Enviando..." : "Enviar"}
         </Button>
       </CardFooter>
     </Card>
