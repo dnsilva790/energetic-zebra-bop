@@ -75,6 +75,7 @@ const SEISOPage = () => {
   const [isCountdownActive, setIsCountdownActive] = useState(false);
   const [isCountdownPaused, setIsCountdownPaused] = useState(false);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const alarmAudioRef = useRef<HTMLAudioElement>(null); // Ref para o elemento de áudio
 
   // Reschedule Dialog states
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
@@ -246,6 +247,9 @@ const SEISOPage = () => {
     } else if (countdownTimeLeft === 0 && isCountdownActive) {
       setIsCountdownActive(false);
       showSuccess("Tempo esgotado para a tarefa!");
+      if (alarmAudioRef.current) {
+        alarmAudioRef.current.play().catch(e => console.error("Error playing alarm sound:", e));
+      }
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     }
 
@@ -288,6 +292,10 @@ const SEISOPage = () => {
     setIsCountdownActive(false);
     setIsCountdownPaused(false);
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (alarmAudioRef.current) {
+      alarmAudioRef.current.pause();
+      alarmAudioRef.current.currentTime = 0;
+    }
   }, []);
 
   const moveToNextTask = useCallback(() => {
@@ -718,6 +726,9 @@ const SEISOPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Hidden audio element for alarm */}
+      <audio ref={alarmAudioRef} src="/alarm.mp3" preload="auto" />
 
       <MadeWithDyad />
     </div>
