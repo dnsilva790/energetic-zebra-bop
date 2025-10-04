@@ -192,6 +192,16 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       return;
     }
 
+    // --- Nova verificação de token do Todoist no lado do cliente ---
+    const todoistToken = localStorage.getItem('todoist_token');
+    if (!todoistToken) {
+      console.error("Erro: Token do Todoist não encontrado no localStorage. Por favor, configure-o na página de Configurações.");
+      showError("Token do Todoist não encontrado. Por favor, configure-o na página de Configurações.");
+      setMessages(prev => [...prev, { role: 'model', content: "❌ Erro: Token do Todoist não configurado. Não foi possível enviar tarefas." }]);
+      return;
+    }
+    // --- Fim da nova verificação ---
+
     setIsLoading(true);
     try {
       const createdTasks = await handleApiCall(
@@ -259,7 +269,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t flex flex-col gap-2"> {/* Alterado para flex-col */}
+      <div className="p-4 border-t flex flex-col gap-2">
         <Input
           placeholder="Digite sua mensagem..."
           value={input}
@@ -268,14 +278,14 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
           className="flex-grow min-w-0"
           disabled={isLoading}
         />
-        <div className="flex gap-2 w-full"> {/* Novo div para os botões, ocupando a largura total */}
-          <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''} className="flex-1"> {/* flex-1 para dividir o espaço */}
+        <div className="flex gap-2 w-full">
+          <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''} className="flex-1">
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
           </Button>
           <Button 
             onClick={handleSendToTodoist} 
             disabled={isLoading || parsedMicroSteps.length === 0} 
-            className="bg-green-600 hover:bg-green-700 text-white flex-1" // flex-1 para dividir o espaço
+            className="bg-green-600 hover:bg-green-700 text-white flex-1"
           >
             <Check className="h-4 w-4 mr-2" /> Para Todoist
           </Button>
