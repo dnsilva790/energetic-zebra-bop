@@ -43,13 +43,16 @@ const SEITONPage = () => {
     console.log("SEITONPage - currentTaskIndex:", currentTaskIndex);
     console.log("SEITONPage - threeMinFilterTasks length:", threeMinFilterTasks.length);
     console.log("SEITONPage - tasksForPriorityAssignment length:", tasksForPriorityAssignment.length);
+    if (currentStep === 'priorityAssignment') {
+      console.log("SEITONPage - currentTaskForAssignment (after step change):", tasksForPriorityAssignment[currentTaskIndex]);
+    }
   }, [currentStep, currentTaskIndex, threeMinFilterTasks.length, tasksForPriorityAssignment.length]);
 
 
   const currentTask = threeMinFilterTasks[currentTaskIndex];
-  // Ensure currentTaskForAssignment is only accessed if currentStep is 'priorityAssignment'
+  // CORREÇÃO AQUI: Usar currentTaskIndex diretamente para tasksForPriorityAssignment
   const currentTaskForAssignment = currentStep === 'priorityAssignment' 
-    ? tasksForPriorityAssignment[currentTaskIndex - threeMinFilterTasks.length] 
+    ? tasksForPriorityAssignment[currentTaskIndex] 
     : undefined;
 
   /**
@@ -212,14 +215,14 @@ const SEITONPage = () => {
 
     // Move to next task for assignment
     const nextIndex = currentTaskIndex + 1;
-    if (nextIndex - threeMinFilterTasks.length < tasksForPriorityAssignment.length) {
+    if (nextIndex < tasksForPriorityAssignment.length) { // Corrected condition
       setCurrentTaskIndex(nextIndex);
       console.log("SEITONPage - handlePriorityAssignment: Moving to next task for priority assignment.");
     } else {
       setCurrentStep('result');
       console.log("SEITONPage - handlePriorityAssignment: All priority assignment tasks processed, moving to 'result'.");
     }
-  }, [currentTaskForAssignment, currentTaskIndex, threeMinFilterTasks.length, tasksForPriorityAssignment.length]);
+  }, [currentTaskForAssignment, currentTaskIndex, tasksForPriorityAssignment.length]); // Removed threeMinFilterTasks.length from dependency array
 
   useEffect(() => {
     console.log("SEITONPage - useEffect (keyboard shortcuts): Adding event listener.");
