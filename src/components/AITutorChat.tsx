@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Loader2, User, Bot, Check } from 'lucide-react';
+import { Send, Loader2, User, Bot, Check, X, AlertCircle } from 'lucide-react'; // Adicionado AlertCircle e X
 import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils';
 import { createTasks, handleApiCall } from '@/lib/todoistApi';
@@ -19,7 +19,7 @@ interface AITutorChatProps {
   taskTitle: string;
   taskDescription: string;
   onClose: () => void;
-  className?: string; // Adicionado para aceitar classes externas
+  className?: string;
 }
 
 // Helper function to parse AI response for tasks
@@ -29,25 +29,19 @@ const parseAiResponseForTasks = (responseText: string): { content: string; descr
 
   for (const line of lines) {
     const trimmedLine = line.trim();
-    // Look for lines that start with a list marker (-, *, or number followed by .)
     const listItemMatch = trimmedLine.match(/^(\s*[-*]|\s*\d+\.)\s*(.*)/);
     if (listItemMatch) {
       let contentAndDescription = listItemMatch[2].trim();
-
-      // Remove markdown bolding
       contentAndDescription = contentAndDescription.replace(/\*\*(.*?)\*\*/g, '$1').trim();
 
       let title = contentAndDescription;
       let description = '';
 
-      // Try to split by the first occurrence of a common separator (:, -, .)
-      // but only if it's followed by a space and then a word character, to avoid splitting mid-sentence.
       const separatorMatch = contentAndDescription.match(/^(.*?)\s*([:.-])\s*(.*)$/);
-      if (separatorMatch && separatorMatch[3]) { // Ensure there's content after the separator
+      if (separatorMatch && separatorMatch[3]) {
         title = separatorMatch[1].trim();
         description = separatorMatch[3].trim();
       } else {
-        // If no clear separator, treat the whole line as title, no description
         title = contentAndDescription;
         description = '';
       }
@@ -61,15 +55,42 @@ const parseAiResponseForTasks = (responseText: string): { content: string; descr
 };
 
 const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, onClose, className }) => {
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+  // --- Early exit if API key is missing ---
+  if (!GEMINI_API_KEY) {
+    return (
+      <Card className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h2 className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</h2>
+          <Button variant="ghost" onClick={onClose} className="p-2">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-red-600">
+          <AlertCircle className="h-12 w-12 mb-4" />
+          <p className="text-lg font-semibold">Erro de Configuração</p>
+          <p className="text-sm mt-2">
+            A chave da API do Gemini (<code>VITE_GEMINI_API_KEY</code>) não está configurada.
+            Por favor, adicione-a ao seu arquivo <code>.env</code> na raiz do projeto.
+          </p>
+          <p className="text-xs mt-2">
+            Exemplo: <code>VITE_GEMINI_API_KEY=SUA_CHAVE_AQUI</code>
+          </p>
+        </div>
+      </Card>
+    );
+  }
+  // --- End early exit ---
+
+  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [parsedMicroSteps, setParsedMicroSteps] = useState<{ content: string; description: string }[]>([]);
   const [initialAiResponseReceived, setInitialAiResponseReceived] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
@@ -80,7 +101,6 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, o
     }
   };
 
-  // Define a instrução do sistema fora do useEffect para evitar recriação desnecessária
   const initialSystemInstructionText = `# PERFIL E FUNÇÃO
 Você é um Tutor de Execução (Executive Coach) não-julgador e ESPECIALISTA em adultos com TDAH e desenvolvimento de software. Seu único objetivo é eliminar o atrito e guiar o usuário na ação imediata.
 
@@ -94,17 +114,10 @@ CONSCIÊNCIA TEMPORAL (Hiperfoco): A cada duas interações do usuário, insira 
 REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a descrição desse passo de forma clara e concisa (máximo 1 frase), pronta para ser usada como Título da Tarefa no Todoist. E, formule uma breve frase de motivação ou status (o 'Status da Tarefa') que será usada no campo de Descrição da tarefa no Todoist.`;
 
   const sendMessageToGemini = useCallback(async (userAndModelMessages: ChatMessage[]) => {
-    if (!GEMINI_API_KEY) {
-      showError("VITE_GEMINI_API_KEY não configurada. Por favor, adicione-a ao seu arquivo .env.");
-      setMessages(prev => [...prev, { role: 'model', content: "Erro: Chave API do Gemini não configurada." }]);
-      setIsLoading(false);
-      return;
-    }
-
     setIsLoading(true);
 
     const systemInstructionPart = {
-      role: 'user', // Usando 'user' role para a instrução do sistema
+      role: 'user',
       parts: [{ text: initialSystemInstructionText }],
     };
 
@@ -113,7 +126,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       parts: [{ text: msg.content }],
     }));
 
-    const contentsForApi = [systemInstructionPart, ...formattedContents]; // Prepend system instruction
+    const contentsForApi = [systemInstructionPart, ...formattedContents];
 
     try {
       const response = await fetch(GEMINI_API_URL, {
@@ -136,7 +149,6 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       
       setMessages(prev => {
         const newMessages = [...prev, { role: 'model', content: aiResponseContent }];
-        // Only parse the first AI response after the initial user prompt
         if (!initialAiResponseReceived && newMessages.filter(m => m.role === 'model').length === 1) {
             const extractedTasks = parseAiResponseForTasks(aiResponseContent);
             setParsedMicroSteps(extractedTasks);
@@ -152,15 +164,11 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     } finally {
       setIsLoading(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, initialAiResponseReceived, initialSystemInstructionText]);
+  }, [GEMINI_API_URL, initialAiResponseReceived, initialSystemInstructionText]);
 
   useEffect(() => {
     const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
-
-    // Apenas adiciona o prompt do usuário ao estado de mensagens (não a instrução do sistema)
     setMessages([{ role: 'user', content: initialUserPrompt }]);
-    
-    // Chama sendMessageToGemini com o prompt inicial do usuário; a instrução do sistema será prepended internamente
     sendMessageToGemini([{ role: 'user', content: initialUserPrompt }]);
   }, [taskTitle, taskDescription, sendMessageToGemini]);
 
@@ -185,7 +193,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       return;
     }
 
-    setIsLoading(true); // Disable input/button during API call
+    setIsLoading(true);
     try {
       const createdTasks = await handleApiCall(
         () => createTasks(parsedMicroSteps),
@@ -195,7 +203,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
 
       if (createdTasks) {
         setMessages(prev => [...prev, { role: 'model', content: "✅ Micro-passos enviados para o Todoist!" }]);
-        setParsedMicroSteps([]); // Clear parsed steps after sending
+        setParsedMicroSteps([]);
       } else {
         setMessages(prev => [...prev, { role: 'model', content: "❌ Falha ao enviar micro-passos para o Todoist." }]);
       }
@@ -215,7 +223,6 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
 
   return (
     <Card className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
-      {/* Header div - atua como CardHeader */}
       <div className="p-4 border-b flex items-center justify-between">
         <h2 className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</h2>
         <Button variant="ghost" onClick={onClose} className="p-2">
@@ -223,7 +230,6 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
         </Button>
       </div>
 
-      {/* Área de mensagens rolante - agora é o flex-1 direto */}
       <ScrollArea className="flex-1 p-4" viewportRef={scrollAreaRef}>
         <div className="space-y-4">
           {messages.map((msg, index) => (
@@ -254,7 +260,6 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
         </div>
       </ScrollArea>
 
-      {/* Rodapé com input e botões */}
       <div className="p-4 border-t flex items-center gap-2">
         <Input
           placeholder="Digite sua mensagem..."
