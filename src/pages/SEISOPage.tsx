@@ -596,11 +596,8 @@ const SEISOPage = () => {
       <MadeWithDyad />
 
       <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
-        <SheetContent className="flex flex-col"> {/* Alterado aqui */}
-          <SheetHeader className="p-4 border-b">
-            <SheetTitle className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</SheetTitle>
-            <SheetDescription className="sr-only">Chat com o Tutor de IA para assistência na tarefa.</SheetDescription>
-          </SheetHeader>
+        <SheetContent className="flex flex-col"> {/* Removido p-0 e larguras explícitas */}
+          {/* Removido SheetHeader */}
           {currentTask && (
             <AITutorChat
               taskTitle={currentTask.content}
