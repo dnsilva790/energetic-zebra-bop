@@ -93,19 +93,24 @@ const SHITSUKEPage = () => {
       const p3Tasks = fetchedTasks
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => {
-          const isLowPriority = task.priority === 1 || task.priority === 2;
-          const hasNoDueDate = !task.due;
-          
-          // Para verificar se está "atrasada" no fuso horário de Brasília
-          const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
-          let isOverdue = false;
-          if (taskDueDate) {
-            const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
-            const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
-            isOverdue = isPast(zonedTaskDate, { now: nowZoned });
-          }
+          try {
+            const isLowPriority = task.priority === 1 || task.priority === 2;
+            const hasNoDueDate = !task.due;
+            
+            // Para verificar se está "atrasada" no fuso horário de Brasília
+            let isOverdue = false;
+            const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
+            if (taskDueDate) {
+              const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
+              const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
+              isOverdue = isPast(zonedTaskDate, { now: nowZoned });
+            }
 
-          return isLowPriority || hasNoDueDate || isOverdue;
+            return isLowPriority || hasNoDueDate || isOverdue;
+          } catch (e: any) {
+            console.error("SHITSUKEPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
+            return false; // Exclui a tarefa se houver erro no processamento da data
+          }
         });
 
       if (p3Tasks.length === 0) {

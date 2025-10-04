@@ -56,7 +56,7 @@ const SEISOPage = () => {
   const currentTask = allTasks[currentTaskIndex];
 
   // Adicionando log para o estado de carregamento e renderização
-  console.log("SEISOPage - Render. Loading:", loading, "isSessionFinished:", isSessionFinished, "currentTask:", currentTask?.content);
+  console.log("SEISOPage - Component Rendered. Loading:", loading, "isSessionFinished:", isSessionFinished, "allTasks.length:", allTasks.length, "currentTaskIndex:", currentTaskIndex, "currentTask:", currentTask?.content);
 
   /**
    * Formats a date string, handling potential time components and invalid dates.
@@ -104,8 +104,8 @@ const SEISOPage = () => {
   };
 
   const fetchTasksForToday = useCallback(async () => {
+    console.log("SEISOPage - fetchTasksForToday called.");
     setLoading(true);
-    console.log("SEISOPage - fetchTasksForToday: Starting.");
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para hoje...");
     console.log("SEISOPage - fetchTasksForToday: handleApiCall returned:", fetchedTasks ? `${fetchedTasks.length} tasks` : "undefined");
 
@@ -114,30 +114,41 @@ const SEISOPage = () => {
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => !task.is_completed)
         .filter((task: TodoistTask) => {
-          // Para verificar se é "hoje" no fuso horário de Brasília
-          const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
-          if (taskDueDate) {
-            const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
-            const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
-            const isTaskDueToday = isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
-            console.log(`SEISOPage - Task: ${task.content}, DueDate: ${task.due?.date}, ZonedDate: ${zonedTaskDate}, IsToday: ${isTaskDueToday}`);
-            return isTaskDueToday;
+          try {
+            const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
+            if (taskDueDate) {
+              const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
+              const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
+              const isTaskDueToday = isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
+              console.log(`SEISOPage - Task: ${task.content}, DueDate: ${task.due?.date}, ZonedDate: ${zonedTaskDate}, IsToday: ${isTaskDueToday}`);
+              return isTaskDueToday;
+            }
+            // Inclui tarefas sem data de vencimento
+            console.log(`SEISOPage - Task: ${task.content}, No DueDate. Including.`);
+            return !task.due; 
+          } catch (e: any) {
+            console.error("SEISOPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
+            return false; // Exclui a tarefa se houver erro no processamento da data
           }
-          // Inclui tarefas sem data de vencimento
-          console.log(`SEISOPage - Task: ${task.content}, No DueDate. Including.`);
-          return !task.due; 
         });
 
       console.log("SEISOPage - fetchTasksForToday: Filtered tasks count:", filteredTasks.length);
       if (filteredTasks.length === 0) {
         showSuccess("Nenhuma tarefa para hoje! Aproveite o dia ou adicione novas tarefas.");
         setIsSessionFinished(true);
-        console.log("SEISOPage - fetchTasksForToday: No tasks, setting isSessionFinished to true.");
+        setAllTasks([]); // Explicitamente define como array vazio
+        console.log("SEISOPage - fetchTasksForToday: No tasks, setting isSessionFinished to true and allTasks to empty.");
+      } else {
+        setAllTasks(filteredTasks);
+        setIsSessionFinished(false); // Garante que não está no estado de sessão finalizada
+        setCurrentTaskIndex(0); // Reseta o índice para a primeira tarefa
+        console.log("SEISOPage - fetchTasksForToday: Tasks found, setting allTasks and resetting index.");
       }
-      setAllTasks(filteredTasks);
     } else {
       showError("Não foi possível carregar as tarefas do Todoist.");
       navigate("/main-menu");
+      setAllTasks([]); // Explicitamente define como array vazio em caso de erro
+      setIsSessionFinished(false); // Garante que não está no estado de sessão finalizada em caso de erro
       console.log("SEISOPage - fetchTasksForToday: API call failed, navigating to main-menu.");
     }
     setLoading(false);

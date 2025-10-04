@@ -92,14 +92,19 @@ const SEIKETSUPage = () => {
       const tasksDueToday = fetchedTasks
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => {
-          // Para verificar se é "hoje" no fuso horário de Brasília
-          const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
-          if (taskDueDate) {
-            const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
-            const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
-            return isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
+          try {
+            // Para verificar se é "hoje" no fuso horário de Brasília
+            const taskDueDate = task.due?.date ? parseISO(task.due.date) : null;
+            if (taskDueDate) {
+              const zonedTaskDate = dateFnsTz.utcToZonedTime(taskDueDate, BRASILIA_TIMEZONE);
+              const nowZoned = dateFnsTz.utcToZonedTime(new Date(), BRASILIA_TIMEZONE);
+              return isToday(zonedTaskDate, { locale: ptBR, now: nowZoned });
+            }
+            return false; // Tarefas sem data de vencimento não são consideradas "para hoje" nesta tela
+          } catch (e: any) {
+            console.error("SEIKETSUPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
+            return false; // Exclui a tarefa se houver erro no processamento da data
           }
-          return false; // Tarefas sem data de vencimento não são consideradas "para hoje" nesta tela
         });
       setTasksForToday(tasksDueToday);
 
