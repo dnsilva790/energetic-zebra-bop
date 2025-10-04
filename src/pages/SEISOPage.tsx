@@ -17,7 +17,7 @@ import { format, parseISO, setHours, setMinutes, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import * as dateFnsTz from "date-fns-tz";
+import { utcToZonedTime, formatInTimeZone } from "date-fns-tz"; // Importar funções específicas
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -99,11 +99,11 @@ const SEISOPage = () => {
         return "Data inválida";
       }
 
-      const zonedDate = dateFnsTz.utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
+      const zonedDate = utcToZonedTime(parsedDate, BRASILIA_TIMEZONE);
       const hasTime = dateString.includes('T') || dateString.includes(':');
       const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 
-      return dateFnsTz.formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
+      return formatInTimeZone(zonedDate, BRASILIA_TIMEZONE, formatString, { locale: ptBR });
     } catch (e: any) {
       console.error("Error formatting date:", dateString, "Error details:", e.message, e);
       return "Erro de data";
@@ -296,7 +296,7 @@ const SEISOPage = () => {
         let dateWithTime = setHours(selectedDueDate, hours);
         dateWithTime = setMinutes(dateWithTime, minutes);
         // Todoist API expects ISO format, often UTC for dates with time
-        newDueDateString = dateFnsTz.formatInTimeZone(dateWithTime, BRASILIA_TIMEZONE, "yyyy-MM-dd'T'HH:mm:ss");
+        newDueDateString = formatInTimeZone(dateWithTime, BRASILIA_TIMEZONE, "yyyy-MM-dd'T'HH:mm:ss");
       }
     }
 
