@@ -4,32 +4,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, LayoutDashboard, ExternalLink } from "lucide-react"; // Importar ExternalLink
+import { ArrowLeft, LayoutDashboard, ExternalLink } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, getProjects, moveTaskToProject, handleApiCall } from "@/lib/todoistApi";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-interface TodoistTask {
-  id: string;
-  content: string;
-  description?: string;
-  due?: {
-    date: string;
-    string: string;
-    lang: string;
-    is_recurring: boolean;
-  } | null;
-  project_id: string;
-  project_name?: string; // Adicionado para facilitar a exibição
-  classificacao?: 'essencial' | 'descartavel'; // Classificação interna do app
-}
-
-interface TodoistProject {
-  id: string;
-  name: string;
-  color: string;
-}
+import { TodoistTask, TodoistProject } from "@/lib/types";
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
 
 const SEITONPage = () => {
   const navigate = useNavigate();
@@ -48,11 +29,13 @@ const SEITONPage = () => {
 
       if (fetchedTasks && fetchedProjects) {
         setProjects(fetchedProjects);
-        // Mapear nomes de projeto para as tarefas
-        const tasksWithProjectNames = fetchedTasks.map((task: any) => ({
-          ...task,
-          project_name: fetchedProjects.find((p: TodoistProject) => p.id === task.project_id)?.name || "Caixa de Entrada"
-        }));
+        // Mapear nomes de projeto para as tarefas e aplicar o filtro
+        const tasksWithProjectNames = fetchedTasks
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+          .map((task: TodoistTask) => ({
+            ...task,
+            project_name: fetchedProjects.find((p: TodoistProject) => p.id === task.project_id)?.name || "Caixa de Entrada"
+          }));
         setActiveTasks(tasksWithProjectNames);
       } else {
         showError("Não foi possível carregar tarefas ou projetos do Todoist.");

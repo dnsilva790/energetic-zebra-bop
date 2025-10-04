@@ -20,7 +20,8 @@ import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, updateTask, handleApiCall } from "@/lib/todoistApi";
 import { isPast, parseISO } from "date-fns";
-import { TodoistTask } from "@/lib/types"; // Importar o tipo
+import { TodoistTask } from "@/lib/types";
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
 
 const SHITSUKEPage = () => {
   const navigate = useNavigate();
@@ -44,12 +45,14 @@ const SHITSUKEPage = () => {
       // - Prioridade 1 ou 2 (baixa/média)
       // - Ou tarefas sem data de vencimento
       // - Ou tarefas que estão atrasadas (passaram da data de vencimento)
-      const p3Tasks = fetchedTasks.filter((task: TodoistTask) => { // Usar TodoistTask aqui
-        const isLowPriority = task.priority === 1 || task.priority === 2;
-        const hasNoDueDate = !task.due;
-        const isOverdue = task.due && isPast(parseISO(task.due.date));
-        return isLowPriority || hasNoDueDate || isOverdue;
-      });
+      const p3Tasks = fetchedTasks
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+        .filter((task: TodoistTask) => {
+          const isLowPriority = task.priority === 1 || task.priority === 2;
+          const hasNoDueDate = !task.due;
+          const isOverdue = task.due && isPast(parseISO(task.due.date));
+          return isLowPriority || hasNoDueDate || isOverdue;
+        });
 
       if (p3Tasks.length === 0) {
         showSuccess("Nenhuma tarefa para revisão semanal encontrada. Bom trabalho!");
@@ -198,7 +201,7 @@ const SHITSUKEPage = () => {
                     Vencimento: <span className="font-medium text-gray-700">{new Date(currentTask.due.date).toLocaleDateString()}</span>
                   </p>
                 )}
-                {currentTask.deadline && ( // Exibir o campo deadline
+                {currentTask.deadline && (
                   <p className="text-md text-gray-500">
                     Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
                   </p>

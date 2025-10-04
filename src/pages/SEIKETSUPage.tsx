@@ -11,7 +11,8 @@ import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, updateTaskDueDate, handleApiCall } from "@/lib/todoistApi";
 import { isToday, parseISO, format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { TodoistTask } from "@/lib/types"; // Importar o tipo
+import { TodoistTask } from "@/lib/types";
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
 
 const motivationalMessages = [
   "Bom trabalho hoje! 🌟",
@@ -41,9 +42,11 @@ const SEIKETSUPage = () => {
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas do dia...");
     if (fetchedTasks) {
       const today = new Date();
-      const tasksDueToday = fetchedTasks.filter((task: TodoistTask) => 
-        task.due && isToday(parseISO(task.due.date))
-      );
+      const tasksDueToday = fetchedTasks
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+        .filter((task: TodoistTask) => 
+          task.due && isToday(parseISO(task.due.date))
+        );
       setTasksForToday(tasksDueToday);
 
       const completed = tasksDueToday.filter(task => task.is_completed).length;
@@ -198,7 +201,7 @@ const SEIKETSUPage = () => {
                     className={`text-lg font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2 ${getPriorityColor(task.priority)}`}
                   >
                     {task.content} ({getPriorityLabel(task.priority)})
-                    {task.deadline && ( // Exibir o campo deadline
+                    {task.deadline && (
                       <span className="text-sm text-gray-500 ml-2">
                         (Limite: {new Date(task.deadline).toLocaleDateString()})
                       </span>

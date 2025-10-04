@@ -11,7 +11,8 @@ import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
 import { format, isToday, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { TodoistTask } from "@/lib/types"; // Importar o tipo
+import { TodoistTask } from "@/lib/types";
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
 
@@ -62,10 +63,12 @@ const SEISOPage = () => {
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para hoje...");
     if (fetchedTasks) {
       const today = new Date();
-      const filteredTasks = fetchedTasks.filter((task: TodoistTask) => { // Usar TodoistTask aqui
-        // Include tasks due today or tasks with no due date
-        return (task.due && isToday(parseISO(task.due.date))) || !task.due;
-      });
+      const filteredTasks = fetchedTasks
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+        .filter((task: TodoistTask) => {
+          // Include tasks due today or tasks with no due date
+          return (task.due && isToday(parseISO(task.due.date))) || !task.due;
+        });
 
       if (filteredTasks.length === 0) {
         showSuccess("Nenhuma tarefa para hoje! Aproveite o dia ou adicione novas tarefas.");
@@ -329,7 +332,7 @@ const SEISOPage = () => {
                     Vencimento: <span className="font-medium text-gray-700">{format(parseISO(currentTask.due.date), "dd/MM/yyyy", { locale: ptBR })}</span>
                   </p>
                 )}
-                {currentTask.deadline && ( // Exibir o campo deadline
+                {currentTask.deadline && (
                   <p className="text-sm text-gray-500">
                     Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
                   </p>

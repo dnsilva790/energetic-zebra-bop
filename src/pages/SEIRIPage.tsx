@@ -19,7 +19,8 @@ import {
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, getProjects, completeTask, handleApiCall } from "@/lib/todoistApi";
-import { TodoistTask, TodoistProject } from "@/lib/types"; // Importar os tipos
+import { TodoistTask, TodoistProject } from "@/lib/types";
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
 
@@ -91,13 +92,15 @@ const SEIRIPage = () => {
 
       if (tasks && projects) {
         const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
-        const tasksWithProjectNames = tasks.map((task: TodoistTask) => { // Usar TodoistTask aqui
-          const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
-          return {
-            ...task,
-            project_name: projectName
-          };
-        });
+        const tasksWithProjectNames = tasks
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+          .map((task: TodoistTask) => {
+            const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
+            return {
+              ...task,
+              project_name: projectName
+            };
+          });
         setAllTasks(tasksWithProjectNames);
         if (tasksWithProjectNames.length === 0) {
           setShowSummary(true);
@@ -255,7 +258,7 @@ const SEIRIPage = () => {
                       Vencimento: <span className="font-medium text-gray-700">{new Date(currentTask.due.date).toLocaleDateString()}</span>
                     </p>
                   )}
-                  {currentTask.deadline && ( // Exibir o campo deadline
+                  {currentTask.deadline && (
                     <p className="text-sm text-gray-500">
                       Data Limite: <span className="font-medium text-gray-700">{new Date(currentTask.deadline).toLocaleDateString()}</span>
                     </p>
