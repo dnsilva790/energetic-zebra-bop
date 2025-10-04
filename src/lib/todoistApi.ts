@@ -44,6 +44,39 @@ export async function handleApiCall<T>(apiFunction: () => Promise<T>, loadingMes
 }
 
 // Funções específicas da API do Todoist
+
+/**
+ * Cria uma ou mais tarefas no Todoist através do endpoint Serverless.
+ * @param tasks Um array de objetos de tarefa a serem criados.
+ * @returns Um array das tarefas criadas ou undefined em caso de erro.
+ */
+export async function createTasks(tasks: any[]): Promise<TodoistTask[] | undefined> {
+  try {
+    const response = await fetch('/api/todoist', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(tasks),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Erro ao criar tarefas: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (result.status === 'error') {
+      throw new Error(result.message || 'Erro ao criar algumas tarefas.');
+    }
+    return result.tasks;
+  } catch (error: any) {
+    console.error("Client-side error calling /api/todoist:", error);
+    throw error; // Re-throw para ser capturado por handleApiCall
+  }
+}
+
+
 export async function getTasks(filter?: string): Promise<TodoistTask[]> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
