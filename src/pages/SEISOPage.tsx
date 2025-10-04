@@ -357,7 +357,8 @@ const SEISOPage = () => {
       return;
     }
 
-    const prompt = `Preciso de ajuda para focar nesta tarefa: "${currentTask.content}". A descrição é: "${currentTask.description || 'Nenhuma descrição fornecida.'}". Dê-me algumas dicas práticas e acionáveis para pessoas com TDAH, focando em como iniciar, manter o foco e concluir esta tarefa específica. Seja conciso e direto.`;
+    // Novo prompt formatado conforme a especificação
+    const prompt = `A tarefa atual é: ${currentTask.content}. A descrição é: ${currentTask.description || 'Nenhuma descrição fornecida.'}. Por favor, me guie em micro-passos.`;
 
     try {
       const response = await fetch("https://tess.pareto.io/api/agents/32502/execute", {
@@ -367,7 +368,7 @@ const SEISOPage = () => {
           "Authorization": `Bearer ${tessAiKey}`,
         },
         body: JSON.stringify({
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: prompt }], // Payload adaptado
         }),
       });
 
