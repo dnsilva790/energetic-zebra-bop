@@ -124,9 +124,9 @@ const SEISOPage = () => {
                 console.log(`SEISOPage - Task: ${task.content}, DueDate: ${task.due?.date}, ZonedDate: ${zonedTaskDate}, IsToday: ${isTaskDueToday}`);
                 return isTaskDueToday;
               }
-              // Inclui tarefas sem data de vencimento
-              console.log(`SEISOPage - Task: ${task.content}, No DueDate. Including.`);
-              return !task.due; 
+              // Exclui tarefas sem data de vencimento para SEISO
+              console.log(`SEISOPage - Task: ${task.content}, No DueDate. Excluding.`);
+              return false; 
             } catch (e: any) {
               console.error("SEISOPage - Error during date filtering for task:", task.content, "Error details:", e.message, e);
               return false; // Exclui a tarefa se houver erro no processamento da data
