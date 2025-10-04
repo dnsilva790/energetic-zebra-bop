@@ -7,26 +7,24 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon, ExternalLink, Repeat } from "lucide-react";
+import {
+  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat
+} from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
-import { format, parseISO } from "date-fns";
+import { getTasks, completeTask, handleApiCall, updateTaskDueDate } from "@/lib/todoistApi";
+import { format, parseISO, setHours, setMinutes, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
-// import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Não será mais usado para esta lógica específica
-import * as dateFnsTz from "date-fns-tz"; // Importar como wildcard
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
+import * as dateFnsTz from "date-fns-tz";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils"; // Para estilização do popover do calendário
 
-const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
-const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
-const SEISO_FILTER_KEY = 'seiso_filter_input'; // Chave para o localStorage
-
-const parseTimeEstimate = (task: TodoistTask): number => {
-  if (task.priority === 4) return 45 * 60; // P1 (highest) -> 45 min
-  if (task.priority === 3) return 25 * 60; // P2 -> 25 min
-  if (task.priority === 2) return 15 * 60; // P3 -> 15 min
-  return 10 * 60; // P4 (lowest) or no priority -> 10 min
-};
+const BRASILIA_TIMEZONE = 'America/Sao_Paulo';
+const SEISO_FILTER_KEY = 'seiso_filter_input';
 
 const formatTime = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
@@ -48,9 +46,8 @@ const shuffleArray = (array: any[]) => {
 const SEISOPage = () => {
   const navigate = useNavigate();
   const [filterInput, setFilterInput] = useState(() => {
-    // Carregar o filtro salvo do localStorage ao inicializar o estado
     const savedFilter = localStorage.getItem(SEISO_FILTER_KEY);
-    return savedFilter || "today | overdue"; // Valor padrão se não houver filtro salvo
+    return savedFilter || "today | overdue";
   });
   const [sessionStarted, setSessionStarted] = useState(false);
   const [allTasks, setAllTasks] = useState<TodoistTask[]>([]);
@@ -58,27 +55,25 @@ const SEISOPage = () => {
   const [otherTasks, setOtherTasks] = useState<TodoistTask[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [tasksCompleted, setTasksCompleted] = useState(0);
-  // const [showCelebration, setShowCelebration] = useState(false); // Removido
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
 
-  const [pomodoroTimeLeft, setPomodoroTimeLeft] = useState(POMODORO_DURATION);
-  const [isPomodoroActive, setIsPomodoroActive] = useState(false);
-  const [isPomodoroPaused, setIsPomodoroPaused] = useState(false);
-  const pomodoroTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // New Countdown Timer states
+  const [countdownInputDuration, setCountdownInputDuration] = useState("25"); // em minutos
+  const [countdownTimeLeft, setCountdownTimeLeft] = useState(0); // em segundos
+  const [isCountdownActive, setIsCountdownActive] = useState(false);
+  const [isCountdownPaused, setIsCountdownPaused] = useState(false);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [taskTimeElapsed, setTaskTimeElapsed] = useState(0);
-  const [isTaskActive, setIsTaskActive] = useState(false);
-  const [isTaskPaused, setIsTaskPaused] = useState(false);
-  const taskTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const [currentTaskEstimate, setCurrentTaskEstimate] = useState(0);
+  // Reschedule Dialog states
+  const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
+  const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
+  const [selectedDueTime, setSelectedDueTime] = useState<string>(""); // ex: "10:00"
 
   const totalTasks = p1Tasks.length + otherTasks.length;
   const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
 
-  // Efeito para salvar o filtro no localStorage sempre que ele mudar
   useEffect(() => {
     localStorage.setItem(SEISO_FILTER_KEY, filterInput);
   }, [filterInput]);
@@ -143,25 +138,24 @@ const SEISOPage = () => {
 
       if (fetchedTasks) {
         const filteredAndCleanedTasks = fetchedTasks
-          .filter((task: TodoistTask) => task.parent_id === null) // Excluir apenas subtarefas
-          .filter((task: TodoistTask) => !task.is_completed); // Excluir tarefas concluídas
+          .filter((task: TodoistTask) => task.parent_id === null)
+          .filter((task: TodoistTask) => !task.is_completed);
 
         const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
         const others = shuffleArray(filteredAndCleanedTasks.filter(task => task.priority !== 4));
 
         setP1Tasks(p1);
         setOtherTasks(others);
-        setAllTasks([...p1, ...others]); // For total count reference
+        setAllTasks([...p1, ...others]);
 
         if (p1.length === 0 && others.length === 0) {
           showSuccess("Nenhuma tarefa encontrada com o filtro fornecido. Tente outro!");
           setIsSessionFinished(true);
-          setSessionStarted(false); // Go back to filter input
+          setSessionStarted(false);
         } else {
           setSessionStarted(true);
           setCurrentTaskIndex(0);
           setTasksCompleted(0);
-          // setShowCelebration(false); // Removido
           setIsSessionFinished(false);
           showSuccess(`Sessão iniciada com ${p1.length + others.length} tarefas.`);
         }
@@ -180,112 +174,76 @@ const SEISOPage = () => {
     }
   }, [filterInput]);
 
+  // Initialize countdown timer when current task changes or session starts
   useEffect(() => {
-    if (currentTask) {
-      const timeInSeconds = parseTimeEstimate(currentTask);
-      setCurrentTaskEstimate(timeInSeconds);
-
-      setPomodoroTimeLeft(POMODORO_DURATION);
-      setIsPomodoroActive(false);
-      setIsPomodoroPaused(false);
-      if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
-
-      setTaskTimeElapsed(0);
-      setIsTaskActive(false);
-      setIsTaskPaused(false);
-      if (taskTimerRef.current) clearInterval(taskTimerRef.current);
+    if (currentTask && sessionStarted) {
+      const initialDuration = parseInt(countdownInputDuration) * 60;
+      setCountdownTimeLeft(initialDuration > 0 ? initialDuration : 0);
+      setIsCountdownActive(false);
+      setIsCountdownPaused(false);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     }
-  }, [currentTaskIndex, currentTask]);
+  }, [currentTask, sessionStarted, countdownInputDuration]);
 
+  // Countdown Timer logic
   useEffect(() => {
-    if (isPomodoroActive && pomodoroTimeLeft > 0) {
-      pomodoroTimerRef.current = setInterval(() => {
-        setPomodoroTimeLeft((prevTime) => prevTime - 1);
+    if (isCountdownActive && countdownTimeLeft > 0) {
+      countdownTimerRef.current = setInterval(() => {
+        setCountdownTimeLeft((prevTime) => prevTime - 1);
       }, 1000);
-    } else if (pomodoroTimeLeft === 0 && isPomodoroActive) {
-      setIsPomodoroActive(false);
-      showSuccess("Pomodoro concluído! Hora de uma pausa.");
-      if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
+    } else if (countdownTimeLeft === 0 && isCountdownActive) {
+      setIsCountdownActive(false);
+      showSuccess("Tempo esgotado para a tarefa!");
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     }
 
     return () => {
-      if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     };
-  }, [isPomodoroActive, pomodoroTimeLeft]);
+  }, [isCountdownActive, countdownTimeLeft]);
 
-  useEffect(() => {
-    if (isTaskActive) {
-      taskTimerRef.current = setInterval(() => {
-        setTaskTimeElapsed((prevTime) => prevTime + 1);
-      }, 1000);
+  const startCountdown = useCallback(() => {
+    if (countdownTimeLeft > 0) {
+      setIsCountdownActive(true);
+      setIsCountdownPaused(false);
+    } else {
+      const initialDuration = parseInt(countdownInputDuration) * 60;
+      if (initialDuration > 0) {
+        setCountdownTimeLeft(initialDuration);
+        setIsCountdownActive(true);
+        setIsCountdownPaused(false);
+      } else {
+        showError("Por favor, insira um tempo válido para o contador.");
+      }
     }
+  }, [countdownTimeLeft, countdownInputDuration]);
 
-    return () => {
-      if (taskTimerRef.current) clearInterval(taskTimerRef.current);
-    };
-  }, [isTaskActive]);
-
-  const startPomodoro = useCallback(() => {
-    if (pomodoroTimeLeft > 0) {
-      setIsPomodoroActive(true);
-      setIsPomodoroPaused(false);
-    }
-  }, [pomodoroTimeLeft]);
-
-  const pausePomodoro = useCallback(() => {
-    setIsPomodoroActive(false);
-    setIsPomodoroPaused(true);
-    if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
+  const pauseCountdown = useCallback(() => {
+    setIsCountdownActive(false);
+    setIsCountdownPaused(true);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
   }, []);
 
-  const resetPomodoro = useCallback(() => {
-    setIsPomodoroActive(false);
-    setIsPomodoroPaused(false);
-    setPomodoroTimeLeft(POMODORO_DURATION);
-    if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
-  }, []);
-
-  const startTaskTimer = useCallback(() => {
-    setIsTaskActive(true);
-    setIsTaskPaused(false);
-  }, []);
-
-  const pauseTaskTimer = useCallback(() => {
-    setIsTaskActive(false);
-    setIsTaskPaused(true);
-    if (taskTimerRef.current) clearInterval(taskTimerRef.current);
-  }, []);
-
-  const resetTaskTimer = useCallback(() => {
-    setIsTaskActive(false);
-    setIsTaskPaused(false);
-    setTaskTimeElapsed(0);
-    if (taskTimerRef.current) clearInterval(taskTimerRef.current);
-  }, []);
-
-  const addFifteenMinutes = useCallback(() => {
-    setCurrentTaskEstimate((prevEstimate) => prevEstimate + 15 * 60);
-    showSuccess("+15 minutos adicionados à estimativa da tarefa!");
-  }, []);
+  const resetCountdown = useCallback(() => {
+    setIsCountdownActive(false);
+    setIsCountdownPaused(false);
+    const initialDuration = parseInt(countdownInputDuration) * 60;
+    setCountdownTimeLeft(initialDuration > 0 ? initialDuration : 0);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+  }, [countdownInputDuration]);
 
   const stopAllTimers = useCallback(() => {
-    setIsPomodoroActive(false);
-    setIsPomodoroPaused(false);
-    if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
-
-    setIsTaskActive(false);
-    setIsTaskPaused(false);
-    if (taskTimerRef.current) clearInterval(taskTimerRef.current);
+    setIsCountdownActive(false);
+    setIsCountdownPaused(false);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
   }, []);
 
   const moveToNextTask = useCallback(() => {
     stopAllTimers();
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
-      // setShowCelebration(false); // Removido
     } else {
       setIsSessionFinished(true);
-      // setShowCelebration(false); // Removido
     }
   }, [currentTaskIndex, totalTasks, stopAllTimers]);
 
@@ -294,9 +252,8 @@ const SEISOPage = () => {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
       if (success) {
         setTasksCompleted(tasksCompleted + 1);
-        // setShowCelebration(true); // Removido
         stopAllTimers();
-        moveToNextTask(); // Move directly to the next task
+        moveToNextTask();
       } else {
         showError("Falha ao concluir a tarefa no Todoist.");
       }
@@ -308,14 +265,68 @@ const SEISOPage = () => {
     moveToNextTask();
   }, [moveToNextTask]);
 
-  // const handleContinueAfterCelebration = useCallback(() => { // Removido
-  //   moveToNextTask();
-  // }, [moveToNextTask]);
+  // Reschedule handlers
+  const handleOpenRescheduleDialog = useCallback(() => {
+    if (currentTask?.due?.date) {
+      const parsedDate = parseISO(currentTask.due.date);
+      setSelectedDueDate(isValid(parsedDate) ? parsedDate : undefined);
+      if (currentTask.due.string.includes('T') || currentTask.due.string.includes(':')) {
+        const timeMatch = currentTask.due.string.match(/(\d{2}:\d{2})/);
+        setSelectedDueTime(timeMatch ? timeMatch[1] : "");
+      } else {
+        setSelectedDueTime("");
+      }
+    } else {
+      setSelectedDueDate(undefined);
+      setSelectedDueTime("");
+    }
+    setShowRescheduleDialog(true);
+  }, [currentTask]);
+
+  const handleSaveReschedule = useCallback(async () => {
+    if (!currentTask || !selectedDueDate) {
+      showError("Por favor, selecione uma data para reagendar.");
+      return;
+    }
+
+    let newDueDateString = format(selectedDueDate, "yyyy-MM-dd");
+    if (selectedDueTime) {
+      const [hours, minutes] = selectedDueTime.split(':').map(Number);
+      if (!isNaN(hours) && !isNaN(minutes)) {
+        let dateWithTime = setHours(selectedDueDate, hours);
+        dateWithTime = setMinutes(dateWithTime, minutes);
+        // Todoist API expects ISO format, often UTC for dates with time
+        newDueDateString = dateFnsTz.formatInTimeZone(dateWithTime, BRASILIA_TIMEZONE, "yyyy-MM-dd'T'HH:mm:ss");
+      }
+    }
+
+    const success = await handleApiCall(
+      () => updateTaskDueDate(currentTask.id, newDueDateString),
+      "Reagendando tarefa...",
+      "Tarefa reagendada com sucesso!"
+    );
+
+    if (success) {
+      // Update the current task's due date locally for immediate reflection
+      setAllTasks(prevTasks => prevTasks.map(task => 
+        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
+      ));
+      setP1Tasks(prevTasks => prevTasks.map(task => 
+        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
+      ));
+      setOtherTasks(prevTasks => prevTasks.map(task => 
+        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
+      ));
+      setShowRescheduleDialog(false);
+      moveToNextTask(); // Move to next task after rescheduling
+    } else {
+      showError("Falha ao reagendar a tarefa.");
+    }
+  }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // if (loading || showCelebration || isSessionFinished || !currentTask || !sessionStarted) return; // showCelebration removido
-      if (loading || isSessionFinished || !currentTask || !sessionStarted) return;
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog) return;
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -323,9 +334,9 @@ const SEISOPage = () => {
       } else if (event.key === 'p' || event.key === 'P') {
         event.preventDefault();
         handleSkipTask();
-      } else if (event.key === 'a' || event.key === 'A') {
+      } else if (event.key === 'r' || event.key === 'R') { // 'R' for Reschedule
         event.preventDefault();
-        addFifteenMinutes();
+        handleOpenRescheduleDialog();
       }
     };
 
@@ -333,11 +344,12 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, sessionStarted, handleCompleteTask, handleSkipTask, addFifteenMinutes]); // showCelebration removido
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
-  const pomodoroProgressValue = ((POMODORO_DURATION - pomodoroTimeLeft) / POMODORO_DURATION) * 100;
-  const taskTimeProgressValue = currentTaskEstimate > 0 ? (taskTimeElapsed / currentTaskEstimate) * 100 : 0;
+  const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
+    ? ((parseInt(countdownInputDuration) * 60 - countdownTimeLeft) / (parseInt(countdownInputDuration) * 60)) * 100 
+    : 0;
 
   if (loading) {
     return (
@@ -424,7 +436,6 @@ const SEISOPage = () => {
         </Card>
       ) : (
         <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
-          {/* showCelebration removido, agora a transição é direta */}
           {currentTask && (
             <div className="space-y-6">
               <div className="text-center">
@@ -463,61 +474,50 @@ const SEISOPage = () => {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
-                  <h3 className="text-xl font-bold text-red-700">Pomodoro</h3>
-                  <div className="text-6xl font-bold text-red-800">
-                    {formatTime(pomodoroTimeLeft)}
-                  </div>
-                  <Progress value={pomodoroProgressValue} className="w-full h-2 bg-red-200 [&>*]:bg-red-600" />
-                  <div className="flex space-x-2">
-                    {!isPomodoroActive && !isPomodoroPaused && (
-                      <Button onClick={startPomodoro} className="bg-green-600 hover:bg-green-700 text-white">
-                        <Play className="h-5 w-5" />
-                      </Button>
-                    )}
-                    {isPomodoroActive && (
-                      <Button onClick={pausePomodoro} className="bg-yellow-600 hover:bg-yellow-700 text-white">
-                        <Pause className="h-5 w-5" />
-                      </Button>
-                    )}
-                    {isPomodoroPaused && (
-                      <Button onClick={startPomodoro} className="bg-green-600 hover:bg-green-700 text-white">
-                        <Play className="h-5 w-5" />
-                      </Button>
-                    )}
-                    <Button onClick={resetPomodoro} className="bg-gray-600 hover:bg-gray-700 text-white">
-                      <Square className="h-5 w-5" />
-                    </Button>
-                  </div>
+              {/* Countdown Timer Section */}
+              <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
+                <h3 className="text-xl font-bold text-red-700">Contador de Tempo</h3>
+                <div className="flex items-center space-x-4">
+                  <Label htmlFor="countdown-input-duration" className="text-lg">Tempo Máximo (min):</Label>
+                  <Input
+                    id="countdown-input-duration"
+                    type="number"
+                    value={countdownInputDuration}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setCountdownInputDuration(value);
+                      if (!isCountdownActive && !isCountdownPaused) {
+                        setCountdownTimeLeft(parseInt(value) * 60 || 0);
+                      }
+                    }}
+                    className="w-24 text-center text-lg font-bold"
+                    disabled={isCountdownActive}
+                    min="1"
+                  />
                 </div>
-
-                <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-blue-50/50">
-                  <h3 className="text-xl font-bold text-blue-700">Tempo na Tarefa</h3>
-                  <div className="text-6xl font-bold text-blue-800">
-                    {formatTime(taskTimeElapsed)}
-                  </div>
-                  <Progress value={taskTimeProgressValue} className="w-full h-2 bg-blue-200 [&>*]:bg-blue-600" />
-                  <div className="flex space-x-2">
-                    {!isTaskActive && !isTaskPaused && (
-                      <Button onClick={startTaskTimer} className="bg-green-600 hover:bg-green-700 text-white">
-                        <Play className="h-5 w-5" />
-                      </Button>
-                    )}
-                    {isTaskActive && (
-                      <Button onClick={pauseTaskTimer} className="bg-yellow-600 hover:bg-yellow-700 text-white">
-                        <Pause className="h-5 w-5" />
-                      </Button>
-                    )}
-                    {isTaskPaused && (
-                      <Button onClick={startTaskTimer} className="bg-green-600 hover:bg-green-700 text-white">
-                        <Play className="h-5 w-5" />
-                      </Button>
-                    )}
-                    <Button onClick={resetTaskTimer} className="bg-gray-600 hover:bg-gray-700 text-white">
-                      <Square className="h-5 w-5" />
+                <div className="text-6xl font-bold text-red-800">
+                  {formatTime(countdownTimeLeft)}
+                </div>
+                <Progress value={countdownProgressValue} className="w-full h-2 bg-red-200 [&>*]:bg-red-600" />
+                <div className="flex space-x-2">
+                  {!isCountdownActive && !isCountdownPaused && (
+                    <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700 text-white">
+                      <Play className="h-5 w-5" /> Iniciar
                     </Button>
-                  </div>
+                  )}
+                  {isCountdownActive && (
+                    <Button onClick={pauseCountdown} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+                      <Pause className="h-5 w-5" /> Pausar
+                    </Button>
+                  )}
+                  {isCountdownPaused && (
+                    <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700 text-white">
+                      <Play className="h-5 w-5" /> Continuar
+                    </Button>
+                  )}
+                  <Button onClick={resetCountdown} className="bg-gray-600 hover:bg-gray-700 text-white">
+                    <Square className="h-5 w-5" /> Resetar
+                  </Button>
                 </div>
               </div>
 
@@ -535,15 +535,15 @@ const SEISOPage = () => {
                   <SkipForward className="mr-2 h-5 w-5" /> PRÓXIMA (P)
                 </Button>
                 <Button
-                  onClick={addFifteenMinutes}
-                  className="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                  onClick={handleOpenRescheduleDialog}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
                 >
-                  <TimerIcon className="mr-2 h-5 w-5" /> +15MIN (A)
+                  <CalendarDays className="mr-2 h-5 w-5" /> REAGENDAR (R)
                 </Button>
               </div>
             </div>
           )}
-          {!isSessionFinished && currentTask && ( // showCelebration removido
+          {!isSessionFinished && currentTask && (
             <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
               <p className="text-sm text-gray-600 mb-2">
                 Tarefa {currentTaskIndex + 1} de {totalTasks}
@@ -553,6 +553,69 @@ const SEISOPage = () => {
           )}
         </Card>
       )}
+
+      {/* Reschedule Dialog */}
+      <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Reagendar Tarefa</DialogTitle>
+            <DialogDescription>
+              Selecione uma nova data e, opcionalmente, um horário para a tarefa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="date" className="text-right">
+                Data
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-[240px] justify-start text-left font-normal col-span-3",
+                      !selectedDueDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    {selectedDueDate ? format(selectedDueDate, "PPP", { locale: ptBR }) : <span>Escolha uma data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDueDate}
+                    onSelect={setSelectedDueDate}
+                    initialFocus
+                    locale={ptBR}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="time" className="text-right">
+                Horário (HH:MM)
+              </Label>
+              <Input
+                id="time"
+                type="time"
+                value={selectedDueTime}
+                onChange={(e) => setSelectedDueTime(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button onClick={handleSaveReschedule} disabled={!selectedDueDate || loading}>
+              Salvar Reagendamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <MadeWithDyad />
     </div>
   );
