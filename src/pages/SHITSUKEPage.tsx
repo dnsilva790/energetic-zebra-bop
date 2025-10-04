@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Trash2, Archive, ArrowUpCircle, BarChart2, ExternalLink } from "lucide-react";
+import { ArrowLeft, Trash2, Archive, ArrowUpCircle, BarChart2, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +21,7 @@ import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, updateTask, handleApiCall } from "@/lib/todoistApi";
 import { isPast, parseISO } from "date-fns";
 import { TodoistTask } from "@/lib/types";
-import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 
 const SHITSUKEPage = () => {
   const navigate = useNavigate();
@@ -41,22 +41,18 @@ const SHITSUKEPage = () => {
     setLoading(true);
     const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas para revisão...");
     if (fetchedTasks) {
-      // Filtrar tarefas que consideramos "P3" para revisão semanal:
-      // - Prioridade 1 ou 2 (baixa/média)
-      // - Ou tarefas sem data de vencimento
-      // - Ou tarefas que estão atrasadas (passaram da data de vencimento)
       const p3Tasks = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
         .filter((task: TodoistTask) => {
           const isLowPriority = task.priority === 1 || task.priority === 2;
           const hasNoDueDate = !task.due;
-          const isOverdue = task.due && isPast(parseISO(task.due.date));
+          const isOverdue = task.due && task.due.date && isPast(parseISO(task.due.date)); // Adicionado check para task.due.date
           return isLowPriority || hasNoDueDate || isOverdue;
         });
 
       if (p3Tasks.length === 0) {
         showSuccess("Nenhuma tarefa para revisão semanal encontrada. Bom trabalho!");
-        setShowSummary(true); // Ir direto para o resumo se não houver tarefas
+        setShowSummary(true);
       }
       setAllTasks(p3Tasks);
     } else {
@@ -88,15 +84,10 @@ const SHITSUKEPage = () => {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Deletando tarefa...", "Tarefa deletada!");
       if (success) {
         setDeletedTasksCount(deletedTasksCount + 1);
-        // Remove a tarefa da lista local e move para a próxima
         const updatedTasks = allTasks.filter(task => task.id !== currentTask.id);
         setAllTasks(updatedTasks);
         if (currentTaskIndex >= updatedTasks.length) {
           setShowSummary(true);
-        } else {
-          // Se a tarefa atual foi removida, o índice não precisa ser incrementado,
-          // pois a próxima tarefa já estará na posição atual.
-          // No entanto, se for a última tarefa, o resumo será mostrado.
         }
         showSuccess("Tarefa deletada!");
       } else {
@@ -113,7 +104,6 @@ const SHITSUKEPage = () => {
 
   const handlePromote = async () => {
     if (currentTask) {
-      // Promover significa aumentar a prioridade, por exemplo, para P3 (prioridade 3 na API)
       const success = await handleApiCall(() => updateTask(currentTask.id, { priority: 3 }), "Promovendo tarefa...", "Tarefa promovida para revisão!");
       if (success) {
         setPromotedTasksCount(promotedTasksCount + 1);
@@ -149,7 +139,7 @@ const SHITSUKEPage = () => {
           <h1 className="text-4xl font-extrabold text-red-800 text-center flex-grow">
             SHITSUKE - Revisão Semanal
           </h1>
-          <div className="w-20"></div> {/* Placeholder para alinhar o título */}
+          <div className="w-20"></div>
         </div>
         <p className="text-xl text-red-700 text-center mb-8">
           Faxina profunda do seu sistema
@@ -178,6 +168,9 @@ const SHITSUKEPage = () => {
               <div className="text-center">
                 <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
                   {currentTask.content}
+                  {currentTask.due?.is_recurring && (
+                    <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
+                  )}
                   <a
                     href={`https://todoist.com/app/task/${currentTask.id}`}
                     target="_blank"

@@ -5,20 +5,18 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon, ExternalLink } from "lucide-react";
+import { ArrowLeft, Play, Pause, Square, Check, SkipForward, Timer as TimerIcon, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, handleApiCall } from "@/lib/todoistApi";
 import { format, isToday, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
-import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
 
 const parseTimeEstimate = (task: TodoistTask): number => {
-  // Placeholder for parsing a custom time estimate from task description or a label
-  // For now, we'll use a default or a simple heuristic based on priority
   if (task.priority === 4) return 45 * 60; // P1 (highest) -> 45 min
   if (task.priority === 3) return 25 * 60; // P2 -> 25 min
   if (task.priority === 2) return 15 * 60; // P3 -> 15 min
@@ -40,20 +38,17 @@ const SEISOPage = () => {
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Pomodoro Timer States
   const [pomodoroTimeLeft, setPomodoroTimeLeft] = useState(POMODORO_DURATION);
   const [isPomodoroActive, setIsPomodoroActive] = useState(false);
   const [isPomodoroPaused, setIsPomodoroPaused] = useState(false);
   const pomodoroTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Task Timer States
   const [taskTimeElapsed, setTaskTimeElapsed] = useState(0);
   const [isTaskActive, setIsTaskActive] = useState(false);
   const [isTaskPaused, setIsTaskPaused] = useState(false);
   const taskTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Task specific data (for display and +15min logic)
-  const [currentTaskEstimate, setCurrentTaskEstimate] = useState(0); // in seconds
+  const [currentTaskEstimate, setCurrentTaskEstimate] = useState(0);
 
   const totalTasks = allTasks.length;
   const currentTask = allTasks[currentTaskIndex];
@@ -64,9 +59,8 @@ const SEISOPage = () => {
     if (fetchedTasks) {
       const today = new Date();
       const filteredTasks = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
         .filter((task: TodoistTask) => {
-          // Include tasks due today or tasks with no due date
           return (task.due && isToday(parseISO(task.due.date))) || !task.due;
         });
 
@@ -86,19 +80,16 @@ const SEISOPage = () => {
     fetchTasksForToday();
   }, [fetchTasksForToday]);
 
-  // Initialize timers and task estimate when task changes or page loads
   useEffect(() => {
     if (currentTask) {
       const timeInSeconds = parseTimeEstimate(currentTask);
       setCurrentTaskEstimate(timeInSeconds);
 
-      // Reset Pomodoro
       setPomodoroTimeLeft(POMODORO_DURATION);
       setIsPomodoroActive(false);
       setIsPomodoroPaused(false);
       if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
 
-      // Reset Task Timer
       setTaskTimeElapsed(0);
       setIsTaskActive(false);
       setIsTaskPaused(false);
@@ -106,7 +97,6 @@ const SEISOPage = () => {
     }
   }, [currentTaskIndex, currentTask]);
 
-  // Pomodoro Timer Countdown Logic
   useEffect(() => {
     if (isPomodoroActive && pomodoroTimeLeft > 0) {
       pomodoroTimerRef.current = setInterval(() => {
@@ -123,7 +113,6 @@ const SEISOPage = () => {
     };
   }, [isPomodoroActive, pomodoroTimeLeft]);
 
-  // Task Timer Count-up Logic
   useEffect(() => {
     if (isTaskActive) {
       taskTimerRef.current = setInterval(() => {
@@ -136,7 +125,6 @@ const SEISOPage = () => {
     };
   }, [isTaskActive]);
 
-  // Pomodoro Controls
   const startPomodoro = () => {
     if (pomodoroTimeLeft > 0) {
       setIsPomodoroActive(true);
@@ -157,7 +145,6 @@ const SEISOPage = () => {
     if (pomodoroTimerRef.current) clearInterval(pomodoroTimerRef.current);
   };
 
-  // Task Timer Controls
   const startTaskTimer = () => {
     setIsTaskActive(true);
     setIsTaskPaused(false);
@@ -209,7 +196,6 @@ const SEISOPage = () => {
         setTasksCompleted(tasksCompleted + 1);
         setShowCelebration(true);
         stopAllTimers();
-        // The celebration will handle moving to the next task after a delay or user action
       } else {
         showError("Falha ao concluir a tarefa no Todoist.");
       }
@@ -227,10 +213,10 @@ const SEISOPage = () => {
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
-      case 4: return "text-red-600"; // P1
-      case 3: return "text-yellow-600"; // P2
-      case 2: return "text-blue-600"; // P3
-      case 1: return "text-gray-600"; // P4
+      case 4: return "text-red-600";
+      case 3: return "text-yellow-600";
+      case 2: return "text-blue-600";
+      case 1: return "text-gray-600";
       default: return "text-gray-600";
     }
   };
@@ -284,7 +270,7 @@ const SEISOPage = () => {
           <h1 className="text-4xl font-extrabold text-orange-800 text-center flex-grow">
             SEISO - Executar Tarefas
           </h1>
-          <div className="w-20"></div> {/* Placeholder para alinhar o título */}
+          <div className="w-20"></div>
         </div>
         <p className="text-xl text-orange-700 text-center mb-8">
           Foque nas suas tarefas prioritárias
@@ -306,6 +292,9 @@ const SEISOPage = () => {
               <div className="text-center">
                 <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
                   {currentTask.content}
+                  {currentTask.due?.is_recurring && (
+                    <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
+                  )}
                   <a
                     href={`https://todoist.com/app/task/${currentTask.id}`}
                     target="_blank"
@@ -340,7 +329,6 @@ const SEISOPage = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                {/* Pomodoro Timer */}
                 <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
                   <h3 className="text-xl font-bold text-red-700">Pomodoro</h3>
                   <div className="text-6xl font-bold text-red-800">
@@ -369,7 +357,6 @@ const SEISOPage = () => {
                   </div>
                 </div>
 
-                {/* Task Timer */}
                 <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-blue-50/50">
                   <h3 className="text-xl font-bold text-blue-700">Tempo na Tarefa</h3>
                   <div className="text-6xl font-bold text-blue-800">

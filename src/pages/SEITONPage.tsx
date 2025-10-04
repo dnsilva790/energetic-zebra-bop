@@ -4,13 +4,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, LayoutDashboard, ExternalLink } from "lucide-react";
+import { ArrowLeft, LayoutDashboard, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, getProjects, moveTaskToProject, handleApiCall } from "@/lib/todoistApi";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TodoistTask, TodoistProject } from "@/lib/types";
-import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 
 const SEITONPage = () => {
   const navigate = useNavigate();
@@ -21,17 +21,13 @@ const SEITONPage = () => {
   const fetchTasksAndProjects = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Buscar todas as tarefas ativas do Todoist
       const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas...");
-      
-      // 2. Buscar projetos reais do Todoist
       const fetchedProjects = await handleApiCall(getProjects, "Carregando projetos...");
 
       if (fetchedTasks && fetchedProjects) {
         setProjects(fetchedProjects);
-        // Mapear nomes de projeto para as tarefas e aplicar o filtro
         const tasksWithProjectNames = fetchedTasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
           .map((task: TodoistTask) => ({
             ...task,
             project_name: fetchedProjects.find((p: TodoistProject) => p.id === task.project_id)?.name || "Caixa de Entrada"
@@ -101,7 +97,7 @@ const SEITONPage = () => {
           <h1 className="text-4xl font-extrabold text-blue-800 text-center flex-grow">
             SEITON - Organizar Tarefas
           </h1>
-          <div className="w-20"></div> {/* Placeholder para alinhar o título */}
+          <div className="w-20"></div>
         </div>
         <p className="text-xl text-blue-700 text-center mb-8">
           Organize suas tarefas ativas em projetos
@@ -132,7 +128,12 @@ const SEITONPage = () => {
                   {tasks.map(task => (
                     <div key={task.id} className="flex flex-col p-3 border rounded-md bg-white shadow-sm">
                       <div className="flex items-center justify-between mb-2">
-                        <p className="font-medium text-gray-800">{task.content}</p>
+                        <p className="font-medium text-gray-800 flex items-center gap-2">
+                          {task.content}
+                          {task.due?.is_recurring && (
+                            <Repeat className="h-4 w-4 text-blue-500" title="Tarefa Recorrente" />
+                          )}
+                        </p>
                         <a
                           href={`https://todoist.com/app/task/${task.id}`}
                           target="_blank"

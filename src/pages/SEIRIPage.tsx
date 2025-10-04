@@ -5,13 +5,13 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Check, X, ExternalLink } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, getProjects, completeTask, reopenTask, handleApiCall } from "@/lib/todoistApi"; // Importar reopenTask
+import { getTasks, getProjects, completeTask, reopenTask, handleApiCall } from "@/lib/todoistApi";
 import { TodoistTask, TodoistProject } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import { toast } from "sonner"; // Importar toast do sonner
+import { toast } from "sonner";
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
 
@@ -24,7 +24,6 @@ const SEIRIPage = () => {
   const [showSummary, setShowSummary] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Estados para a funcionalidade de desfazer
   const [lastDeletedTask, setLastDeletedTask] = useState<TodoistTask | null>(null);
   const [lastDeletedTaskOriginalIndex, setLastDeletedTaskOriginalIndex] = useState<number | null>(null);
   const [undoToastId, setUndoToastId] = useState<string | null>(null);
@@ -88,7 +87,7 @@ const SEIRIPage = () => {
       if (tasks && projects) {
         const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
         const tasksWithProjectNames = tasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
           .map((task: TodoistTask) => {
             const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
             return {
@@ -133,19 +132,18 @@ const SEIRIPage = () => {
   }, [allTasks, currentTaskIndex, totalTasks, saveProgress]);
 
   const moveToNextTask = () => {
-    // Dismiss any active undo toast when moving to the next task
     if (undoToastId) {
       toast.dismiss(undoToastId);
       setUndoToastId(null);
     }
-    setLastDeletedTask(null); // Clear last deleted task info
+    setLastDeletedTask(null);
     setLastDeletedTaskOriginalIndex(null);
 
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
     } else {
       setShowSummary(true);
-      localStorage.removeItem(SEIRI_PROGRESS_KEY); // Limpar progresso ao finalizar
+      localStorage.removeItem(SEIRI_PROGRESS_KEY);
     }
   };
 
@@ -164,7 +162,6 @@ const SEIRIPage = () => {
   const handleDelete = async () => {
     if (!currentTask) return;
 
-    // Store the task and its current index before attempting deletion
     setLastDeletedTask(currentTask);
     setLastDeletedTaskOriginalIndex(currentTaskIndex);
 
@@ -177,11 +174,9 @@ const SEIRIPage = () => {
     if (success) {
       setDeletedTasksCount((prev) => prev + 1);
 
-      // Remove the task from the local state immediately
       const updatedTasks = allTasks.filter((task) => task.id !== currentTask.id);
       setAllTasks(updatedTasks);
 
-      // Show undo toast
       const id = toast.custom((t) => (
         <div className="flex items-center justify-between p-3 bg-gray-800 text-white rounded-md shadow-lg">
           <span>Tarefa deletada.</span>
@@ -193,21 +188,17 @@ const SEIRIPage = () => {
             Desfazer
           </Button>
         </div>
-      ), { duration: 5000 }); // Toast visible for 5 seconds
+      ), { duration: 5000 });
       setUndoToastId(id);
 
-      // Move to the next task. If it was the last one, show summary.
       if (currentTaskIndex >= updatedTasks.length) {
         setShowSummary(true);
         localStorage.removeItem(SEIRI_PROGRESS_KEY);
       } else {
-        // If the current task was removed, the next task is now at the same index.
-        // No need to increment currentTaskIndex here, it effectively moves to the next.
-        saveProgress(); // Save progress after deletion
+        saveProgress();
       }
     } else {
       showError("Falha ao deletar a tarefa.");
-      // If deletion failed, clear lastDeletedTask and its index
       setLastDeletedTask(null);
       setLastDeletedTaskOriginalIndex(null);
     }
@@ -221,7 +212,7 @@ const SEIRIPage = () => {
     }
 
     const success = await handleApiCall(
-      () => reopenTask(lastDeletedTask.id), // Usar reopenTask para desfazer
+      () => reopenTask(lastDeletedTask.id),
       "Desfazendo exclusão...",
       "Tarefa restaurada com sucesso!"
     );
@@ -229,15 +220,12 @@ const SEIRIPage = () => {
     if (success) {
       setDeletedTasksCount((prev) => prev - 1);
 
-      // Re-insert the task into allTasks at its original position
       const newAllTasks = [...allTasks];
       newAllTasks.splice(lastDeletedTaskOriginalIndex, 0, lastDeletedTask);
       setAllTasks(newAllTasks);
 
-      // Adjust currentTaskIndex to point back to the restored task
       setCurrentTaskIndex(lastDeletedTaskOriginalIndex);
 
-      // If summary was showing, hide it
       if (showSummary) {
         setShowSummary(false);
       }
@@ -246,7 +234,7 @@ const SEIRIPage = () => {
       setUndoToastId(null);
       setLastDeletedTask(null);
       setLastDeletedTaskOriginalIndex(null);
-      saveProgress(); // Save progress after undo
+      saveProgress();
     } else {
       showError("Falha ao restaurar a tarefa.");
     }
@@ -272,7 +260,7 @@ const SEIRIPage = () => {
           <h1 className="text-4xl font-extrabold text-green-800 text-center flex-grow">
             SEIRI - Faxina do Backlog
           </h1>
-          <div className="w-20"></div> {/* Placeholder para alinhar o título */}
+          <div className="w-20"></div>
         </div>
         <p className="text-xl text-green-700 text-center mb-8">
           Revise cada tarefa: manter ou deletar?
@@ -299,6 +287,9 @@ const SEIRIPage = () => {
                 <div className="text-center">
                   <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
                     {currentTask.content}
+                    {currentTask.due?.is_recurring && (
+                      <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
+                    )}
                     <a
                       href={`https://todoist.com/app/task/${currentTask.id}`}
                       target="_blank"

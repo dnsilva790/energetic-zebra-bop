@@ -5,14 +5,14 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck, ExternalLink } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, Hourglass, Coffee, CalendarCheck, ExternalLink, Repeat } from "lucide-react"; // Importar o ícone Repeat
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, updateTaskDueDate, handleApiCall } from "@/lib/todoistApi";
 import { isToday, parseISO, format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
-import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters"; // Importar o filtro
+import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 
 const motivationalMessages = [
   "Bom trabalho hoje! 🌟",
@@ -43,7 +43,7 @@ const SEIKETSUPage = () => {
     if (fetchedTasks) {
       const today = new Date();
       const tasksDueToday = fetchedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro aqui
+        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task)) // Aplicar o filtro atualizado
         .filter((task: TodoistTask) => 
           task.due && isToday(parseISO(task.due.date))
         );
@@ -100,8 +100,8 @@ const SEIKETSUPage = () => {
 
     if (successCount > 0) {
       showSuccess(`Tarefas reprogramadas: ${reprogrammedTitles.join(", ")}`);
-      setSelectedPendingTasks([]); // Clear selection after reprogramming
-      fetchAndProcessTasks(); // Refresh tasks to update the UI
+      setSelectedPendingTasks([]);
+      fetchAndProcessTasks();
     } else {
       showError("Nenhuma tarefa foi reprogramada com sucesso.");
     }
@@ -150,7 +150,7 @@ const SEIKETSUPage = () => {
           <h1 className="text-4xl font-extrabold text-purple-800 text-center flex-grow">
             SEIKETSU - Revisar o Dia
           </h1>
-          <div className="w-20"></div> {/* Placeholder para alinhar o título */}
+          <div className="w-20"></div>
         </div>
         <p className="text-xl text-purple-700 text-center mb-8">
           Como foi seu dia? Vamos preparar amanhã
@@ -158,7 +158,6 @@ const SEIKETSUPage = () => {
       </div>
 
       <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 space-y-8">
-        {/* Resumo do Dia */}
         <div className="text-center space-y-4">
           <CardTitle className="text-2xl font-bold text-gray-800">Resumo do Dia</CardTitle>
           <div className="grid grid-cols-2 gap-4 text-left">
@@ -170,7 +169,6 @@ const SEIKETSUPage = () => {
               <Hourglass className="h-5 w-5 text-yellow-600" />
               <p className="text-lg text-gray-700">Pendentes: <span className="font-semibold">{pendingTodayTasks.length}</span></p>
             </div>
-            {/* Tempo Total e Pomodoros são placeholders, pois a API do Todoist não fornece esses dados diretamente */}
             <div className="flex items-center space-x-2">
               <Clock className="h-5 w-5 text-blue-600" />
               <p className="text-lg text-gray-700">Trabalhado: <span className="font-semibold">--</span></p>
@@ -182,7 +180,6 @@ const SEIKETSUPage = () => {
           </div>
         </div>
 
-        {/* Lista de Pendentes */}
         <div className="space-y-4">
           <CardTitle className="text-2xl font-bold text-gray-800 text-center">Tarefas que ficaram pendentes:</CardTitle>
           <p className="text-gray-700 text-center mb-4">Quais dessas você quer tentar amanhã?</p>
@@ -201,6 +198,9 @@ const SEIKETSUPage = () => {
                     className={`text-lg font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2 ${getPriorityColor(task.priority)}`}
                   >
                     {task.content} ({getPriorityLabel(task.priority)})
+                    {task.due?.is_recurring && (
+                      <Repeat className="h-4 w-4 text-blue-500" title="Tarefa Recorrente" />
+                    )}
                     {task.deadline && (
                       <span className="text-sm text-gray-500 ml-2">
                         (Limite: {new Date(task.deadline).toLocaleDateString()})
@@ -231,7 +231,6 @@ const SEIKETSUPage = () => {
           </Button>
         </div>
 
-        {/* Encerramento */}
         <div className="text-center space-y-4 pt-4 border-t">
           <CardDescription className="text-xl font-semibold text-gray-800">
             {motivationalMessage}
