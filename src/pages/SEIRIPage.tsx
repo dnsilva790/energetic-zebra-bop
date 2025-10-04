@@ -14,8 +14,8 @@ import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { utcToZonedTime } from "date-fns-tz/utcToZonedTime"; // Importar como named export
-import { formatInTimeZone } from "date-fns-tz/formatInTimeZone"; // Importar como named export
+import utcToZonedTime from "date-fns-tz/utcToZonedTime"; // Importar como default export
+import formatInTimeZone from "date-fns-tz/formatInTimeZone"; // Importar como default export
 
 const SEIRI_PROGRESS_KEY = 'seiri_progress';
 const BRASILIA_TIMEZONE = 'America/Sao_Paulo'; // Fuso horário de Brasília
