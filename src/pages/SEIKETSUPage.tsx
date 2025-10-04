@@ -39,13 +39,18 @@ const SEIKETSUPage = () => {
 
   const formatDueDate = (dateString: string | undefined | null) => {
     if (!dateString) return "Sem vencimento";
-    const parsedDate = parseISO(dateString);
-    if (isNaN(parsedDate.getTime())) { // Check if date is valid
-      console.warn("Invalid date string received:", dateString);
-      return "Data inválida";
+    try {
+      const parsedDate = parseISO(dateString);
+      if (isNaN(parsedDate.getTime())) {
+        console.warn("Invalid date string received for formatting:", dateString);
+        return "Data inválida";
+      }
+      const hasTime = dateString.includes('T') || dateString.includes(':');
+      return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
+    } catch (e) {
+      console.error("Error formatting date:", dateString, e);
+      return "Erro de data";
     }
-    const hasTime = dateString.includes('T') || dateString.includes(':');
-    return format(parsedDate, hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy", { locale: ptBR });
   };
 
   const fetchAndProcessTasks = useCallback(async () => {
