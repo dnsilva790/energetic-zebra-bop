@@ -294,16 +294,17 @@ const SEITONPage = () => {
     let newP3Tasks = [...p3Tasks];
     let actionDescription = "";
 
-    // Always remove challenger from newRankedTasks if it was there, to prevent duplicates
+    // Ensure challenger is not already in rankedTasks or p3Tasks to prevent duplicates
     newRankedTasks = newRankedTasks.filter(t => t.id !== currentChallenger.id);
-    // Also remove from newP3Tasks if it was there (shouldn't happen often, but for safety)
     newP3Tasks = newP3Tasks.filter(t => t.id !== currentChallenger.id);
 
-    if (challengerWins) {
-      console.log("SEITONPage - Challenger wins, inserting into rankedTasks.");
-      newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger); // Insert challenger at new position
+    let challengerFinished = false; // Flag to indicate if challenger has found its final place
 
-      
+    if (challengerWins) {
+      console.log("SEITONPage - Challenger wins, attempting to move up.");
+      newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger); // Insert challenger at current opponent's position
+
+      // Handle overflow if ranked list is full
       if (newRankedTasks.length > RANKING_SIZE) {
         const pushedOutTask = newRankedTasks.pop(); // Remove the last task
         if (pushedOutTask) {
@@ -317,31 +318,31 @@ const SEITONPage = () => {
       const nextOpponentIndexCandidate = currentOpponentIndex - 1;
       if (nextOpponentIndexCandidate < 0) {
         console.log("SEITONPage - Challenger reached top (P1).");
-        // Challenger has found its final place in rankedTasks, update its priority to P1
-        const updatedChallenger = await updateTaskAndReturn(currentChallenger, 4);
-        newRankedTasks = newRankedTasks.map(task => task.id === updatedChallenger.id ? updatedChallenger : task); // Ensure the updated challenger is in the list
-        
-        setCurrentChallenger(null);
-        setCurrentOpponentIndex(null);
-        setTournamentQueue(prev => prev.slice(1)); // Remove from queue
-        actionDescription = `Desafiante "${currentChallenger.content}" alcançou P1.`;
+        actionDescription += ` Desafiante "${currentChallenger.content}" alcançou P1.`;
+        challengerFinished = true;
       } else {
         console.log(`SEITONPage - Challenger continues to fight, next opponent index: ${nextOpponentIndexCandidate}`);
         setCurrentOpponentIndex(nextOpponentIndexCandidate); // Challenger moves up
-        actionDescription = `Desafiante "${currentChallenger.content}" inserido na posição ${currentOpponentIndex + 1} e continua a lutar.`;
+        actionDescription += ` Desafiante "${currentChallenger.content}" inserido na posição ${currentOpponentIndex + 1} e continua a lutar contra "${newRankedTasks[nextOpponentIndexCandidate]?.content || 'o topo'}".`;
       }
     } else { // Challenger loses
-      console.log("SEITONPage - Opponent wins, challenger loses. Moving challenger to P3.");
+      console.log("SEITONPage - Opponent wins, challenger loses. Placing challenger below opponent.");
       
-      // Add challenger to P3 tasks and update its priority in Todoist
-      const updatedChallengerForP3 = await updateTaskAndReturn(currentChallenger, 2); // Set priority to P3
-      newP3Tasks.push(updatedChallengerForP3);
-      
-      actionDescription = `Oponente "${opponentTask.content}" venceu. Desafiante "${currentChallenger.content}" movido para P3.`;
-      
-      setCurrentChallenger(null);
-      setCurrentOpponentIndex(null);
-      setTournamentQueue(prev => prev.slice(1)); // Remove from queue
+      // Insert challenger immediately after the opponent
+      newRankedTasks.splice(currentOpponentIndex + 1, 0, currentChallenger);
+      actionDescription = `Oponente "${opponentTask.content}" venceu. Desafiante "${currentChallenger.content}" inserido abaixo do oponente.`;
+
+      // Handle overflow if ranked list is full after insertion
+      if (newRankedTasks.length > RANKING_SIZE) {
+        const pushedOutTask = newRankedTasks.pop(); // Remove the last task
+        if (pushedOutTask) {
+          const updatedPushedOutTask = await updateTaskAndReturn(pushedOutTask, 2); // Set priority to P3
+          newP3Tasks.push(updatedPushedOutTask);
+          actionDescription += ` Tarefa "${pushedOutTask.content}" movida para P3.`;
+          console.log(`SEITONPage - Ranked list full, pushed out ${pushedOutTask.content} to P3.`);
+        }
+      }
+      challengerFinished = true;
     }
 
     // --- Batch update priorities based on final list positions ---
@@ -389,17 +390,22 @@ const SEITONPage = () => {
 
     console.log("SEITONPage - After comparison. New Ranked:", newRankedTasks.map(t => t.content), "New P3:", newP3Tasks.map(t => t.content));
 
-    // Determine next step
-    if (currentChallenger === null && tournamentQueue.length === 0) { // Challenger processed and queue empty
+    if (challengerFinished) {
+      console.log("SEITONPage - Challenger finished its journey. Moving to next challenger from queue.");
+      setCurrentChallenger(null);
+      setCurrentOpponentIndex(null);
+      setTournamentQueue(prev => prev.slice(1)); // Remove from queue
+    }
+    // If challengerFinished is false, it means the challenger is still fighting,
+    // so currentChallenger and currentOpponentIndex are already updated for the next round.
+    
+    // Check if tournament is completely finished
+    if (tournamentQueue.length === 0 && currentChallenger === null) {
       console.log("SEITONPage - Tournament finished, moving to result.");
       setCurrentStep('result');
       localStorage.removeItem(SEITON_PROGRESS_KEY);
-    } else if (currentChallenger === null && tournamentQueue.length > 0) { // Challenger processed, next one in queue
-      console.log("SEITONPage - Challenger found its place, starting next comparison.");
-      startNextTournamentComparison();
     }
-    // If currentChallenger is NOT null, it means it's still fighting, so no state change for step.
-}, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, startNextTournamentComparison, updateTaskAndReturn]);
+  }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
