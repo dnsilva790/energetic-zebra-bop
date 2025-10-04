@@ -58,7 +58,37 @@ export async function getTasks(filter?: string): Promise<TodoistTask[]> {
     const errorData = await response.json();
     throw new Error(errorData.error || `Erro ao buscar tarefas: ${response.statusText}`);
   }
-  return response.json();
+  
+  const rawTasks = await response.json();
+
+  // Mapear as tarefas para o formato TodoistTask, ajustando o campo 'due'
+  const processedTasks: TodoistTask[] = rawTasks.map((task: any) => {
+    let processedDue = null;
+    if (task.due) {
+      // Prioriza 'datetime' se existir, caso contrário usa 'date'
+      const dateValue = task.due.datetime || task.due.date;
+      processedDue = {
+        date: dateValue, // Armazena o datetime ou date aqui
+        string: task.due.string, // Mantém a string humanizada original
+        lang: task.due.lang,
+        is_recurring: task.due.is_recurring,
+      };
+    }
+
+    return {
+      id: task.id,
+      content: task.content,
+      description: task.description,
+      due: processedDue,
+      priority: task.priority,
+      is_completed: task.is_completed,
+      project_id: task.project_id,
+      parent_id: task.parent_id,
+      // Outros campos como project_name, classificacao, deadline serão adicionados posteriormente se necessário
+    };
+  });
+
+  return processedTasks;
 }
 
 export async function getProjects(): Promise<TodoistProject[]> {
@@ -84,7 +114,28 @@ export async function updateTask(taskId: string, data: any): Promise<TodoistTask
     const errorData = await response.json();
     throw new Error(errorData.error || `Erro ao atualizar tarefa: ${response.statusText}`);
   }
-  return response.json(); // Retorna a tarefa atualizada
+  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due' novamente
+  const rawUpdatedTask = await response.json();
+  let processedDue = null;
+  if (rawUpdatedTask.due) {
+    const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
+    processedDue = {
+      date: dateValue,
+      string: rawUpdatedTask.due.string,
+      lang: rawUpdatedTask.due.lang,
+      is_recurring: rawUpdatedTask.due.is_recurring,
+    };
+  }
+  return {
+    id: rawUpdatedTask.id,
+    content: rawUpdatedTask.content,
+    description: rawUpdatedTask.description,
+    due: processedDue,
+    priority: rawUpdatedTask.priority,
+    is_completed: rawUpdatedTask.is_completed,
+    project_id: rawUpdatedTask.project_id,
+    parent_id: rawUpdatedTask.parent_id,
+  };
 }
 
 export async function completeTask(taskId: string): Promise<boolean> {
@@ -147,5 +198,26 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
     const errorData = await response.json();
     throw new Error(errorData.error || `Erro ao atualizar data de vencimento da tarefa: ${response.statusText}`);
   }
-  return response.json();
+  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due' novamente
+  const rawUpdatedTask = await response.json();
+  let processedDue = null;
+  if (rawUpdatedTask.due) {
+    const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
+    processedDue = {
+      date: dateValue,
+      string: rawUpdatedTask.due.string,
+      lang: rawUpdatedTask.due.lang,
+      is_recurring: rawUpdatedTask.due.is_recurring,
+    };
+  }
+  return {
+    id: rawUpdatedTask.id,
+    content: rawUpdatedTask.content,
+    description: rawUpdatedTask.description,
+    due: processedDue,
+    priority: rawUpdatedTask.priority,
+    is_completed: rawUpdatedTask.is_completed,
+    project_id: rawUpdatedTask.project_id,
+    parent_id: rawUpdatedTask.parent_id,
+  };
 }
