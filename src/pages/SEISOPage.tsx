@@ -601,7 +601,7 @@ const SEISOPage = () => {
             <AITutorChat
               taskTitle={currentTask.content}
               taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
-              taskId={currentTask.id} {/* Passando o ID da tarefa aqui */}
+              taskId={currentTask.id}
               onClose={() => setIsAITutorChatOpen(false)}
               className="flex-grow"
             />
