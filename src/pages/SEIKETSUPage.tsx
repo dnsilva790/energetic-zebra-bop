@@ -13,8 +13,7 @@ import { isToday, parseISO, format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import utcToZonedTime from "date-fns-tz/utcToZonedTime"; // Importar como default export
-import formatInTimeZone from "date-fns-tz/formatInTimeZone"; // Importar como default export
+import { utcToZonedTime, formatInTimeZone } from "date-fns-tz"; // Importar como named exports
 
 const motivationalMessages = [
   "Bom trabalho hoje! 🌟",
