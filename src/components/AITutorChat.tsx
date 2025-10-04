@@ -19,6 +19,7 @@ interface AITutorChatProps {
   taskTitle: string;
   taskDescription: string;
   onClose: () => void;
+  className?: string; // Adicionado para aceitar classes externas
 }
 
 // Helper function to parse AI response for tasks
@@ -59,7 +60,7 @@ const parseAiResponseForTasks = (responseText: string): { content: string; descr
   return tasks;
 };
 
-const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, onClose }) => {
+const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, onClose, className }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -213,9 +214,9 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   };
 
   return (
-    <Card className="flex flex-col h-full bg-white/80 backdrop-blur-sm">
-      <CardContent className="flex-grow p-0 overflow-hidden"> {/* Removido p-4 aqui */}
-        <ScrollArea className="h-full p-4" viewportRef={scrollAreaRef}> {/* Adicionado p-4 aqui */}
+    <Card className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}> {/* Aplica className aqui */}
+      <CardContent className="flex-grow p-0 overflow-hidden">
+        <ScrollArea className="h-full p-4" viewportRef={scrollAreaRef}>
           <div className="space-y-4">
             {messages.map((msg, index) => (
               <div key={index} className={cn(
