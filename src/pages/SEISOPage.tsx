@@ -547,7 +547,7 @@ const SEISOPage = () => {
                     </Button>
                   )}
                   <Button onClick={resetCountdown} className="bg-gray-600 hover:bg-gray-700 text-white">
-                    <Square className="h-5 w-5" /> Resetar
+                      <Square className="h-5 w-5" /> Resetar
                   </Button>
                 </div>
               </div>
