@@ -8,12 +8,8 @@ import { Send, Loader2, User, Bot, Check, X, AlertCircle } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils';
 import { createTasks, handleApiCall, updateTaskDescription } from '@/lib/todoistApi';
-import { Badge } from '@/components/ui/badge'; // Importar o componente Badge
-
-// Importações de Firebase necessárias
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { Badge } from '@/components/ui/badge';
+import { useAITutorConfig } from '@/context/AITutorConfigContext'; // Importar o hook do contexto
 
 interface ChatMessage {
   role: 'user' | 'model';
@@ -26,7 +22,7 @@ interface AITutorChatProps {
   taskId: string;
   onClose: () => void;
   className?: string;
-  isTaskCompleted: boolean; // Nova propriedade adicionada
+  isTaskCompleted: boolean;
 }
 
 // Helper function to parse AI response for tasks
@@ -63,84 +59,9 @@ const parseAiResponseForTasks = (responseText: string): { content: string; descr
 
 const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, taskId, onClose, className, isTaskCompleted }) => {
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  const { systemPrompt, isLoading: firebaseLoading, userId } = useAITutorConfig(); // Consumir do contexto
 
-  // --- Firebase State ---
-  const [db, setDb] = useState<any>(null);
-  const [auth, setAuth] = useState<any>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
-  const [firebaseLoading, setFirebaseLoading] = useState(true);
-
-  // --- Firebase Initialization ---
-  useEffect(() => {
-    const setupFirebase = async () => {
-      if (typeof window === 'undefined' || typeof (__firebase_config) === 'undefined' || typeof (__app_id) === 'undefined') {
-        console.warn("Firebase config variables not found. Skipping Firebase initialization in AITutorChat.");
-        setFirebaseLoading(false);
-        return;
-      }
-
-      try {
-        const firebaseConfig = JSON.parse(__firebase_config as string);
-        const app = initializeApp(firebaseConfig);
-        const firestoreDb = getFirestore(app);
-        const firebaseAuth = getAuth(app);
-        
-        setDb(firestoreDb);
-        setAuth(firebaseAuth);
-
-        if (typeof (__initial_auth_token) !== 'undefined') {
-          await signInWithCustomToken(firebaseAuth, __initial_auth_token as string);
-        } else {
-          await signInAnonymously(firebaseAuth);
-        }
-        
-        const currentUserId = firebaseAuth.currentUser?.uid || crypto.randomUUID();
-        setUserId(currentUserId);
-        setFirebaseLoading(false);
-
-      } catch (error) {
-        console.error("Erro ao inicializar e autenticar o Firebase em AITutorChat:", error);
-        setFirebaseLoading(false);
-      }
-    };
-
-    setupFirebase();
-  }, []);
-
-  // --- Load System Prompt from Firestore ---
-  useEffect(() => {
-    if (!db || !userId || firebaseLoading) return;
-
-    const loadPrompt = async () => {
-      try {
-        const appId = typeof (__app_id) !== 'undefined' ? (__app_id as string) : 'default-app-id';
-        const promptDocRef = doc(db, 
-          `artifacts/${appId}/users/${userId}/ai_tutor_config`, 
-          'prompt_document'
-        );
-        
-        const docSnap = await getDoc(promptDocRef);
-        
-        if (docSnap.exists() && docSnap.data().systemPrompt) {
-          setSystemPrompt(docSnap.data().systemPrompt);
-        } else {
-          // Fallback to default if not found, and save it for future use
-          const DEFAULT_PROMPT = `Você é o Tutor IA 'SEISO' e sua função é ajudar o usuário a quebrar tarefas complexas em micro-passos acionáveis. Responda de forma concisa e direta, usando linguagem de coaching, sempre mantendo o foco no próximo passo e na execução imediata. Cada resposta deve ser uma lista numerada de 3 a 5 micro-passos.`;
-          await setDoc(promptDocRef, { systemPrompt: DEFAULT_PROMPT });
-          setSystemPrompt(DEFAULT_PROMPT);
-        }
-      } catch (error) {
-        console.error("Erro ao carregar prompt do Firestore em AITutorChat:", error);
-        // Fallback to a default prompt if Firestore fails
-        setSystemPrompt(`Você é o Tutor IA 'SEISO' e sua função é ajudar o usuário a quebrar tarefas complexas em micro-passos acionáveis. Responda de forma concisa e direta, usando linguagem de coaching, sempre mantendo o foco no próximo passo e na execução imediata. Cada resposta deve ser uma lista numerada de 3 a 5 micro-passos.`);
-      }
-    };
-
-    loadPrompt();
-  }, [db, userId, firebaseLoading]);
-
-  // --- Early exit if API key or Firebase is missing/loading ---
+  // --- Early exit if API key is missing ---
   if (!GEMINI_API_KEY) {
     return (
       <div className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
@@ -174,11 +95,11 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isGeminiLoading, setIsGeminiLoading] = useState<boolean>(false); // Renomeado para evitar conflito
   const [parsedMicroSteps, setParsedMicroSteps] = useState<{ content: string; description: string }[]>([]);
   const [initialAiResponseReceived, setInitialAiResponseReceived] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const isMounted = useRef(false); // Ref para controlar a montagem inicial
+  const isMounted = useRef(false);
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
@@ -190,7 +111,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   };
 
   const sendMessageToGemini = useCallback(async (userAndModelMessages: ChatMessage[], currentSystemPrompt: string) => {
-    setIsLoading(true);
+    setIsGeminiLoading(true);
 
     const systemInstructionPart = {
       role: 'user',
@@ -241,7 +162,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
       setMessages(prev => [...prev, { role: 'model', content: `Erro ao obter resposta do Tutor de IA: ${error.message}` }]);
       showError(`Erro ao obter resposta do Tutor de IA: ${error.message}`);
     } finally {
-      setIsLoading(false);
+      setIsGeminiLoading(false);
     }
   }, [GEMINI_API_URL, initialAiResponseReceived]);
 
@@ -253,7 +174,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
     setMessages([]); // Limpar mensagens ao mudar de tarefa
 
     if (firebaseLoading || !systemPrompt) {
-      // Wait for Firebase to load and systemPrompt to be available
+      // Aguarda o Firebase carregar e o systemPrompt estar disponível do contexto
       return;
     }
 
@@ -312,7 +233,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (input.trim() === '' || isLoading || !systemPrompt) return;
+    if (input.trim() === '' || isGeminiLoading || !systemPrompt) return;
 
     const newUserMessage: ChatMessage = { role: 'user', content: input.trim() };
     const updatedMessages = [...messages, newUserMessage];
@@ -336,7 +257,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
       return;
     }
 
-    setIsLoading(true);
+    setIsGeminiLoading(true);
     try {
       // Formatar os micro-passos em uma única string para anexar
       const formattedMicroSteps = parsedMicroSteps
@@ -344,7 +265,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
         .join('\n');
 
       const updatedTask = await handleApiCall(
-        () => updateTaskDescription(taskId, formattedMicroSteps), // Usa a nova função de atualização
+        () => updateTaskDescription(taskId, formattedMicroSteps),
         "Anexando micro-passos à descrição da tarefa...",
         "Micro-passos anexados com sucesso à descrição da tarefa!"
       );
@@ -358,7 +279,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
     } catch (error: any) {
       setMessages(prev => [...prev, { role: 'model', content: `❌ Erro ao anexar micro-passos: ${error.message}` }]);
     } finally {
-      setIsLoading(false);
+      setIsGeminiLoading(false);
     }
   };
 
@@ -369,7 +290,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
     }
   };
 
-  const overallLoading = isLoading || firebaseLoading || systemPrompt === null;
+  const overallLoading = isGeminiLoading || firebaseLoading || systemPrompt === null;
 
   return (
     <div className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
@@ -419,7 +340,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
                   {msg.role === 'user' && <User className="h-6 w-6 text-blue-600 flex-shrink-0" />}
                 </div>
               ))}
-              {isLoading && (
+              {isGeminiLoading && (
                 <div className="flex justify-start items-center gap-3">
                   <Bot className="h-6 w-6 text-purple-600 animate-pulse" />
                   <div className="bg-gray-200 text-gray-800 p-3 rounded-lg rounded-bl-none">
@@ -437,15 +358,15 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               className="flex-grow min-w-0"
-              disabled={isLoading}
+              disabled={isGeminiLoading}
             />
             <div className="flex gap-2 w-full">
-              <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''} className="flex-1">
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
+              <Button onClick={handleSendMessage} disabled={isGeminiLoading || input.trim() === ''} className="flex-1">
+                {isGeminiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
               </Button>
               <Button 
                 onClick={handleSendToTodoist} 
-                disabled={isLoading || parsedMicroSteps.length === 0} 
+                disabled={isGeminiLoading || parsedMicroSteps.length === 0} 
                 className="bg-green-600 hover:bg-green-700 text-white flex-1"
               >
                 <Check className="h-4 w-4 mr-2" /> Para Todoist

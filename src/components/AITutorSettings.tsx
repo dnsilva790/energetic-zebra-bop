@@ -1,120 +1,77 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // Importações de Firebase necessárias
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { useAITutorConfig } from '@/context/AITutorConfigContext'; // Importar o hook do contexto
 
 // Definição do Prompt Padrão (System Instruction)
 const DEFAULT_SYSTEM_PROMPT = `Você é o Tutor IA 'SEISO' e sua função é ajudar o usuário a quebrar tarefas complexas em micro-passos acionáveis. Responda de forma concisa e direta, usando linguagem de coaching, sempre mantendo o foco no próximo passo e na execução imediata. Cada resposta deve ser uma lista numerada de 3 a 5 micro-passos.`;
 
 const AITutorSettings = () => {
-    // Variáveis de Estado para Firebase e Dados
+    // Consumir do contexto
+    const { systemPrompt: contextSystemPrompt, isLoading: contextLoading, userId, refreshPrompt } = useAITutorConfig();
+
     const [promptText, setPromptText] = useState(DEFAULT_SYSTEM_PROMPT);
-    const [loading, setLoading] = useState(true);
-    const [isFirebaseReady, setIsFirebaseReady] = useState(false);
-    
-    // Instâncias do Firebase (Armazenadas no estado para serem acessíveis a outras funções)
-    const [db, setDb] = useState<any>(null);
-    const [auth, setAuth] = useState<any>(null);
-    const [userId, setUserId] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false); // Estado local para o botão de salvar
 
-    // --- Configuração e Autenticação do Firebase ---
+    // Atualiza o estado local do prompt quando o prompt do contexto muda
     useEffect(() => {
-        // Assegura que o script não falhe se as variáveis não existirem (embora sejam esperadas)
-        if (typeof __firebase_config === 'undefined' || typeof __app_id === 'undefined') {
-            console.error("Variáveis de configuração Firebase não encontradas.");
-            return;
+        if (!contextLoading && contextSystemPrompt) {
+            setPromptText(contextSystemPrompt);
         }
-
-        const setupFirebase = async () => {
-            try {
-                const firebaseConfig = JSON.parse(__firebase_config);
-                const app = initializeApp(firebaseConfig);
-                const firestoreDb = getFirestore(app);
-                const firebaseAuth = getAuth(app);
-                
-                setDb(firestoreDb);
-                setAuth(firebaseAuth);
-
-                // 1. Autenticação: Assíncrona e Obrigatória
-                if (typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(firebaseAuth, __initial_auth_token);
-                } else {
-                    // Fallback para login anônimo se o token não estiver disponível
-                    await signInAnonymously(firebaseAuth);
-                }
-                
-                // 2. Definir o userId após a autenticação bem-sucedida
-                const currentUserId = firebaseAuth.currentUser?.uid || crypto.randomUUID();
-                setUserId(currentUserId);
-                
-                // 3. Sinalizar que o Firebase está pronto para operações de dados
-                setIsFirebaseReady(true);
-
-            } catch (error) {
-                console.error("Erro ao inicializar e autenticar o Firebase:", error);
-                setLoading(false); // Parar de carregar se falhar
-            }
-        };
-
-        setupFirebase();
-    }, []); // Executa apenas na montagem
-
-    // --- Lógica de Carregamento do Prompt (Dependente do Firebase estar Pronto) ---
-    useEffect(() => {
-        if (!isFirebaseReady || !db || !userId) return;
-
-        const loadPrompt = async () => {
-            setLoading(true);
-            try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const promptDocRef = doc(db, 
-                    `artifacts/${appId}/users/${userId}/ai_tutor_config`, 
-                    'prompt_document'
-                );
-                
-                const docSnap = await getDoc(promptDocRef);
-                
-                if (docSnap.exists() && docSnap.data().systemPrompt) {
-                    setPromptText(docSnap.data().systemPrompt);
-                } else {
-                    // Se não houver documento, salva o prompt padrão para uso futuro
-                    await setDoc(promptDocRef, { systemPrompt: DEFAULT_SYSTEM_PROMPT });
-                    setPromptText(DEFAULT_SYSTEM_PROMPT);
-                }
-
-            } catch (error) {
-                console.error("Erro ao carregar prompt do Firestore:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        loadPrompt();
-    }, [isFirebaseReady, db, userId]); // Depende do estado de prontidão e das instâncias
+    }, [contextLoading, contextSystemPrompt]);
 
     // --- Lógica de Salvamento ---
     const handleSavePrompt = useCallback(async () => {
-        if (!db || !userId || loading) return;
+        if (!userId || contextLoading || isSaving) return; // Usa contextLoading para desabilitar
 
+        setIsSaving(true);
         try {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const promptDocRef = doc(db, 
+            // O 'db' não é mais necessário aqui, pois o contexto já lida com a inicialização.
+            // Precisamos de uma referência ao Firestore para salvar.
+            // Como o contexto já inicializou o Firebase, podemos obter o 'db' de lá,
+            // ou, para manter a simplicidade, podemos passar o 'db' no contexto se necessário,
+            // mas para esta operação, podemos re-inicializar getFirestore se o contexto não o expõe diretamente.
+            // Para evitar re-inicialização, vamos assumir que o contexto já tem o 'db' e o 'userId'
+            // e que a função `refreshPrompt` é suficiente para notificar o contexto.
+            // No entanto, para salvar, precisamos do `db` diretamente.
+            // Uma solução mais limpa seria expor `db` no contexto ou ter uma função `savePrompt` no contexto.
+            // Por enquanto, vamos re-obter o `db` aqui, mas é uma duplicação.
+
+            // Para evitar duplicação e manter a responsabilidade no contexto,
+            // o ideal seria que o contexto expusesse uma função `saveSystemPrompt(newPrompt: string)`.
+            // Como não foi solicitado, vou manter a lógica de salvar aqui, mas com a ressalva.
+
+            // Temporariamente, para fazer funcionar sem alterar o contexto para expor 'db':
+            if (typeof __firebase_config === 'undefined' || typeof __app_id === 'undefined') {
+                console.error("Variáveis de configuração Firebase não encontradas para salvar.");
+                alert("Erro: Configuração Firebase ausente.");
+                setIsSaving(false);
+                return;
+            }
+            const firebaseConfig = JSON.parse(__firebase_config as string);
+            const app = initializeApp(firebaseConfig); // Re-inicializa, o que não é ideal
+            const firestoreDb = getFirestore(app);
+
+            const appId = typeof __app_id !== 'undefined' ? (__app_id as string) : 'default-app-id';
+            const promptDocRef = doc(firestoreDb, 
                 `artifacts/${appId}/users/${userId}/ai_tutor_config`, 
                 'prompt_document'
             );
             
             await setDoc(promptDocRef, { systemPrompt: promptText });
-            alert("Instrução de Sistema salva com sucesso!"); // Usando alert() em um contexto de desenvolvimento
+            alert("Instrução de Sistema salva com sucesso!");
+            refreshPrompt(); // Notifica o contexto para recarregar o prompt
         } catch (error) {
             console.error("Erro ao salvar prompt no Firestore:", error);
             alert("Erro ao salvar a instrução. Tente novamente.");
+        } finally {
+            setIsSaving(false);
         }
-    }, [db, userId, promptText, loading]);
+    }, [userId, promptText, contextLoading, refreshPrompt]);
 
     // --- Renderização ---
 
-    if (loading || !isFirebaseReady) {
+    if (contextLoading || !userId) { // Usa o estado de carregamento do contexto
         return (
             <div className="flex flex-col items-center justify-center p-8 h-full bg-white rounded-xl shadow-lg">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
@@ -155,9 +112,9 @@ const AITutorSettings = () => {
                 <button
                     onClick={handleSavePrompt}
                     className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 transition duration-200 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 disabled:opacity-50"
-                    disabled={loading}
+                    disabled={contextLoading || isSaving}
                 >
-                    {loading ? 'Salvando...' : 'Salvar Instrução'}
+                    {isSaving ? 'Salvando...' : 'Salvar Instrução'}
                 </button>
             </div>
         </div>
