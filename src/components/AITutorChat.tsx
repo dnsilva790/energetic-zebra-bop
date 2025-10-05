@@ -155,13 +155,20 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       const data = await response.json();
       const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter uma resposta do Tutor de IA.";
       
+      // Mova o Parsing: A lógica de parsing (parseAiResponseForTasks e setParsedMicroSteps)
+      // deve ser executada em toda resposta do modelo (aiResponseContent) para garantir
+      // que o parsedMicroSteps seja atualizado.
+      const extractedTasks = parseAiResponseForTasks(aiResponseContent);
+      setParsedMicroSteps(extractedTasks); 
+
       setMessages(prev => {
         const newMessages = [...prev, { role: 'model', content: aiResponseContent }];
-        if (!initialAiResponseReceived && newMessages.filter(m => m.role === 'model').length === 1) {
-            const extractedTasks = parseAiResponseForTasks(aiResponseContent);
-            setParsedMicroSteps(extractedTasks);
+        
+        // Mantenha a checagem de initialAiResponseReceived para fins de flag.
+        if (!initialAiResponseReceived) {
             setInitialAiResponseReceived(true);
         }
+        
         return newMessages;
       });
       showSuccess("Resposta do Tutor de IA recebida!");
