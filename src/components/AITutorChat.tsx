@@ -9,9 +9,8 @@ import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils';
 import { createTasks, handleApiCall, updateTaskDescription } from '@/lib/todoistApi';
 import { Badge } from '@/components/ui/badge';
-// Removido: import { useAITutorConfig } from '@/context/AITutorConfigContext';
 
-// O Prompt Padrão agora é definido diretamente aqui
+const AI_TUTOR_SYSTEM_PROMPT_KEY = 'ai_tutor_system_prompt';
 const DEFAULT_SYSTEM_PROMPT = `Você é o Tutor IA 'SEISO' e sua função é ajudar o usuário a quebrar tarefas complexas em micro-passos acionáveis. Responda de forma concisa e direta, usando linguagem de coaching, sempre mantendo o foco no próximo passo e na execução imediata. Cada resposta deve ser uma lista numerada de 3 a 5 micro-passos.`;
 
 interface ChatMessage {
@@ -62,7 +61,6 @@ const parseAiResponseForTasks = (responseText: string): { content: string; descr
 
 const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, taskId, onClose, className, isTaskCompleted }) => {
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-  // Removido: const { systemPrompt, isLoading: firebaseLoading, userId } = useAITutorConfig();
 
   // --- Early exit if API key is missing ---
   if (!GEMINI_API_KEY) {
@@ -103,6 +101,10 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   const [initialAiResponseReceived, setInitialAiResponseReceived] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const isMounted = useRef(false);
+
+  const getSystemPrompt = useCallback(() => {
+    return localStorage.getItem(AI_TUTOR_SYSTEM_PROMPT_KEY) || DEFAULT_SYSTEM_PROMPT;
+  }, []);
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
@@ -176,8 +178,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
     setParsedMicroSteps([]);
     setMessages([]); // Limpar mensagens ao mudar de tarefa
 
-    // Não há mais firebaseLoading, então o prompt padrão está sempre disponível
-    const systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    const systemPrompt = getSystemPrompt();
 
     let loadedMessages: ChatMessage[] = [];
     if (typeof window !== 'undefined') {
@@ -204,7 +205,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
       setMessages(newInitialMessages);
       sendMessageToGemini(newInitialMessages, systemPrompt); // Envia a mensagem inicial para o Gemini
     }
-  }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini]); // Removido firebaseLoading e systemPrompt do array de dependências
+  }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini, getSystemPrompt]);
 
   // Efeito para marcar que o componente foi montado
   useEffect(() => {
@@ -234,14 +235,14 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (input.trim() === '' || isGeminiLoading) return; // Removido !systemPrompt
+    if (input.trim() === '' || isGeminiLoading) return;
 
     const newUserMessage: ChatMessage = { role: 'user', content: input.trim() };
     const updatedMessages = [...messages, newUserMessage];
     setMessages(updatedMessages);
     setInput('');
     
-    await sendMessageToGemini(updatedMessages, DEFAULT_SYSTEM_PROMPT); // Usa DEFAULT_SYSTEM_PROMPT
+    await sendMessageToGemini(updatedMessages, getSystemPrompt());
   };
 
   const handleSendToTodoist = async () => {
@@ -291,7 +292,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
     }
   };
 
-  const overallLoading = isGeminiLoading; // Removido firebaseLoading
+  const overallLoading = isGeminiLoading;
 
   return (
     <div className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>

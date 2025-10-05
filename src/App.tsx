@@ -9,6 +9,7 @@ import MainMenuPage from "./pages/MainMenuPage";
 import SEIRIPage from "./pages/SEIRIPage";
 import SEITONPage from "./pages/SEITONPage";
 import SEISOPage from "./pages/SEISOPage";
+import AITutorSettingsPage from "./pages/AITutorSettingsPage"; // Importar a nova página
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,7 +28,7 @@ const App = () => (
             <Route path="/5s/seiri" element={<SEIRIPage />} />
             <Route path="/5s/seiton" element={<SEITONPage />} />
             <Route path="/5s/seiso" element={<SEISOPage />} />
-            {/* A rota /ai-tutor-settings foi removida */}
+            <Route path="/ai-tutor-settings" element={<AITutorSettingsPage />} /> {/* Nova rota */}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
