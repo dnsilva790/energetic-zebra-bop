@@ -9,9 +9,7 @@ import MainMenuPage from "./pages/MainMenuPage";
 import SEIRIPage from "./pages/SEIRIPage";
 import SEITONPage from "./pages/SEITONPage";
 import SEISOPage from "./pages/SEISOPage";
-import AITutorSettings from "./components/AITutorSettings";
 import NotFound from "./pages/NotFound";
-import { AITutorConfigProvider } from "./context/AITutorConfigContext"; // Importar o provedor
 
 const queryClient = new QueryClient();
 
@@ -21,7 +19,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AITutorConfigProvider> {/* Envolve as rotas com o provedor */}
+        {/* O provedor AITutorConfigProvider foi removido */}
           <Routes>
             <Route path="/" element={<InitialLoader />} />
             <Route path="/setup" element={<SetupPage />} />
@@ -29,11 +27,10 @@ const App = () => (
             <Route path="/5s/seiri" element={<SEIRIPage />} />
             <Route path="/5s/seiton" element={<SEITONPage />} />
             <Route path="/5s/seiso" element={<SEISOPage />} />
-            <Route path="/ai-tutor-settings" element={<AITutorSettings />} />
+            {/* A rota /ai-tutor-settings foi removida */}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </AITutorConfigProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
