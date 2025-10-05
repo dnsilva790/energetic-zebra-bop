@@ -138,7 +138,7 @@ const SEITONPage = () => {
 
       const activeTasks = fetchedTasks
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-        .filter((task: TodoistTask) => !task.is_completed)
+        .filter((task: TodoistTask) => !task.is_completed) // Adicionado filtro para tarefas não concluídas
         .sort((a, b) => b.priority - a.priority); // Ordenar por prioridade (P4 primeiro)
       console.log("SEITONPage - Active tasks from API (sorted by priority):", activeTasks.map(t => `${t.content} (Prio: ${t.priority})`));
 
