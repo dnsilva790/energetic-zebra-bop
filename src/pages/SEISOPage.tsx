@@ -128,21 +128,28 @@ const SEISOPage = () => {
         tasksToProcess = fetchedTasksFromFilter;
         showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
       } else {
+        console.log("SEISOPage - Filter returned no tasks. Checking SEITON fallback...");
         const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
+        console.log("SEISOPage - Raw savedRanking from localStorage:", savedRanking); // Log adicionado
         if (savedRanking) {
           try {
             const parsedRanking: SeitonRankingData = JSON.parse(savedRanking);
             const seitonTopTasks = parsedRanking.rankedTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+            console.log("SEISOPage - Parsed SEITON ranking top tasks count:", seitonTopTasks.length); // Log adicionado
 
             if (seitonTopTasks.length > 0) {
               tasksToProcess = seitonTopTasks;
               usingSeitonFallback = true;
               showSuccess(`Filtro esgotado. Continuando com as ${seitonTopTasks.length} tarefas principais do último ranking SEITON.`);
+            } else {
+              console.log("SEISOPage - SEITON ranking found, but it contains no tasks or tasks were filtered out."); // Log adicionado
             }
           } catch (e) {
             console.error("Error parsing last Seiton ranking for fallback:", e);
             showError("Erro ao carregar o último ranking do SEITON para fallback.");
           }
+        } else {
+          console.log("SEISOPage - No SEITON ranking found in localStorage."); // Log adicionado
         }
       }
 
@@ -416,11 +423,10 @@ const SEISOPage = () => {
           <h1 className="text-4xl font-extrabold text-orange-800 text-center flex-grow">
             SEISO - Executar Tarefas
           </h1>
-          <div className="w-20"></div>
+          <p className="text-xl text-orange-700 text-center mb-8">
+            Foque nas suas tarefas prioritárias
+          </p>
         </div>
-        <p className="text-xl text-orange-700 text-center mb-8">
-          Foque nas suas tarefas prioritárias
-        </p>
       </div>
 
       {!sessionStarted ? (
