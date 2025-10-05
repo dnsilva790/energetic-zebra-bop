@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { ArrowLeft, Check, X, ExternalLink, Repeat, Play, ChevronLeft, ChevronRight, Bug } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
@@ -33,7 +33,7 @@ interface SeitonProgress {
 interface ComparisonEntry {
   challengerContent: string;
   opponentContent: string;
-  winner: 'challenger' | 'opponent';
+  winner: 'challenger' | 'opponent' | 'N/A'; // Adicionado N/A para cancelamento
   action: string;
   timestamp: string;
 }
@@ -409,40 +409,57 @@ const SEITONPage = () => {
     }
   }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn]);
 
-  const handleCancelTask = useCallback(async () => {
-    if (!currentChallenger) return;
+  const handleCancelTask = useCallback(async (taskIdToCancel: string) => {
+    if (!currentChallenger || currentOpponentIndex === null) {
+        showError("Não há tarefa para cancelar no momento.");
+        return;
+    }
+
+    const currentOpponent = rankedTasks[currentOpponentIndex];
+    const isChallengerCancelled = currentChallenger.id === taskIdToCancel;
+    const isOpponentCancelled = currentOpponent && currentOpponent.id === taskIdToCancel;
+
+    if (!isChallengerCancelled && !isOpponentCancelled) {
+        console.warn("Attempted to cancel a task not currently in comparison:", taskIdToCancel);
+        showError("A tarefa selecionada para cancelar não está em comparação.");
+        return;
+    }
 
     const success = await handleApiCall(
-      () => completeTask(currentChallenger.id),
-      "Cancelando tarefa...",
-      "Tarefa cancelada com sucesso!"
+        () => completeTask(taskIdToCancel),
+        "Cancelando tarefa...",
+        "Tarefa cancelada com sucesso!"
     );
 
     if (success) {
-      showSuccess(`Tarefa "${currentChallenger.content}" cancelada.`);
-      // Remove the cancelled task from the tournament queue
-      setTournamentQueue(prevQueue => prevQueue.filter(task => task.id !== currentChallenger.id));
-      
-      // Reset current challenger and opponent to trigger the next comparison logic
-      setCurrentChallenger(null);
-      setCurrentOpponentIndex(null);
+        showSuccess(`Tarefa "${isChallengerCancelled ? currentChallenger.content : currentOpponent?.content || 'desconhecida'}" cancelada.`);
 
-      // Record comparison history for cancellation
-      setComparisonHistory(prevHistory => [
-        {
-          challengerContent: currentChallenger.content,
-          opponentContent: "N/A", // No opponent in a direct cancellation
-          winner: 'challenger', // Challenger is "removed"
-          action: `Desafiante "${currentChallenger.content}" cancelado.`,
-          timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
-        },
-        ...prevHistory,
-      ].slice(0, 3)); // Manter apenas as 3 últimas
+        if (isChallengerCancelled) {
+            setTournamentQueue(prevQueue => prevQueue.filter(task => task.id !== taskIdToCancel));
+            setCurrentChallenger(null); // Reset challenger to trigger next comparison
+            setCurrentOpponentIndex(null); // Reset opponent index
+        } else if (isOpponentCancelled) {
+            setRankedTasks(prevRanked => prevRanked.filter(task => task.id !== taskIdToCancel));
+            // If opponent is cancelled, the current challenger remains, and the comparison continues.
+            // The next render will show the updated rankedTasks, and the comparison will proceed
+            // with the same challenger against the new task at the currentOpponentIndex (or adjusted).
+        }
 
+        // Record comparison history for cancellation
+        setComparisonHistory(prevHistory => [
+            {
+                challengerContent: currentChallenger.content,
+                opponentContent: isOpponentCancelled ? currentOpponent.content : "N/A",
+                winner: 'N/A', // No winner in a cancellation
+                action: `Tarefa "${isChallengerCancelled ? currentChallenger.content : currentOpponent?.content || 'desconhecida'}" cancelada.`,
+                timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
+            },
+            ...prevHistory,
+        ].slice(0, 3));
     } else {
-      showError("Falha ao cancelar a tarefa.");
+        showError("Falha ao cancelar a tarefa.");
     }
-  }, [currentChallenger]);
+}, [currentChallenger, currentOpponentIndex, rankedTasks, completeTask]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -455,9 +472,10 @@ const SEITONPage = () => {
         } else if (event.key === '2') {
           event.preventDefault();
           handleTournamentComparison(false);
-        } else if (event.key === 'x' || event.key === 'X') { // 'X' for Cancel
+        } else if (event.key === 'x' || event.key === 'X') { // 'X' for Cancel Challenger
           event.preventDefault();
-          handleCancelTask();
+          // O atalho de teclado 'X' cancelará o desafiante (tarefa de cima) por padrão.
+          handleCancelTask(currentChallenger.id); 
         }
       }
     };
@@ -554,6 +572,14 @@ const SEITONPage = () => {
             </p>
           )}
         </CardContent>
+        <CardFooter className="flex justify-center mt-4 p-0">
+          <Button
+            onClick={() => handleCancelTask(task.id)} // Pass task.id to cancel
+            className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-4 rounded-md transition-colors flex items-center text-sm"
+          >
+            <X className="mr-1 h-4 w-4" /> Cancelar
+          </Button>
+        </CardFooter>
       </Card>
     );
   };
@@ -590,7 +616,7 @@ const SEITONPage = () => {
           <div className="space-y-6 text-center">
             <CardTitle className="text-2xl font-bold text-gray-800">Qual é mais importante?</CardTitle>
             <CardDescription className="text-lg text-gray-700">
-              Escolha a tarefa que você considera mais prioritária.
+              Escolha a tarefa que você considera mais prioritária ou cancele uma delas.
             </CardDescription>
             <div className="grid grid-cols-1 gap-4">
               {renderTaskCard(currentChallenger, "Tarefa A", "Challenger", currentChallenger.priority)}
@@ -599,18 +625,10 @@ const SEITONPage = () => {
             </div>
             <div className="flex justify-center space-x-4 mt-6">
               <Button onClick={() => handleTournamentComparison(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
-                <ChevronLeft className="mr-2 h-5 w-5" /> ESCOLHER ESQUERDA (1)
+                <ChevronLeft className="mr-2 h-5 w-5" /> ESCOLHER CIMA (1)
               </Button>
               <Button onClick={() => handleTournamentComparison(false)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
-                ESCOLHER DIREITA (2) <ChevronRight className="ml-2 h-5 w-5" />
-              </Button>
-            </div>
-            <div className="flex justify-center mt-4">
-              <Button
-                onClick={handleCancelTask}
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center"
-              >
-                <X className="mr-2 h-5 w-5" /> CANCELAR (X)
+                ESCOLHER BAIXO (2) <ChevronRight className="ml-2 h-5 w-5" />
               </Button>
             </div>
           </div>
