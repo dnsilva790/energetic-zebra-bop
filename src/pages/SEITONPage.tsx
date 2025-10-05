@@ -10,7 +10,7 @@ import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, updateTask, handleApiCall } from "@/lib/todoistApi";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 // Removendo importações de date-fns-tz para usar o fuso horário local do navegador
 
@@ -78,7 +78,7 @@ const SEITONPage = () => {
     try {
       const parsedDate = parseISO(dateString); // parseISO interpreta no fuso horário local se não houver offset/Z
 
-      if (isNaN(parsedDate.getTime())) {
+      if (!isValid(parsedDate)) {
         console.warn("Invalid date string after parseISO:", dateString);
         return "Data inválida";
       }
@@ -108,23 +108,6 @@ const SEITONPage = () => {
     console.log("SEITONPage - Progress saved:", progress);
   }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory]);
 
-  const loadProgress = useCallback((): SeitonProgress | null => {
-    const savedProgress = localStorage.getItem(SEITON_PROGRESS_KEY);
-    if (savedProgress) {
-      try {
-        const progress: SeitonProgress = JSON.parse(savedProgress);
-        console.log("SEITONPage - Progress loaded:", progress);
-        return progress;
-      } catch (e) {
-        console.error("SEITONPage - Error parsing saved progress from localStorage:", e);
-        localStorage.removeItem(SEITON_PROGRESS_KEY);
-        return null;
-      }
-    }
-    console.log("SEITONPage - No saved progress found.");
-    return null;
-  }, []);
-
   const fetchAndSetupTasks = useCallback(async () => {
     setLoading(true);
     console.log("SEITONPage - fetchAndSetupTasks: Starting API call to get tasks.");
@@ -140,30 +123,69 @@ const SEITONPage = () => {
       const activeTasks = fetchedTasks
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => !(task as any).is_completed && !(task as any).completed) // Filtro robusto
-        .sort((a, b) => b.priority - a.priority); // Ordenar por prioridade (P4 primeiro)
-      console.log("SEITONPage - Active tasks from API (sorted by priority):", activeTasks.map(t => `${t.content} (Prio: ${t.priority})`));
+        .sort((a, b) => {
+          // Primary sort: priority (descending)
+          if (b.priority !== a.priority) {
+            return b.priority - a.priority;
+          }
+
+          // Secondary sort: due date (ascending)
+          const dateA = a.due?.date ? parseISO(a.due.date) : null;
+          const dateB = b.due?.date ? parseISO(b.due.date) : null;
+
+          // Handle invalid dates or nulls
+          const isValidDateA = dateA && isValid(dateA);
+          const isValidDateB = dateB && isValid(dateB);
+
+          if (isValidDateA && isValidDateB) {
+            return dateA!.getTime() - dateB!.getTime();
+          }
+          if (isValidDateA) { // A has a valid date, B does not
+            return -1;
+          }
+          if (isValidDateB) { // B has a valid date, A does not
+            return 1;
+          }
+          return 0; // Both have no valid date
+        });
+      console.log("SEITONPage - Active tasks from API (sorted by priority and due date):", activeTasks.map(t => `${t.content} (Prio: ${t.priority}, Due: ${t.due?.date || 'N/A'})`));
 
       setAllFetchedTasks(activeTasks);
 
-      const savedProgress = loadProgress();
+      const savedProgressRaw = localStorage.getItem(SEITON_PROGRESS_KEY);
 
       let currentTournamentQueue: TodoistTask[] = [];
       let currentRankedTasks: TodoistTask[] = [];
       let currentP3Tasks: TodoistTask[] = [];
       let currentChallenger: TodoistTask | null = null;
       let currentOpponentIndex: number | null = null;
-      let currentStepState: SeitonStep = 'loading';
+      let currentStepState: SeitonStep = 'loading'; // Default to loading
       let currentComparisonHistory: ComparisonEntry[] = [];
 
-      if (savedProgress) {
-        currentTournamentQueue = savedProgress.tournamentQueue;
-        currentRankedTasks = savedProgress.rankedTasks;
-        currentP3Tasks = savedProgress.p3Tasks;
-        currentChallenger = savedProgress.currentChallenger;
-        currentOpponentIndex = savedProgress.currentOpponentIndex;
-        currentStepState = savedProgress.currentStep;
-        currentComparisonHistory = savedProgress.comparisonHistory || []; // Carregar histórico
-        console.log("SEITONPage - Loaded progress applied. Queue:", currentTournamentQueue.map(t => t.content), "Ranked:", currentRankedTasks.map(t => t.content), "P3:", currentP3Tasks.map(t => t.content));
+      if (savedProgressRaw) {
+        const loaded: SeitonProgress = JSON.parse(savedProgressRaw);
+        console.log("SEITONPage - Raw progress loaded:", loaded);
+
+        // Filter out any tasks from the loaded state that are no longer active
+        currentTournamentQueue = loaded.tournamentQueue.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+        currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+        currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+        currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
+        currentOpponentIndex = loaded.currentOpponentIndex;
+        currentComparisonHistory = loaded.comparisonHistory || [];
+
+        // Determine the step based on loaded data
+        if (currentTournamentQueue.length > 0 || currentChallenger) {
+          currentStepState = 'tournamentComparison';
+        } else if (currentRankedTasks.length > 0 || currentP3Tasks.length > 0) {
+          // If no active tournament tasks but there are ranked/p3 tasks, it means the tournament might be done
+          // or it's just displaying results.
+          currentStepState = 'result';
+        } else {
+          // If everything is empty after filtering, it's effectively a fresh start or no tasks.
+          currentStepState = 'result';
+        }
+        console.log("SEITONPage - Filtered loaded progress. Queue:", currentTournamentQueue.map(t => t.content), "Ranked:", currentRankedTasks.map(t => t.content), "P3:", currentP3Tasks.map(t => t.content), "Challenger:", currentChallenger?.content || "Nenhum", "Determined Step:", currentStepState);
       }
 
       const processedTaskIds = new Set<string>();
@@ -178,7 +200,8 @@ const SEITONPage = () => {
 
       if (newTasks.length > 0) {
         currentTournamentQueue = [...currentTournamentQueue, ...newTasks];
-        if (currentStepState === 'result' || (savedProgress && savedProgress.tournamentQueue.length === 0 && newTasks.length > 0)) {
+        // If new tasks are added, and we're not already in a comparison, switch to it.
+        if (currentStepState !== 'tournamentComparison') {
           currentStepState = 'tournamentComparison';
         }
         showSuccess(`${newTasks.length} novas tarefas adicionadas para triagem.`);
@@ -189,14 +212,15 @@ const SEITONPage = () => {
       setP3Tasks(currentP3Tasks);
       setCurrentChallenger(currentChallenger);
       setCurrentOpponentIndex(currentOpponentIndex);
-      setCurrentStep(currentStepState);
+      setCurrentStep(currentStepState); // Set the determined step
       setComparisonHistory(currentComparisonHistory); // Definir histórico
 
-      if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0) {
+      if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0 && !currentChallenger) {
         showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
         setCurrentStep('result');
         localStorage.removeItem(SEITON_PROGRESS_KEY);
-      } else if (currentStepState === 'loading' && currentTournamentQueue.length > 0) {
+      } else if (currentStepState === 'loading' && (currentTournamentQueue.length > 0 || currentChallenger)) {
+        // This case should be handled by the logic above, but as a fallback
         setCurrentStep('tournamentComparison');
       }
     } catch (error) {
@@ -206,7 +230,7 @@ const SEITONPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, loadProgress]);
+  }, [navigate]);
 
   useEffect(() => {
     fetchAndSetupTasks();
@@ -261,27 +285,21 @@ const SEITONPage = () => {
   }, [tournamentQueue, rankedTasks, updateTaskAndReturn]);
 
   useEffect(() => {
-    console.log("SEITONPage - Flow management effect triggered. Current step:", currentStep);
-    const handleFlow = async () => { // Make this async
+    console.log("SEITONPage - Flow management effect triggered. Current step:", currentStep, "Challenger:", currentChallenger?.content || "Nenhum", "Queue length:", tournamentQueue.length);
+    const handleFlow = async () => {
       if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length > 0) {
-        console.log("SEITONPage - Flow: Starting next tournament comparison.");
-        await startNextTournamentComparison(); // Await the async call
+        console.log("SEITONPage - Flow: No current challenger, queue has tasks. Starting next comparison.");
+        await startNextTournamentComparison();
       } else if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length === 0) {
-        console.log("SEITONPage - Flow: Tournament queue exhausted, moving to result.");
+        console.log("SEITONPage - Flow: No current challenger, queue is empty. Tournament finished.");
         setCurrentStep('result');
-        localStorage.removeItem(SEITON_PROGRESS_KEY);
-      } else if (currentStep === 'loading' && tournamentQueue.length > 0) {
-        console.log("SEITONPage - Flow: Loaded with tasks in queue, starting tournament.");
-        setCurrentStep('tournamentComparison');
-        await startNextTournamentComparison(); // Await the async call
-      } else if (currentStep === 'loading' && tournamentQueue.length === 0 && allFetchedTasks.length === 0) {
-        console.log("SEITONPage - Flow: No tasks at all, moving to result.");
-        setCurrentStep('result');
-        localStorage.removeItem(SEITON_PROGRESS_KEY);
+        // localStorage.removeItem(SEITON_PROGRESS_KEY); // Handled by other useEffect
       }
+      // Other cases (like 'loading' transitioning to 'tournamentComparison' or 'result')
+      // are now primarily handled by fetchAndSetupTasks.
     };
     handleFlow();
-  }, [currentStep, currentChallenger, tournamentQueue, allFetchedTasks.length, startNextTournamentComparison]);
+  }, [currentStep, currentChallenger, tournamentQueue.length, startNextTournamentComparison]);
 
   const handleTournamentComparison = useCallback(async (challengerWins: boolean) => {
     if (!currentChallenger || currentOpponentIndex === null) {
@@ -604,11 +622,10 @@ const SEITONPage = () => {
           <h1 className="text-4xl font-extrabold text-blue-800 text-center flex-grow">
             SEITON - Planejar Dia
           </h1>
-          <div className="w-20"></div>
+          <p className="text-xl text-blue-700 text-center mb-8">
+            Priorize suas tarefas com torneio
+          </p>
         </div>
-        <p className="text-xl text-blue-700 text-center mb-8">
-          Priorize suas tarefas com torneio
-        </p>
       </div>
 
       <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
