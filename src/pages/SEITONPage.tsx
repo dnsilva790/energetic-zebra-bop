@@ -409,6 +409,41 @@ const SEITONPage = () => {
     }
   }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn]);
 
+  const handleCancelTask = useCallback(async () => {
+    if (!currentChallenger) return;
+
+    const success = await handleApiCall(
+      () => completeTask(currentChallenger.id),
+      "Cancelando tarefa...",
+      "Tarefa cancelada com sucesso!"
+    );
+
+    if (success) {
+      showSuccess(`Tarefa "${currentChallenger.content}" cancelada.`);
+      // Remove the cancelled task from the tournament queue
+      setTournamentQueue(prevQueue => prevQueue.filter(task => task.id !== currentChallenger.id));
+      
+      // Reset current challenger and opponent to trigger the next comparison logic
+      setCurrentChallenger(null);
+      setCurrentOpponentIndex(null);
+
+      // Record comparison history for cancellation
+      setComparisonHistory(prevHistory => [
+        {
+          challengerContent: currentChallenger.content,
+          opponentContent: "N/A", // No opponent in a direct cancellation
+          winner: 'challenger', // Challenger is "removed"
+          action: `Desafiante "${currentChallenger.content}" cancelado.`,
+          timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
+        },
+        ...prevHistory,
+      ].slice(0, 3)); // Manter apenas as 3 últimas
+
+    } else {
+      showError("Falha ao cancelar a tarefa.");
+    }
+  }, [currentChallenger]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (loading) return;
@@ -420,6 +455,9 @@ const SEITONPage = () => {
         } else if (event.key === '2') {
           event.preventDefault();
           handleTournamentComparison(false);
+        } else if (event.key === 'x' || event.key === 'X') { // 'X' for Cancel
+          event.preventDefault();
+          handleCancelTask();
         }
       }
     };
@@ -428,7 +466,7 @@ const SEITONPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison]);
+  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask]);
 
   // Effect to save final ranking when currentStep becomes 'result'
   useEffect(() => {
@@ -451,7 +489,7 @@ const SEITONPage = () => {
       // O SEISO encontra a primeira tarefa com maior ranking que AINDA ESTÁ ATIVA.
       const activeTask = rankedTasks.find(task => 
           // Verifica se as flags de conclusão (is_completed ou completed) não estão marcadas.
-          !task.is_completed && !task.completed
+          !task.is_completed && !(task as any).completed
       );
       
       // Retorna a tarefa ativa de maior prioridade, ou nulo se todas estiverem concluídas.
@@ -565,6 +603,14 @@ const SEITONPage = () => {
               </Button>
               <Button onClick={() => handleTournamentComparison(false)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
                 ESCOLHER DIREITA (2) <ChevronRight className="ml-2 h-5 w-5" />
+              </Button>
+            </div>
+            <div className="flex justify-center mt-4">
+              <Button
+                onClick={handleCancelTask}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center"
+              >
+                <X className="mr-2 h-5 w-5" /> CANCELAR (X)
               </Button>
             </div>
           </div>
