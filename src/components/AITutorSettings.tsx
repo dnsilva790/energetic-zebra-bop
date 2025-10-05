@@ -1,184 +1,167 @@
-"use client";
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { showSuccess, showError } from '@/utils/toast';
-import { initializeApp, getApps, getApp } from 'firebase/app';
+// Importações de Firebase necessárias
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, signInWithCustomToken, User as FirebaseUser } from 'firebase/auth';
-import { Loader2, Brain } from 'lucide-react';
 
-// Assume these global variables are provided by the environment
-// Dyad will inject these variables into the global scope.
-declare const __app_id: string;
-declare const __firebase_config: any;
-declare const __initial_auth_token: string;
-
+// Definição do Prompt Padrão (System Instruction)
 const DEFAULT_SYSTEM_PROMPT = `Você é o Tutor IA 'SEISO' e sua função é ajudar o usuário a quebrar tarefas complexas em micro-passos acionáveis. Responda de forma concisa e direta, usando linguagem de coaching, sempre mantendo o foco no próximo passo e na execução imediata. Cada resposta deve ser uma lista numerada de 3 a 5 micro-passos.`;
 
-const AITutorSettings: React.FC = () => {
-  const [customPrompt, setCustomPrompt] = useState<string>('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [firebaseInitialized, setFirebaseInitialized] = useState(false);
+const AITutorSettings = () => {
+    // Variáveis de Estado para Firebase e Dados
+    const [promptText, setPromptText] = useState(DEFAULT_SYSTEM_PROMPT);
+    const [loading, setLoading] = useState(true);
+    const [isFirebaseReady, setIsFirebaseReady] = useState(false);
+    
+    // Instâncias do Firebase (Armazenadas no estado para serem acessíveis a outras funções)
+    const [db, setDb] = useState<any>(null);
+    const [auth, setAuth] = useState<any>(null);
+    const [userId, setUserId] = useState<string | null>(null);
 
-  // Initialize Firebase app if not already initialized
-  useEffect(() => {
-    if (getApps().length === 0) {
-      try {
-        initializeApp(__firebase_config);
-        console.log("Firebase app initialized.");
-      } catch (e) {
-        console.error("Error initializing Firebase app:", e);
-        showError("Erro ao inicializar Firebase.");
-        setLoading(false);
-        return;
-      }
-    }
-    setFirebaseInitialized(true);
-  }, []);
-
-  // Authenticate user and load prompt
-  useEffect(() => {
-    if (!firebaseInitialized) return;
-
-    const auth = getAuth();
-    const firestore = getFirestore();
-
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        console.log("Firebase user authenticated:", currentUser.uid);
-        await loadPrompt(currentUser.uid, firestore);
-      } else {
-        console.log("No Firebase user, attempting custom token sign-in.");
-        try {
-          if (__initial_auth_token) {
-            const userCredential = await signInWithCustomToken(auth, __initial_auth_token);
-            setUser(userCredential.user);
-            console.log("Signed in with custom token:", userCredential.user.uid);
-            await loadPrompt(userCredential.user.uid, firestore);
-          } else {
-            console.warn("No __initial_auth_token found for Firebase custom sign-in.");
-            showError("Token de autenticação Firebase ausente.");
-            setLoading(false);
-          }
-        } catch (error) {
-          console.error("Error signing in with custom token:", error);
-          showError("Erro ao autenticar com Firebase.");
-          setLoading(false);
+    // --- Configuração e Autenticação do Firebase ---
+    useEffect(() => {
+        // Assegura que o script não falhe se as variáveis não existirem (embora sejam esperadas)
+        if (typeof __firebase_config === 'undefined' || typeof __app_id === 'undefined') {
+            console.error("Variáveis de configuração Firebase não encontradas.");
+            return;
         }
-      }
-    });
 
-    return () => unsubscribe();
-  }, [firebaseInitialized]);
+        const setupFirebase = async () => {
+            try {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                const firestoreDb = getFirestore(app);
+                const firebaseAuth = getAuth(app);
+                
+                setDb(firestoreDb);
+                setAuth(firebaseAuth);
 
-  const loadPrompt = useCallback(async (userId: string, firestore: any) => {
-    setLoading(true);
-    try {
-      const promptDocRef = doc(firestore, `artifacts/${__app_id}/users/${userId}/ai_tutor_config/prompt_document`);
-      const docSnap = await getDoc(promptDocRef);
+                // 1. Autenticação: Assíncrona e Obrigatória
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(firebaseAuth, __initial_auth_token);
+                } else {
+                    // Fallback para login anônimo se o token não estiver disponível
+                    await signInAnonymously(firebaseAuth);
+                }
+                
+                // 2. Definir o userId após a autenticação bem-sucedida
+                const currentUserId = firebaseAuth.currentUser?.uid || crypto.randomUUID();
+                setUserId(currentUserId);
+                
+                // 3. Sinalizar que o Firebase está pronto para operações de dados
+                setIsFirebaseReady(true);
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setCustomPrompt(data?.systemPrompt || DEFAULT_SYSTEM_PROMPT);
-        showSuccess("Prompt carregado com sucesso!");
-      } else {
-        setCustomPrompt(DEFAULT_SYSTEM_PROMPT);
-        showSuccess("Nenhum prompt customizado encontrado, usando padrão.");
-      }
-    } catch (error) {
-      console.error("Error loading AI Tutor prompt:", error);
-      showError("Erro ao carregar o prompt do Tutor de IA.");
-      setCustomPrompt(DEFAULT_SYSTEM_PROMPT); // Fallback to default on error
-    } finally {
-      setLoading(false);
+            } catch (error) {
+                console.error("Erro ao inicializar e autenticar o Firebase:", error);
+                setLoading(false); // Parar de carregar se falhar
+            }
+        };
+
+        setupFirebase();
+    }, []); // Executa apenas na montagem
+
+    // --- Lógica de Carregamento do Prompt (Dependente do Firebase estar Pronto) ---
+    useEffect(() => {
+        if (!isFirebaseReady || !db || !userId) return;
+
+        const loadPrompt = async () => {
+            setLoading(true);
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const promptDocRef = doc(db, 
+                    `artifacts/${appId}/users/${userId}/ai_tutor_config`, 
+                    'prompt_document'
+                );
+                
+                const docSnap = await getDoc(promptDocRef);
+                
+                if (docSnap.exists() && docSnap.data().systemPrompt) {
+                    setPromptText(docSnap.data().systemPrompt);
+                } else {
+                    // Se não houver documento, salva o prompt padrão para uso futuro
+                    await setDoc(promptDocRef, { systemPrompt: DEFAULT_SYSTEM_PROMPT });
+                    setPromptText(DEFAULT_SYSTEM_PROMPT);
+                }
+
+            } catch (error) {
+                console.error("Erro ao carregar prompt do Firestore:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadPrompt();
+    }, [isFirebaseReady, db, userId]); // Depende do estado de prontidão e das instâncias
+
+    // --- Lógica de Salvamento ---
+    const handleSavePrompt = useCallback(async () => {
+        if (!db || !userId || loading) return;
+
+        try {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const promptDocRef = doc(db, 
+                `artifacts/${appId}/users/${userId}/ai_tutor_config`, 
+                'prompt_document'
+            );
+            
+            await setDoc(promptDocRef, { systemPrompt: promptText });
+            alert("Instrução de Sistema salva com sucesso!"); // Usando alert() em um contexto de desenvolvimento
+        } catch (error) {
+            console.error("Erro ao salvar prompt no Firestore:", error);
+            alert("Erro ao salvar a instrução. Tente novamente.");
+        }
+    }, [db, userId, promptText, loading]);
+
+    // --- Renderização ---
+
+    if (loading || !isFirebaseReady) {
+        return (
+            <div className="flex flex-col items-center justify-center p-8 h-full bg-white rounded-xl shadow-lg">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+                <p className="mt-4 text-indigo-600 font-medium">Inicializando Firebase...</p>
+            </div>
+        );
     }
-  }, []);
 
-  const handleSavePrompt = useCallback(async () => {
-    if (!user) {
-      showError("Usuário não autenticado. Não foi possível salvar o prompt.");
-      return;
-    }
-    setSaving(true);
-    try {
-      const firestore = getFirestore();
-      const promptDocRef = doc(firestore, `artifacts/${__app_id}/users/${user.uid}/ai_tutor_config/prompt_document`);
-      await setDoc(promptDocRef, { systemPrompt: customPrompt });
-      showSuccess("Prompt salvo com sucesso!");
-    } catch (error) {
-      console.error("Error saving AI Tutor prompt:", error);
-      showError("Erro ao salvar o prompt do Tutor de IA.");
-    } finally {
-      setSaving(false);
-    }
-  }, [user, customPrompt]);
-
-  if (!firebaseInitialized) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-        <p className="mt-2 text-gray-600">Inicializando Firebase...</p>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-        <p className="mt-2 text-gray-600">Carregando configurações do Tutor de IA...</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 to-indigo-100 p-4">
-      <Card className="w-full max-w-2xl shadow-lg bg-white/80 backdrop-blur-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold text-purple-800 flex items-center justify-center gap-2">
-            <Brain className="h-8 w-8" /> Configurações do Tutor de IA
-          </CardTitle>
-          <CardDescription className="text-lg text-gray-600 mt-2">
-            Personalize as instruções do sistema para o Tutor de IA.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="system-prompt" className="text-lg font-semibold text-gray-700">Instrução de Sistema (System Prompt)</Label>
-            <Textarea
-              id="system-prompt"
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              rows={10}
-              className="min-h-[200px] p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              placeholder={DEFAULT_SYSTEM_PROMPT}
-            />
-          </div>
-          <Button onClick={handleSavePrompt} disabled={saving || !user} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 rounded-md transition-colors flex items-center justify-center">
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
-              </>
-            ) : (
-              "Salvar Prompt"
-            )}
-          </Button>
-          {!user && (
-            <p className="text-red-500 text-sm text-center">
-              Aguardando autenticação do usuário para carregar/salvar configurações.
+        <div className="p-6 md:p-8 bg-white rounded-xl shadow-2xl max-w-3xl mx-auto font-sans">
+            <h1 className="text-3xl font-extrabold text-gray-800 mb-2">
+                ⚙️ Configurações do Tutor IA
+            </h1>
+            <p className="text-sm text-gray-500 mb-6 border-b pb-4">
+                Personalize o comportamento e a personalidade do seu Tutor SEISO.
+                <br/>
+                O ID do Usuário para este dispositivo é: <span className="font-mono text-xs text-indigo-500 bg-indigo-50 p-1 rounded-md">{userId}</span>
             </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+
+            <div className="mb-6">
+                <label htmlFor="system-prompt" className="block text-lg font-semibold text-gray-700 mb-2">
+                    Instrução de Sistema (System Prompt)
+                </label>
+                <textarea
+                    id="system-prompt"
+                    rows={10}
+                    value={promptText}
+                    onChange={(e) => setPromptText(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-gray-700 text-sm resize-none transition duration-150"
+                    placeholder="Defina a persona e as regras de resposta para o seu Tutor IA."
+                ></textarea>
+                <p className="mt-2 text-xs text-gray-500">
+                    Exemplo: "Sua resposta deve ser uma lista numerada e usar termos de jardinagem."
+                </p>
+            </div>
+
+            <div className="flex justify-end">
+                <button
+                    onClick={handleSavePrompt}
+                    className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 transition duration-200 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 disabled:opacity-50"
+                    disabled={loading}
+                >
+                    {loading ? 'Salvando...' : 'Salvar Instrução'}
+                </button>
+            </div>
+        </div>
+    );
 };
 
 export default AITutorSettings;
