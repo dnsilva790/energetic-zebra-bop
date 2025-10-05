@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -442,6 +442,22 @@ const SEITONPage = () => {
     }
   }, [currentStep, rankedTasks, p3Tasks]);
 
+  // Lógica de seleção da tarefa para o Card de Foco (SEISO)
+  const selectedTask = useMemo(() => {
+      if (!rankedTasks || rankedTasks.length === 0) {
+          return null;
+      }
+      
+      // O SEISO encontra a primeira tarefa com maior ranking que AINDA ESTÁ ATIVA.
+      const activeTask = rankedTasks.find(task => 
+          // Verifica se as flags de conclusão (is_completed ou completed) não estão marcadas.
+          !task.is_completed && !task.completed
+      );
+      
+      // Retorna a tarefa ativa de maior prioridade, ou nulo se todas estiverem concluídas.
+      return activeTask || null; 
+  }, [rankedTasks]);
+
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -633,6 +649,7 @@ const SEITONPage = () => {
               <p><strong>Current Step:</strong> {currentStep}</p>
               <p><strong>Current Challenger:</strong> {currentChallenger ? `${currentChallenger.content} (ID: ${currentChallenger.id}, Prio: ${currentChallenger.priority})` : "Nenhum"}</p>
               <p><strong>Current Opponent Index:</strong> {currentOpponentIndex !== null ? currentOpponentIndex : "Nenhum"}</p>
+              <p><strong>Selected Task (for SEISO Card):</strong> {selectedTask ? `${selectedTask.content} (ID: ${selectedTask.id}, Prio: ${selectedTask.priority})` : "Nenhum"}</p>
 
               <div>
                 <h4 className="font-semibold mt-2">Tournament Queue ({tournamentQueue.length} tasks):</h4>
