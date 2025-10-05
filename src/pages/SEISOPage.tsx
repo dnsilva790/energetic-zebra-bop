@@ -603,6 +603,7 @@ const SEISOPage = () => {
               taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
               taskId={currentTask.id}
               onClose={() => setIsAITutorChatOpen(false)}
+              isTaskCompleted={currentTask.is_completed} // Passando a nova prop
               className="flex-grow"
             />
           )}

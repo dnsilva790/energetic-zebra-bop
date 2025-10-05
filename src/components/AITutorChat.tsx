@@ -7,7 +7,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Loader2, User, Bot, Check, X, AlertCircle } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils';
-import { createTasks, handleApiCall, updateTaskDescription } from '@/lib/todoistApi'; // Import updateTaskDescription
+import { createTasks, handleApiCall, updateTaskDescription } from '@/lib/todoistApi';
+import { Badge } from '@/components/ui/badge'; // Importar o componente Badge
 
 interface ChatMessage {
   role: 'user' | 'model';
@@ -17,9 +18,10 @@ interface ChatMessage {
 interface AITutorChatProps {
   taskTitle: string;
   taskDescription: string;
-  taskId: string; // Adicionado taskId para persistência
+  taskId: string;
   onClose: () => void;
   className?: string;
+  isTaskCompleted: boolean; // Nova propriedade adicionada
 }
 
 // Helper function to parse AI response for tasks
@@ -54,7 +56,7 @@ const parseAiResponseForTasks = (responseText: string): { content: string; descr
   return tasks;
 };
 
-const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, taskId, onClose, className }) => {
+const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, taskId, onClose, className, isTaskCompleted }) => {
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
   // --- Early exit if API key is missing ---
@@ -190,7 +192,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
 
     let loadedMessages: ChatMessage[] = [];
     if (typeof window !== 'undefined') {
-      console.log('Tentando carregar histórico com chave:', localStorageKey); // Log de carregamento
+      console.log('Tentando carregar histórico com chave:', localStorageKey); // Log da chave
       const savedHistory = localStorage.getItem(localStorageKey);
       console.log('Histórico RAW do localStorage:', savedHistory); // Log do histórico RAW
       if (savedHistory) {
@@ -313,7 +315,15 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   return (
     <div className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
       <div className="p-4 border-b flex items-center justify-between">
-        <h2 className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</h2>
+        <div className="flex flex-col items-start">
+          <h2 className="text-xl font-bold text-purple-800">Tutor de IA (Gemini)</h2>
+          <Badge className={cn(
+            "mt-1 text-xs font-semibold",
+            isTaskCompleted ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
+          )}>
+            {isTaskCompleted ? "CONCLUÍDA" : "ATIVA"}
+          </Badge>
+        </div>
         <Button variant="ghost" onClick={onClose} className="p-2">
           <X className="h-5 w-5" />
         </Button>
