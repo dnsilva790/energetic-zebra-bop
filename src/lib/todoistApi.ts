@@ -76,6 +76,59 @@ export async function createTasks(tasks: any[]): Promise<TodoistTask[] | undefin
   }
 }
 
+/**
+ * Atualiza a descrição de uma tarefa do Todoist anexando novo conteúdo com um timestamp.
+ * @param taskId O ID da tarefa a ser atualizada.
+ * @param contentToAppend O novo conteúdo a ser anexado à descrição.
+ * @returns O objeto TodoistTask atualizado ou undefined em caso de erro.
+ */
+export async function updateTaskDescription(taskId: string, contentToAppend: string): Promise<TodoistTask | undefined> {
+  try {
+    const response = await fetch('/api/update-task-description', { // Chama a nova função serverless
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ taskId, contentToAppend }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Erro ao atualizar descrição da tarefa: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (result.status === 'error') {
+      throw new Error(result.message || 'Erro ao atualizar descrição da tarefa.');
+    }
+    // A função serverless retorna a tarefa atualizada, mas precisamos mapeá-la para o tipo TodoistTask
+    const rawUpdatedTask = result.task;
+    let processedDue = null;
+    if (rawUpdatedTask.due) {
+      const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
+      processedDue = {
+        date: dateValue,
+        string: rawUpdatedTask.due.string,
+        lang: rawUpdatedTask.due.lang,
+        is_recurring: rawUpdatedTask.due.is_recurring,
+      };
+    }
+    return {
+      id: rawUpdatedTask.id,
+      content: rawUpdatedTask.content,
+      description: rawUpdatedTask.description,
+      due: processedDue,
+      priority: rawUpdatedTask.priority,
+      is_completed: rawUpdatedTask.is_completed,
+      project_id: rawUpdatedTask.project_id,
+      parent_id: rawUpdatedTask.parent_id,
+    };
+  } catch (error: any) {
+    console.error("Client-side error calling /api/update-task-description:", error);
+    throw error; // Re-throw para ser capturado por handleApiCall
+  }
+}
+
 
 export async function getTasks(filter?: string): Promise<TodoistTask[]> {
   const headers = getApiHeaders();

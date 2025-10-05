@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Loader2, User, Bot, Check, X, AlertCircle } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
 import { cn } from '@/lib/utils';
-import { createTasks, handleApiCall } from '@/lib/todoistApi';
+import { createTasks, handleApiCall, updateTaskDescription } from '@/lib/todoistApi'; // Import updateTaskDescription
 
 interface ChatMessage {
   role: 'user' | 'model';
@@ -262,7 +262,6 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       return;
     }
 
-    // --- Nova verificação de token do Todoist no lado do cliente ---
     const todoistToken = localStorage.getItem('todoist_token');
     if (!todoistToken) {
       console.error("Erro: Token do Todoist não encontrado no localStorage. Por favor, configure-o na página de Configurações.");
@@ -270,24 +269,28 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       setMessages(prev => [...prev, { role: 'model', content: "❌ Erro: Token do Todoist não configurado. Não foi possível enviar tarefas." }]);
       return;
     }
-    // --- Fim da nova verificação ---
 
     setIsLoading(true);
     try {
-      const createdTasks = await handleApiCall(
-        () => createTasks(parsedMicroSteps),
-        "Enviando micro-passos para o Todoist...",
-        "Micro-passos enviados com sucesso para o Todoist!"
+      // Formatar os micro-passos em uma única string para anexar
+      const formattedMicroSteps = parsedMicroSteps
+        .map((step, index) => `${index + 1}. ${step.content}${step.description ? ` - ${step.description}` : ''}`)
+        .join('\n');
+
+      const updatedTask = await handleApiCall(
+        () => updateTaskDescription(taskId, formattedMicroSteps), // Usa a nova função de atualização
+        "Anexando micro-passos à descrição da tarefa...",
+        "Micro-passos anexados com sucesso à descrição da tarefa!"
       );
 
-      if (createdTasks) {
-        setMessages(prev => [...prev, { role: 'model', content: "✅ Micro-passos enviados para o Todoist!" }]);
+      if (updatedTask) {
+        setMessages(prev => [...prev, { role: 'model', content: "✅ Micro-passos anexados à descrição da tarefa!" }]);
         setParsedMicroSteps([]);
       } else {
-        setMessages(prev => [...prev, { role: 'model', content: "❌ Falha ao enviar micro-passos para o Todoist." }]);
+        setMessages(prev => [...prev, { role: 'model', content: "❌ Falha ao anexar micro-passos à descrição da tarefa." }]);
       }
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: 'model', content: `❌ Erro ao enviar micro-passos: ${error.message}` }]);
+      setMessages(prev => [...prev, { role: 'model', content: `❌ Erro ao anexar micro-passos: ${error.message}` }]);
     } finally {
       setIsLoading(false);
     }
