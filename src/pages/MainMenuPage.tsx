@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Play } from "lucide-react"; // Removido Bot
+import { Settings, Brush, LayoutDashboard, Play, Brain } from "lucide-react"; // Adicionado Brain
 import {
   Card,
   CardContent,
@@ -26,7 +26,6 @@ const MainMenuPage = () => {
     } else if (sName === "SEISO") {
       navigate("/5s/seiso");
     }
-    // Removida a lógica para "AITUTOR"
     else {
       showSuccess(`Tela em construção - ${sName}`);
     }
@@ -65,11 +64,10 @@ const MainMenuPage = () => {
             colorClass="bg-orange-600 hover:bg-orange-700"
             onClick={() => handleButtonClick("SEISO")}
           />
-          {/* Removido o botão para o Tutor de IA */}
         </CardContent>
       </Card>
 
-      <div className="mt-8">
+      <div className="mt-8 flex gap-4">
         <Button
           variant="outline"
           onClick={() => navigate("/setup")}
@@ -77,6 +75,14 @@ const MainMenuPage = () => {
         >
           <Settings size={20} />
           Configurações
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => navigate("/ai-tutor-settings")}
+          className="flex items-center gap-2 text-purple-700 hover:text-purple-900 border-purple-300 hover:border-purple-400 bg-white/70 backdrop-blur-sm"
+        >
+          <Brain size={20} />
+          Configurações do Tutor IA
         </Button>
       </div>
       <MadeWithDyad />

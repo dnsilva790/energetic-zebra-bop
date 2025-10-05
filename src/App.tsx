@@ -9,7 +9,7 @@ import MainMenuPage from "./pages/MainMenuPage";
 import SEIRIPage from "./pages/SEIRIPage";
 import SEITONPage from "./pages/SEITONPage";
 import SEISOPage from "./pages/SEISOPage";
-// import AITutorChatPage from "./pages/AITutorChatPage"; // Removido AITutorChatPage import
+import AITutorSettings from "./components/AITutorSettings"; // Importar o novo componente
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,7 +27,7 @@ const App = () => (
           <Route path="/5s/seiri" element={<SEIRIPage />} />
           <Route path="/5s/seiton" element={<SEITONPage />} />
           <Route path="/5s/seiso" element={<SEISOPage />} />
-          {/* <Route path="/ai-tutor-chat" element={<AITutorChatPage />} /> Removida rota AI Tutor Chat */}
+          <Route path="/ai-tutor-settings" element={<AITutorSettings />} /> {/* Nova rota */}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
