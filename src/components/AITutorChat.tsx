@@ -10,6 +10,11 @@ import { cn } from '@/lib/utils';
 import { createTasks, handleApiCall, updateTaskDescription } from '@/lib/todoistApi';
 import { Badge } from '@/components/ui/badge'; // Importar o componente Badge
 
+// Importações de Firebase necessárias
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+
 interface ChatMessage {
   role: 'user' | 'model';
   content: string;
@@ -59,7 +64,83 @@ const parseAiResponseForTasks = (responseText: string): { content: string; descr
 const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, taskId, onClose, className, isTaskCompleted }) => {
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-  // --- Early exit if API key is missing ---
+  // --- Firebase State ---
+  const [db, setDb] = useState<any>(null);
+  const [auth, setAuth] = useState<any>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
+  const [firebaseLoading, setFirebaseLoading] = useState(true);
+
+  // --- Firebase Initialization ---
+  useEffect(() => {
+    const setupFirebase = async () => {
+      if (typeof window === 'undefined' || typeof (__firebase_config) === 'undefined' || typeof (__app_id) === 'undefined') {
+        console.warn("Firebase config variables not found. Skipping Firebase initialization in AITutorChat.");
+        setFirebaseLoading(false);
+        return;
+      }
+
+      try {
+        const firebaseConfig = JSON.parse(__firebase_config as string);
+        const app = initializeApp(firebaseConfig);
+        const firestoreDb = getFirestore(app);
+        const firebaseAuth = getAuth(app);
+        
+        setDb(firestoreDb);
+        setAuth(firebaseAuth);
+
+        if (typeof (__initial_auth_token) !== 'undefined') {
+          await signInWithCustomToken(firebaseAuth, __initial_auth_token as string);
+        } else {
+          await signInAnonymously(firebaseAuth);
+        }
+        
+        const currentUserId = firebaseAuth.currentUser?.uid || crypto.randomUUID();
+        setUserId(currentUserId);
+        setFirebaseLoading(false);
+
+      } catch (error) {
+        console.error("Erro ao inicializar e autenticar o Firebase em AITutorChat:", error);
+        setFirebaseLoading(false);
+      }
+    };
+
+    setupFirebase();
+  }, []);
+
+  // --- Load System Prompt from Firestore ---
+  useEffect(() => {
+    if (!db || !userId || firebaseLoading) return;
+
+    const loadPrompt = async () => {
+      try {
+        const appId = typeof (__app_id) !== 'undefined' ? (__app_id as string) : 'default-app-id';
+        const promptDocRef = doc(db, 
+          `artifacts/${appId}/users/${userId}/ai_tutor_config`, 
+          'prompt_document'
+        );
+        
+        const docSnap = await getDoc(promptDocRef);
+        
+        if (docSnap.exists() && docSnap.data().systemPrompt) {
+          setSystemPrompt(docSnap.data().systemPrompt);
+        } else {
+          // Fallback to default if not found, and save it for future use
+          const DEFAULT_PROMPT = `Você é o Tutor IA 'SEISO' e sua função é ajudar o usuário a quebrar tarefas complexas em micro-passos acionáveis. Responda de forma concisa e direta, usando linguagem de coaching, sempre mantendo o foco no próximo passo e na execução imediata. Cada resposta deve ser uma lista numerada de 3 a 5 micro-passos.`;
+          await setDoc(promptDocRef, { systemPrompt: DEFAULT_PROMPT });
+          setSystemPrompt(DEFAULT_PROMPT);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar prompt do Firestore em AITutorChat:", error);
+        // Fallback to a default prompt if Firestore fails
+        setSystemPrompt(`Você é o Tutor IA 'SEISO' e sua função é ajudar o usuário a quebrar tarefas complexas em micro-passos acionáveis. Responda de forma concisa e direta, usando linguagem de coaching, sempre mantendo o foco no próximo passo e na execução imediata. Cada resposta deve ser uma lista numerada de 3 a 5 micro-passos.`);
+      }
+    };
+
+    loadPrompt();
+  }, [db, userId, firebaseLoading]);
+
+  // --- Early exit if API key or Firebase is missing/loading ---
   if (!GEMINI_API_KEY) {
     return (
       <div className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
@@ -83,14 +164,11 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
       </div>
     );
   }
-  // --- End early exit ---
 
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   
-  // Use useMemo para garantir que localStorageKey seja atualizada apenas quando taskId mudar
   const localStorageKey = useMemo(() => {
     const key = `chat-history-${taskId}`;
-    console.log('Chave de localStorage:', key); // Log da chave
     return key;
   }, [taskId]);
 
@@ -111,24 +189,12 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
     }
   };
 
-  const initialSystemInstructionText = `# PERFIL E FUNÇÃO
-Você é um Tutor de Execução (Executive Coach) não-julgador e ESPECIALISTA em adultos com TDAH e desenvolvimento de software. Seu único objetivo é eliminar o atrito e guiar o usuário na ação imediata.
-
-REGRAS DE INTERAÇÃO (Protocolo de Ação)
-CLAREZA E SIMPLIFICAÇÃO: Sempre que uma tarefa for mencionada, você deve transformá-la em uma lista de 3 a 5 micro-passos acionáveis. Nunca mais do que 5. O foco é apenas no próximo passo.
-
-FIRMEZA E INICIAÇÃO: Se o usuário expressar bloqueio, frustração ou falta de motivação, você deve usar um tom firme, mas de apoio. Sua resposta deve exigir que o usuário defina um cronômetro de 5 a 10 minutos para iniciar imediatamente o primeiro micro-passo. Não aceite a inação.
-
-CONSCIÊNCIA TEMPORAL (Hiperfoco): A cada duas interações do usuário, insira um breve lembrete de que o tempo é um recurso limitado no projeto.
-
-REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a descrição desse passo de forma clara e concisa (máximo 1 frase), pronta para ser usada como Título da Tarefa no Todoist. E, formule uma breve frase de motivação ou status (o 'Status da Tarefa') que será usada no campo de Descrição da tarefa no Todoist.`;
-
-  const sendMessageToGemini = useCallback(async (userAndModelMessages: ChatMessage[]) => {
+  const sendMessageToGemini = useCallback(async (userAndModelMessages: ChatMessage[], currentSystemPrompt: string) => {
     setIsLoading(true);
 
     const systemInstructionPart = {
       role: 'user',
-      parts: [{ text: initialSystemInstructionText }],
+      parts: [{ text: currentSystemPrompt }],
     };
 
     const formattedContents = userAndModelMessages.map(msg => ({
@@ -157,16 +223,12 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       const data = await response.json();
       const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter uma resposta do Tutor de IA.";
       
-      // Mova o Parsing: A lógica de parsing (parseAiResponseForTasks e setParsedMicroSteps)
-      // deve ser executada em toda resposta do modelo (aiResponseContent) para garantir
-      // que o parsedMicroSteps seja atualizado.
       const extractedTasks = parseAiResponseForTasks(aiResponseContent);
       setParsedMicroSteps(extractedTasks); 
 
       setMessages(prev => {
         const newMessages = [...prev, { role: 'model', content: aiResponseContent }];
         
-        // Mantenha a checagem de initialAiResponseReceived para fins de flag.
         if (!initialAiResponseReceived) {
             setInitialAiResponseReceived(true);
         }
@@ -181,7 +243,7 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     } finally {
       setIsLoading(false);
     }
-  }, [GEMINI_API_URL, initialAiResponseReceived, initialSystemInstructionText]);
+  }, [GEMINI_API_URL, initialAiResponseReceived]);
 
   // Efeito para carregar o histórico e enviar a mensagem inicial
   useEffect(() => {
@@ -190,38 +252,37 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     setParsedMicroSteps([]);
     setMessages([]); // Limpar mensagens ao mudar de tarefa
 
+    if (firebaseLoading || !systemPrompt) {
+      // Wait for Firebase to load and systemPrompt to be available
+      return;
+    }
+
     let loadedMessages: ChatMessage[] = [];
     if (typeof window !== 'undefined') {
-      console.log('Tentando carregar histórico com chave:', localStorageKey); // Log da chave
       const savedHistory = localStorage.getItem(localStorageKey);
-      console.log('Histórico RAW do localStorage:', savedHistory); // Log do histórico RAW
       if (savedHistory) {
         try {
           const parsedHistory = JSON.parse(savedHistory);
           if (Array.isArray(parsedHistory) && parsedHistory.length > 0) {
             loadedMessages = parsedHistory;
-            setInitialAiResponseReceived(true); // Se há histórico, já houve interação
+            setInitialAiResponseReceived(true);
           }
         } catch (e) {
           console.error("Falha ao analisar o histórico do chat do localStorage", e);
-          localStorage.removeItem(localStorageKey); // Limpa dados corrompidos
+          localStorage.removeItem(localStorageKey);
         }
       }
     }
 
     if (loadedMessages.length > 0) {
       setMessages(loadedMessages);
-      // Se o histórico foi carregado, o Gemini já tem o contexto.
-      // Não precisamos enviar uma nova mensagem inicial.
-      // A próxima interação do usuário usará o histórico carregado.
     } else {
-      // Se não há histórico, enviar a mensagem inicial
       const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
       const newInitialMessages = [{ role: 'user', content: initialUserPrompt }];
       setMessages(newInitialMessages);
-      sendMessageToGemini(newInitialMessages); // Envia a mensagem inicial para o Gemini
+      sendMessageToGemini(newInitialMessages, systemPrompt); // Envia a mensagem inicial para o Gemini
     }
-  }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini]); // Adicionado localStorageKey às dependências
+  }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini, firebaseLoading, systemPrompt]);
 
   // Efeito para marcar que o componente foi montado
   useEffect(() => {
@@ -234,16 +295,12 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
       return; // Ignora a primeira execução (montagem inicial)
     }
 
-    // Adiciona a condição para salvar apenas se houver mais de 1 mensagem
     if (messages.length <= 1) {
-      console.log('Não salvando histórico: Apenas a mensagem inicial ou nenhuma mensagem.');
       return; 
     }
 
     if (messages.length > 0) {
-      console.log('Salvando histórico. Nova contagem de mensagens:', messages.length); // Log de salvamento
       const historyToStore = JSON.stringify(messages);
-      console.log('Histórico salvo (stringified):', historyToStore); // Log do histórico stringificado
       localStorage.setItem(localStorageKey, historyToStore);
     } else {
       localStorage.removeItem(localStorageKey); // Remove a chave se o chat estiver vazio
@@ -255,14 +312,14 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (input.trim() === '' || isLoading) return;
+    if (input.trim() === '' || isLoading || !systemPrompt) return;
 
     const newUserMessage: ChatMessage = { role: 'user', content: input.trim() };
     const updatedMessages = [...messages, newUserMessage];
     setMessages(updatedMessages);
     setInput('');
     
-    await sendMessageToGemini(updatedMessages);
+    await sendMessageToGemini(updatedMessages, systemPrompt);
   };
 
   const handleSendToTodoist = async () => {
@@ -312,6 +369,8 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
     }
   };
 
+  const overallLoading = isLoading || firebaseLoading || systemPrompt === null;
+
   return (
     <div className={cn("flex flex-col h-full bg-white/80 backdrop-blur-sm", className)}>
       <div className="p-4 border-b flex items-center justify-between">
@@ -329,58 +388,72 @@ REGISTRO (Todoist): Após definir o próximo passo ou meta de ação, formule a 
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 p-4" viewportRef={scrollAreaRef}>
-        <div className="space-y-4">
-          {messages.map((msg, index) => (
-            <div key={index} className={cn(
-              "flex items-start gap-3",
-              msg.role === 'user' ? "justify-end" : "justify-start"
-            )}>
-              {msg.role === 'model' && <Bot className="h-6 w-6 text-purple-600 flex-shrink-0" />}
-              <div className={cn(
-                "p-3 rounded-lg max-w-[70%]",
-                msg.role === 'user'
-                  ? "bg-blue-500 text-white rounded-br-none"
-                  : "bg-gray-200 text-gray-800 rounded-bl-none"
-              )}>
-                <p className="whitespace-pre-wrap">{msg.content}</p>
-              </div>
-              {msg.role === 'user' && <User className="h-6 w-6 text-blue-600 flex-shrink-0" />}
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex justify-start items-center gap-3">
-              <Bot className="h-6 w-6 text-purple-600 animate-pulse" />
-              <div className="bg-gray-200 text-gray-800 p-3 rounded-lg rounded-bl-none">
-                <Loader2 className="h-4 w-4 animate-spin" />
-              </div>
-            </div>
-          )}
+      {overallLoading && (
+        <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-purple-600">
+          <Loader2 className="h-12 w-12 mb-4 animate-spin" />
+          <p className="text-lg font-semibold">Carregando Tutor de IA...</p>
+          <p className="text-sm mt-2">
+            {firebaseLoading ? "Inicializando Firebase..." : "Carregando instrução de sistema..."}
+          </p>
         </div>
-      </ScrollArea>
+      )}
 
-      <div className="p-4 border-t flex flex-col gap-2">
-        <Input
-          placeholder="Digite sua mensagem..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="flex-grow min-w-0"
-          disabled={isLoading}
-        />
-        <div className="flex gap-2 w-full">
-          <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''} className="flex-1">
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
-          </Button>
-          <Button 
-            onClick={handleSendToTodoist} 
-            disabled={isLoading || parsedMicroSteps.length === 0} 
-            className="bg-green-600 hover:bg-green-700 text-white flex-1"
-          >
-            <Check className="h-4 w-4 mr-2" /> Para Todoist
-          </Button>
-        </div>
-      </div>
+      {!overallLoading && (
+        <>
+          <ScrollArea className="flex-1 p-4" viewportRef={scrollAreaRef}>
+            <div className="space-y-4">
+              {messages.map((msg, index) => (
+                <div key={index} className={cn(
+                  "flex items-start gap-3",
+                  msg.role === 'user' ? "justify-end" : "justify-start"
+                )}>
+                  {msg.role === 'model' && <Bot className="h-6 w-6 text-purple-600 flex-shrink-0" />}
+                  <div className={cn(
+                    "p-3 rounded-lg max-w-[70%]",
+                    msg.role === 'user'
+                      ? "bg-blue-500 text-white rounded-br-none"
+                      : "bg-gray-200 text-gray-800 rounded-bl-none"
+                  )}>
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                  {msg.role === 'user' && <User className="h-6 w-6 text-blue-600 flex-shrink-0" />}
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex justify-start items-center gap-3">
+                  <Bot className="h-6 w-6 text-purple-600 animate-pulse" />
+                  <div className="bg-gray-200 text-gray-800 p-3 rounded-lg rounded-bl-none">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+
+          <div className="p-4 border-t flex flex-col gap-2">
+            <Input
+              placeholder="Digite sua mensagem..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="flex-grow min-w-0"
+              disabled={isLoading}
+            />
+            <div className="flex gap-2 w-full">
+              <Button onClick={handleSendMessage} disabled={isLoading || input.trim() === ''} className="flex-1">
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
+              </Button>
+              <Button 
+                onClick={handleSendToTodoist} 
+                disabled={isLoading || parsedMicroSteps.length === 0} 
+                className="bg-green-600 hover:bg-green-700 text-white flex-1"
+              >
+                <Check className="h-4 w-4 mr-2" /> Para Todoist
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
