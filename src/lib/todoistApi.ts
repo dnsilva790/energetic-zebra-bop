@@ -307,3 +307,35 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
     parent_id: rawUpdatedTask.parent_id,
   };
 }
+
+/**
+ * Obtém sugestões de data e hora da IA para uma tarefa.
+ * @param taskContent O conteúdo (título) da tarefa.
+ * @param taskDescription A descrição da tarefa.
+ * @returns Um array de strings com sugestões de data/hora ou undefined em caso de erro.
+ */
+export async function getAISuggestedTimes(taskContent: string, taskDescription: string): Promise<string[] | undefined> {
+  try {
+    const response = await fetch('/api/suggest-task-time', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ taskContent, taskDescription }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Erro ao obter sugestões da IA: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (result.status === 'error') {
+      throw new Error(result.message || 'Erro ao obter sugestões da IA.');
+    }
+    return result.suggestions;
+  } catch (error: any) {
+    console.error("Client-side error calling /api/suggest-task-time:", error);
+    throw error; // Re-throw para ser capturado por handleApiCall
+  }
+}

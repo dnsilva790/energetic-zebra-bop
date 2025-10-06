@@ -8,11 +8,11 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle
-} from "lucide-react"; // Adicionado XCircle para o botão de concluir
+  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain
+} from "lucide-react"; // Adicionado XCircle e Brain
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, handleApiCall, updateTaskDueDate, completeTask } from "@/lib/todoistApi"; // Importar completeTask
+import { getTasks, handleApiCall, updateTaskDueDate, completeTask, getAISuggestedTimes } from "@/lib/todoistApi"; // Importar getAISuggestedTimes
 import { format, parseISO, setHours, setMinutes, isValid, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
@@ -30,11 +30,13 @@ const SEIKETSURecordPage: React.FC = () => {
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [tasksDoneTodayCount, setTasksDoneTodayCount] = useState(0);
   const [tasksPostponedCount, setTasksPostponedCount] = useState(0);
-  const [tasksCompletedCount, setTasksCompletedCount] = useState(0); // Novo estado para tarefas concluídas
+  const [tasksCompletedCount, setTasksCompletedCount] = useState(0);
 
   const [showPostponeDialog, setShowPostponeDialog] = useState(false);
   const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
   const [selectedDueTime, setSelectedDueTime] = useState<string>("");
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [isAISuggesting, setIsAISuggesting] = useState(false);
 
   const currentTask = tasksToReview[currentTaskIndex];
   const totalTasks = tasksToReview.length;
@@ -62,20 +64,19 @@ const SEIKETSURecordPage: React.FC = () => {
   const fetchTasksForReview = useCallback(async () => {
     setLoading(true);
     try {
-      // Usando o filtro mais abrangente para tarefas pendentes
       const fetchedTasks = await handleApiCall(() => getTasks("(due before: in 0 minutes)"), "Carregando tarefas para revisão...");
 
       if (fetchedTasks && fetchedTasks.length > 0) {
         const filteredAndCleanedTasks = fetchedTasks
-          .filter((task: TodoistTask) => task.parent_id === null) // Exclui subtarefas
-          .filter((task: TodoistTask) => !task.is_completed); // Exclui tarefas já completadas
+          .filter((task: TodoistTask) => task.parent_id === null)
+          .filter((task: TodoistTask) => !task.is_completed);
 
         if (filteredAndCleanedTasks.length > 0) {
           setTasksToReview(filteredAndCleanedTasks);
           setCurrentTaskIndex(0);
           setTasksDoneTodayCount(0);
           setTasksPostponedCount(0);
-          setTasksCompletedCount(0); // Resetar contador de concluídas
+          setTasksCompletedCount(0);
           setIsSessionFinished(false);
           showSuccess(`Sessão de revisão iniciada com ${filteredAndCleanedTasks.length} tarefas.`);
         } else {
@@ -119,7 +120,7 @@ const SEIKETSURecordPage: React.FC = () => {
     if (currentTask) {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
       if (success) {
-        setTasksCompletedCount(prev => prev + 1); // Incrementar contador de concluídas
+        setTasksCompletedCount(prev => prev + 1);
         moveToNextTask();
       } else {
         showError("Falha ao concluir a tarefa no Todoist.");
@@ -129,12 +130,49 @@ const SEIKETSURecordPage: React.FC = () => {
 
   const handlePostponeClick = useCallback(() => {
     if (currentTask) {
-      // Pre-fill with tomorrow's date
       setSelectedDueDate(addDays(new Date(), 1));
-      setSelectedDueTime(""); // Clear time
+      setSelectedDueTime("");
+      setAiSuggestions([]); // Limpa sugestões anteriores
       setShowPostponeDialog(true);
     }
   }, [currentTask]);
+
+  const handleGetAISuggestions = useCallback(async () => {
+    if (!currentTask) return;
+    setIsAISuggesting(true);
+    setAiSuggestions([]);
+    try {
+      const suggestions = await handleApiCall(
+        () => getAISuggestedTimes(currentTask.content, currentTask.description || ''),
+        "Obtendo sugestões da IA...",
+        "Sugestões da IA recebidas!"
+      );
+      if (suggestions) {
+        setAiSuggestions(suggestions);
+      }
+    } catch (error) {
+      console.error("Erro ao obter sugestões da IA:", error);
+      showError("Falha ao obter sugestões da IA.");
+    } finally {
+      setIsAISuggesting(false);
+    }
+  }, [currentTask]);
+
+  const handleSelectAISuggestion = useCallback((suggestion: string) => {
+    // Expected format: YYYY-MM-DD HH:MM - Justificativa or YYYY-MM-DD - Justificativa
+    const parts = suggestion.split(' - ')[0].trim(); // Pega apenas a parte da data/hora
+    const dateTimeParts = parts.split(' ');
+    const datePart = dateTimeParts[0];
+    const timePart = dateTimeParts[1] || "";
+
+    const parsedDate = parseISO(datePart);
+    if (isValid(parsedDate)) {
+      setSelectedDueDate(parsedDate);
+      setSelectedDueTime(timePart.substring(0, 5)); // Pega HH:MM
+    } else {
+      showError("Sugestão da IA inválida. Por favor, selecione manualmente.");
+    }
+  }, []);
 
   const handleSavePostpone = useCallback(async () => {
     if (!currentTask || !selectedDueDate) {
@@ -171,13 +209,13 @@ const SEIKETSURecordPage: React.FC = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (loading || isSessionFinished || !currentTask || showPostponeDialog) return;
 
-      if (event.key === 'r' || event.key === 'R') { // 'R' for Rápido (Do Today Quick)
+      if (event.key === 'r' || event.key === 'R') {
         event.preventDefault();
         handleDoTodayQuick();
-      } else if (event.key === 'p' || event.key === 'P') { // 'P' for Postegar
+      } else if (event.key === 'p' || event.key === 'P') {
         event.preventDefault();
         handlePostponeClick();
-      } else if (event.key === 'c' || event.key === 'C') { // 'C' for Concluída
+      } else if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
         handleCompleteTask();
       }
@@ -208,7 +246,7 @@ const SEIKETSURecordPage: React.FC = () => {
             Você revisou {totalTasks} tarefas.
           </CardDescription>
           <p className="text-green-600 font-semibold">Decididas para Hoje: {tasksDoneTodayCount}</p>
-          <p className="text-red-600 font-semibold">Concluídas: {tasksCompletedCount}</p> {/* Exibir tarefas concluídas */}
+          <p className="text-red-600 font-semibold">Concluídas: {tasksCompletedCount}</p>
           <p className="text-blue-600 font-semibold">Postergadas: {tasksPostponedCount}</p>
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
@@ -232,7 +270,7 @@ const SEIKETSURecordPage: React.FC = () => {
           <h1 className="text-4xl font-extrabold text-indigo-800 text-center flex-grow">
             SEIKETSU - Revisão Diária
           </h1>
-          <div className="w-20"></div> {/* Espaçador */}
+          <div className="w-20"></div>
         </div>
         <p className="text-xl text-indigo-700 text-center mb-8">
           Decida rapidamente: fazer hoje, concluir ou postergar?
@@ -365,6 +403,38 @@ const SEIKETSURecordPage: React.FC = () => {
                 className="col-span-3"
               />
             </div>
+            <div className="col-span-4 flex justify-center mt-4">
+              <Button
+                onClick={handleGetAISuggestions}
+                disabled={isAISuggesting || !currentTask}
+                className="bg-purple-600 hover:bg-purple-700 text-white flex items-center"
+              >
+                {isAISuggesting ? (
+                  <Clock className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Brain className="mr-2 h-4 w-4" />
+                )}
+                Sugestões da IA
+              </Button>
+            </div>
+            {aiSuggestions.length > 0 && (
+              <div className="col-span-4 space-y-2 mt-4">
+                <p className="text-sm font-semibold text-gray-700">Sugestões da IA:</p>
+                <div className="flex flex-wrap gap-2">
+                  {aiSuggestions.map((suggestion, index) => (
+                    <Button
+                      key={index}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSelectAISuggestion(suggestion)}
+                      className="text-xs"
+                    >
+                      {suggestion.split(' - ')[0]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <DialogClose asChild>
