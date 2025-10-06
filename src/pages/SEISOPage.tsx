@@ -26,11 +26,23 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
+const SEITON_PROGRESS_KEY = 'seiton_progress'; // Chave para o progresso em andamento do SEITON
 const SEITON_FALLBACK_TASK_LIMIT = 12;
 
 interface SeitonRankingData {
   rankedTasks: TodoistTask[];
   p3Tasks: TodoistTask[];
+}
+
+// Interface para o progresso salvo do SEITON (copiada de SEITONPage para consistência)
+interface SeitonProgress {
+  tournamentQueue: TodoistTask[];
+  rankedTasks: TodoistTask[];
+  p3Tasks: TodoistTask[];
+  currentStep: 'loading' | 'tournamentComparison' | 'result';
+  currentChallenger: TodoistTask | null;
+  currentOpponentIndex: number | null;
+  comparisonHistory: any[];
 }
 
 const formatTime = (seconds: number) => {
@@ -66,7 +78,6 @@ const SEISOPage = () => {
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
 
-  const [hasLastSeitonRanking, setHasLastSeitonRanking] = useState(false);
   const [isUsingSeitonRanking, setIsUsingSeitonRanking] = useState(false);
 
   const [countdownInputDuration, setCountdownInputDuration] = useState("25");
@@ -88,11 +99,6 @@ const SEISOPage = () => {
   useEffect(() => {
     localStorage.setItem(SEISO_FILTER_KEY, filterInput);
   }, [filterInput]);
-
-  useEffect(() => {
-    const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
-    setHasLastSeitonRanking(!!savedRanking);
-  }, []);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -119,40 +125,72 @@ const SEISOPage = () => {
     setFilterError("");
     
     let tasksToProcess: TodoistTask[] = [];
-    let usingSeitonFallback = false;
+    let usingSeitonSource = false; // Indica se estamos usando um ranking SEITON (finalizado ou em progresso)
 
     try {
-      const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas...");
-
-      if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
-        tasksToProcess = fetchedTasksFromFilter;
-        showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
+      // 1. Tentar carregar do SEITON_LAST_RANKING_KEY (sessão finalizada)
+      const savedLastRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
+      if (savedLastRanking) {
+        try {
+          const parsedLastRanking: SeitonRankingData = JSON.parse(savedLastRanking);
+          const seitonTopTasks = parsedLastRanking.rankedTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+          if (seitonTopTasks.length > 0) {
+            tasksToProcess = seitonTopTasks;
+            usingSeitonSource = true;
+            showSuccess(`Sessão iniciada com ${seitonTopTasks.length} tarefas do último ranking SEITON (finalizado).`);
+            console.log("SEISOPage - Loaded tasks from SEITON_LAST_RANKING_KEY.");
+          } else {
+            console.log("SEISOPage - SEITON_LAST_RANKING_KEY encontrado, mas não contém tarefas.");
+          }
+        } catch (e) {
+          console.error("Erro ao analisar SEITON_LAST_RANKING_KEY:", e);
+          showError("Erro ao carregar o último ranking SEITON finalizado.");
+        }
       } else {
-        console.log("SEISOPage - Filter returned no tasks. Checking SEITON fallback...");
-        const savedRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
-        console.log("SEISOPage - Raw savedRanking from localStorage:", savedRanking); // Log adicionado
-        if (savedRanking) {
-          try {
-            const parsedRanking: SeitonRankingData = JSON.parse(savedRanking);
-            const seitonTopTasks = parsedRanking.rankedTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
-            console.log("SEISOPage - Parsed SEITON ranking top tasks count:", seitonTopTasks.length); // Log adicionado
+        console.log("SEISOPage - Nenhum SEITON_LAST_RANKING_KEY encontrado.");
+      }
 
-            if (seitonTopTasks.length > 0) {
-              tasksToProcess = seitonTopTasks;
-              usingSeitonFallback = true;
-              showSuccess(`Filtro esgotado. Continuando com as ${seitonTopTasks.length} tarefas principais do último ranking SEITON.`);
+      // 2. Se não houver tarefas do ranking finalizado, tentar SEITON_PROGRESS_KEY (sessão em progresso)
+      if (tasksToProcess.length === 0) {
+        const savedInProgressRanking = localStorage.getItem(SEITON_PROGRESS_KEY);
+        if (savedInProgressRanking) {
+          try {
+            const parsedInProgressRanking: SeitonProgress = JSON.parse(savedInProgressRanking);
+            // Combinar rankedTasks e p3Tasks do progresso e pegar o limite
+            const inProgressRankedTasks = [...parsedInProgressRanking.rankedTasks, ...parsedInProgressRanking.p3Tasks];
+            const seitonInProgressTasks = inProgressRankedTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+            if (seitonInProgressTasks.length > 0) {
+              tasksToProcess = seitonInProgressTasks;
+              usingSeitonSource = true;
+              showSuccess(`Sessão iniciada com ${seitonInProgressTasks.length} tarefas do ranking SEITON (em progresso).`);
+              console.log("SEISOPage - Loaded tasks from SEITON_PROGRESS_KEY.");
             } else {
-              console.log("SEISOPage - SEITON ranking found, but it contains no tasks or tasks were filtered out."); // Log adicionado
+              console.log("SEISOPage - SEITON_PROGRESS_KEY encontrado, mas não contém tarefas.");
             }
           } catch (e) {
-            console.error("Error parsing last Seiton ranking for fallback:", e);
-            showError("Erro ao carregar o último ranking do SEITON para fallback.");
+            console.error("Erro ao analisar SEITON_PROGRESS_KEY:", e);
+            showError("Erro ao carregar o ranking SEITON em progresso.");
           }
         } else {
-          console.log("SEISOPage - No SEITON ranking found in localStorage."); // Log adicionado
+          console.log("SEISOPage - Nenhum SEITON_PROGRESS_KEY encontrado.");
         }
       }
 
+      // 3. Se ainda não houver tarefas, usar o filtro do usuário
+      if (tasksToProcess.length === 0) {
+        console.log("SEISOPage - Nenhum ranking SEITON encontrado. Usando filtro do usuário.");
+        const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas do filtro...");
+        if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
+          tasksToProcess = fetchedTasksFromFilter;
+          usingSeitonSource = false; // Não estamos usando ranking SEITON
+          showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
+          console.log("SEISOPage - Loaded tasks from user filter.");
+        } else {
+          console.log("SEISOPage - O filtro do usuário não retornou tarefas.");
+        }
+      }
+
+      // Processar e definir as tarefas se alguma foi encontrada
       if (tasksToProcess.length > 0) {
         const filteredAndCleanedTasks = tasksToProcess
           .filter((task: TodoistTask) => task.parent_id === null)
@@ -162,16 +200,16 @@ const SEISOPage = () => {
         const nonP1Tasks = filteredAndCleanedTasks.filter(task => task.priority !== 4);
 
         let others: TodoistTask[];
-        if (usingSeitonFallback) {
+        if (usingSeitonSource) { // Se estiver usando qualquer ranking SEITON, mantém a ordem para não-P1
           others = nonP1Tasks;
-        } else {
+        } else { // Se estiver usando filtro, embaralha as tarefas não-P1
           others = shuffleArray(nonP1Tasks);
         }
 
         setP1Tasks(p1);
         setOtherTasks(others);
         setAllTasks([...p1, ...others]);
-        setIsUsingSeitonRanking(usingSeitonFallback);
+        setIsUsingSeitonRanking(usingSeitonSource);
         setSessionStarted(true);
         setCurrentTaskIndex(0);
         setTasksCompleted(0);
@@ -191,7 +229,7 @@ const SEISOPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterInput]);
+  }, [filterInput, navigate]);
 
   useEffect(() => {
     if (currentTask && sessionStarted) {
