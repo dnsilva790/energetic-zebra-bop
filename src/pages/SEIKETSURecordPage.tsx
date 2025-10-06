@@ -81,8 +81,14 @@ const SEIKETSURecordPage: React.FC = () => {
             }
 
             // 2. Secondary sort: deadline (ascending)
-            const deadlineA = a.deadline ? parseISO(a.deadline) : null;
-            const deadlineB = b.deadline ? parseISO(b.deadline) : null;
+            let deadlineA: Date | null = null;
+            if (typeof a.deadline === 'string' && a.deadline.trim() !== '') {
+                deadlineA = parseISO(a.deadline);
+            }
+            let deadlineB: Date | null = null;
+            if (typeof b.deadline === 'string' && b.deadline.trim() !== '') {
+                deadlineB = parseISO(b.deadline);
+            }
 
             const isValidDeadlineA = deadlineA && isValid(deadlineA);
             const isValidDeadlineB = deadlineB && isValid(deadlineB);
@@ -93,15 +99,21 @@ const SEIKETSURecordPage: React.FC = () => {
                 return deadlineComparison;
               }
             } else if (isValidDeadlineA) {
-              return -1; // A has a deadline, B does not, so A comes first
+              return -1; // A has a valid deadline, B does not, so A comes first
             } else if (isValidDeadlineB) {
-              return 1; // B has a deadline, A does not, so B comes first
+              return 1; // B has a valid deadline, A does not, so B comes first
             }
             // If both have no valid deadline, or deadlines are equal, move to due date
 
             // 3. Tertiary sort: due date (ascending)
-            const dateA = a.due?.date ? parseISO(a.due.date) : null;
-            const dateB = b.due?.date ? parseISO(b.due.date) : null;
+            let dateA: Date | null = null;
+            if (a.due?.date && typeof a.due.date === 'string' && a.due.date.trim() !== '') {
+                dateA = parseISO(a.due.date);
+            }
+            let dateB: Date | null = null;
+            if (b.due?.date && typeof b.due.date === 'string' && b.due.date.trim() !== '') {
+                dateB = parseISO(b.due.date);
+            }
 
             const isValidDateA = dateA && isValid(dateA);
             const isValidDateB = dateB && isValid(dateB);
