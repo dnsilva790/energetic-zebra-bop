@@ -12,7 +12,7 @@ import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { cn } from "@/lib/utils"; // Importar cn para usar classes condicionais
+import { cn, formatDateForDisplay } from "@/lib/utils"; // Importar cn e formatDateForDisplay
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 const SEITON_PROGRESS_KEY = 'seiton_progress';
@@ -79,33 +79,6 @@ const SEITONPage = () => {
     console.log("SEITONPage - p3Tasks length:", p3Tasks.length, "Contents:", p3Tasks.map(t => `${t.content} (Prio: ${t.priority})`));
     console.log("SEITONPage - tournamentQueue length:", tournamentQueue.length, "Contents:", tournamentQueue.map(t => `${t.content} (Prio: ${t.priority})`));
   }, [currentStep, currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue]);
-
-  const formatDueDate = (dateString: string | undefined | null) => {
-    if (!dateString) return "Sem vencimento";
-    
-    if (typeof dateString !== 'string' || dateString.trim() === '') {
-      console.warn("formatDueDate received non-string or empty string:", dateString);
-      return "Data inválida";
-    }
-
-    try {
-      const parsedDate = parseISO(dateString); // parseISO interpreta no fuso horário local se não houver offset/Z
-
-      if (!isValid(parsedDate)) {
-        console.warn("Invalid date string after parseISO:", dateString);
-        return "Data inválida";
-      }
-
-      // Use regex to robustly check for a time pattern (HH:MM) in the date string
-      const hasTime = /\d{2}:\d{2}/.test(dateString);
-      const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
-
-      return format(parsedDate, formatString, { locale: ptBR });
-    } catch (e: any) {
-      console.error("Error formatting date:", dateString, "Error details:", e.message, e);
-      return "Erro de data";
-    }
-  };
 
   const saveProgress = useCallback(() => {
     const progress: SeitonProgress = {
@@ -694,7 +667,12 @@ const SEITONPage = () => {
           </p>
           {task.due?.date && (
             <p className="text-xs text-gray-500 mt-1">
-              Vencimento: <span className="font-medium text-gray-700">{formatDueDate(task.due.date)}</span>
+              Vencimento: <span className="font-medium text-gray-700">{formatDateForDisplay(task.due)}</span>
+            </p>
+          )}
+          {task.deadline && (
+            <p className="text-xs text-gray-500 mt-1">
+              Data Limite: <span className="font-medium text-gray-700">{formatDateForDisplay(task.deadline)}</span>
             </p>
           )}
         </CardContent>
