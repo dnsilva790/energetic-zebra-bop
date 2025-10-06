@@ -425,55 +425,40 @@ Retorne um JSON válido com 3 a 5 sugestões:
               return b.priority - a.priority;
             }
 
-            // 2. Secondary sort: deadline (ascending)
-            let deadlineA: Date | null = null;
-            if (typeof a.deadline === 'string' && a.deadline.trim() !== '') {
-                const parsed = parseISO(a.deadline);
-                if (isValid(parsed)) {
-                    deadlineA = parsed;
-                }
-            }
-            let deadlineB: Date | null = null;
-            if (typeof b.deadline === 'string' && b.deadline.trim() !== '') {
-                const parsed = parseISO(b.deadline);
-                if (isValid(parsed)) {
-                    deadlineB = parsed;
-                }
-            }
+            // Helper para parsear e validar datas
+            const parseAndValidateDate = (dateString: string | null | undefined): Date | null => {
+              if (typeof dateString === 'string' && dateString.trim() !== '') {
+                const parsed = parseISO(dateString);
+                return isValid(parsed) ? parsed : null;
+              }
+              return null;
+            };
 
-            if (deadlineA && deadlineB) { // Both are valid Date objects
+            // 2. Secondary sort: deadline (ascending)
+            const deadlineA = parseAndValidateDate(a.deadline);
+            const deadlineB = parseAndValidateDate(b.deadline);
+
+            if (deadlineA && deadlineB) {
               const deadlineComparison = deadlineA.getTime() - deadlineB.getTime();
               if (deadlineComparison !== 0) {
                 return deadlineComparison;
               }
-            } else if (deadlineA) { // Only A has a valid deadline
-              return -1;
-            } else if (deadlineB) { // Only B has a valid deadline
-              return 1;
+            } else if (deadlineA) {
+              return -1; // A has a valid deadline, B does not, so A comes first
+            } else if (deadlineB) {
+              return 1; // B has a valid deadline, A does not, so B comes first
             }
             // If both have no valid deadline, or deadlines are equal, move to due date
 
             // 3. Tertiary sort: due date (ascending)
-            let dateA: Date | null = null;
-            if (a.due?.date && typeof a.due.date === 'string' && a.due.date.trim() !== '') {
-                const parsed = parseISO(a.due.date);
-                if (isValid(parsed)) {
-                    dateA = parsed;
-                }
-            }
-            let dateB: Date | null = null;
-            if (b.due?.date && typeof b.due.date === 'string' && b.due.date.trim() !== '') {
-                const parsed = parseISO(b.due.date);
-                if (isValid(parsed)) {
-                    dateB = parsed;
-                }
-            }
+            const dateA = parseAndValidateDate(a.due?.date);
+            const dateB = parseAndValidateDate(b.due?.date);
 
-            if (dateA && dateB) { // Both are valid Date objects
+            if (dateA && dateB) {
               return dateA.getTime() - dateB.getTime();
-            } else if (dateA) { // Only A has a valid due date
+            } else if (dateA) {
               return -1;
-            } else if (dateB) { // Only B has a valid due date
+            } else if (dateB) {
               return 1;
             }
             return 0; // Both have no valid date
