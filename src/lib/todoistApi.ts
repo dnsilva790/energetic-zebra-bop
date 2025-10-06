@@ -321,7 +321,7 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
   const rawUpdatedTask = await response.json();
   let processedDue = null;
   if (rawUpdatedTask.due) {
-    const dateValue = rawUpdatedT`ask.due.datetime || rawUpdatedTask.due.date;
+    const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
     processedDue = {
       date: dateValue,
       string: rawUpdatedTask.due.string,
