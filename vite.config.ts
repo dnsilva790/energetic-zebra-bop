@@ -17,8 +17,6 @@ export default defineConfig(() => ({
   optimizeDeps: {
     // Re-adicionando 'date-fns-tz' à exclusão. Isso é uma prática comum para resolver
     // problemas de importação com esta biblioteca em ambientes Vite.
-    exclude: ['date-fns-tz'], 
-    // Explicitamente incluindo 'date-fns' para garantir que seja pré-empacotado como ESM
-    include: ['date-fns'],
+    exclude: ['date-fns-tz']
   },
 }));
