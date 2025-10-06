@@ -48,7 +48,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         errorData = await response.json();
       } catch (jsonError) {
         console.error("Failed to parse Gemini API error response as JSON:", jsonError);
-        // Se não conseguir parsear como JSON, use o statusText
         throw new Error(`Erro na API Gemini: ${response.statusText}. Resposta não-JSON ou vazia.`);
       }
       console.error("Gemini API Error Response:", errorData); // Log detalhado do erro
@@ -58,17 +57,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await response.json();
     const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter sugestões da IA.";
 
-    // Regex mais robusto para encontrar o padrão de data e hora (YYYY-MM-DD HH:MM ou YYYY-MM-DD)
-    // Ele ignora caracteres no início da linha (como bullet points ou números de lista)
+    // Adicionando uma verificação defensiva para o tipo de aiResponseContent
+    if (typeof aiResponseContent !== 'string') {
+      console.error("Tipo inesperado para aiResponseContent:", typeof aiResponseContent, "Valor:", aiResponseContent);
+      throw new Error("O conteúdo da resposta da IA não é uma string. Não é possível processar as sugestões.");
+    }
+
     const datePattern = /(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?)/;
     
-    const suggestions = aiResponseContent.split('\n')
+    const processedLines = aiResponseContent.split('\n')
       .map((line: string) => {
         const match = line.match(datePattern);
         return match ? match[1] : null; // Retorna apenas a parte da data/hora
       })
-      .filter(Boolean) as string[] // Filtra nulos e garante que o tipo é string[]
-      .slice(0, 5); // Limita a 5 sugestões
+      .filter(Boolean); // Isso deve sempre retornar um array
+
+    let suggestions: string[];
+    try {
+      // Logs para depuração antes do slice
+      console.log("Tipo de processedLines antes do slice:", typeof processedLines);
+      console.log("Valor de processedLines antes do slice:", processedLines);
+
+      // Verificação final para garantir que é um array antes de chamar slice
+      if (!Array.isArray(processedLines)) {
+        throw new Error("processedLines não é um array. Não é possível chamar .slice().");
+      }
+      suggestions = processedLines.slice(0, 5) as string[];
+    } catch (sliceError: any) {
+      console.error("Erro durante o fatiamento das sugestões:", sliceError);
+      throw new Error(`Falha ao fatiar sugestões: ${sliceError.message}`);
+    }
 
     return res.status(200).json({
       status: 'success',
