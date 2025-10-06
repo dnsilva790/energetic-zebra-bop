@@ -12,7 +12,7 @@ import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
-// Removendo importações de date-fns-tz para usar o fuso horário local do navegador
+import { cn } from "@/lib/utils"; // Importar cn para usar classes condicionais
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 const SEITON_PROGRESS_KEY = 'seiton_progress';
@@ -51,7 +51,7 @@ const SEITONPage = () => {
   const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]); // Novo estado para histórico
   
   const [loading, setLoading] = useState(true);
-  const [showDebugPanel, setShowDebugPanel] = useState(true); // Alterado para true por padrão para depuração
+  const [showDebugPanel, setShowDebugPanel] = useState(false); // Alterado para false por padrão
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -564,7 +564,13 @@ const SEITONPage = () => {
     }
   };
 
-  const renderTaskCard = (task: TodoistTask | null, title: string, description: string, priorityOverride?: number) => {
+  const renderTaskCard = (
+    task: TodoistTask | null,
+    title: string,
+    description: string,
+    priorityOverride?: number,
+    onCardClick?: () => void // Adicionando a prop onCardClick
+  ) => {
     if (!task) {
         console.log(`renderTaskCard: Task is null for title "${title}". This is why the card is not rendering.`);
         return null;
@@ -572,7 +578,15 @@ const SEITONPage = () => {
     console.log(`renderTaskCard: Rendering task "${task.content}" for title "${title}".`);
     const displayPriority = priorityOverride !== undefined ? priorityOverride : task.priority;
     return (
-      <Card className="w-full shadow-lg bg-white/80 backdrop-blur-sm p-4">
+      <Card
+        className={cn(
+          "w-full shadow-lg bg-white/80 backdrop-blur-sm p-4",
+          onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200" // Adiciona estilos para indicar clicável
+        )}
+        onClick={onCardClick} // Torna o card clicável
+        tabIndex={onCardClick ? 0 : -1} // Torna-o focável pelo teclado se for clicável
+        role={onCardClick ? "button" : undefined} // Indica que é um botão para acessibilidade
+      >
         <CardHeader className="text-center p-0 mb-2">
           <CardTitle className="text-xl font-bold text-gray-800 flex items-center justify-center gap-2">
             {task.content}
@@ -585,6 +599,7 @@ const SEITONPage = () => {
               rel="noopener noreferrer"
               className="text-gray-400 hover:text-blue-600 transition-colors"
               aria-label="Abrir no Todoist"
+              onClick={(e) => e.stopPropagation()} // Impede que o clique no link acione o clique do card
             >
               <ExternalLink className="h-4 w-4" />
             </a>
@@ -607,7 +622,10 @@ const SEITONPage = () => {
         </CardContent>
         <CardFooter className="flex justify-center mt-4 p-0">
           <Button
-            onClick={() => handleCancelTask(task.id)} // Pass task.id to cancel
+            onClick={(e) => {
+              e.stopPropagation(); // Impede que o clique no botão acione o clique do card
+              handleCancelTask(task.id);
+            }}
             className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-4 rounded-md transition-colors flex items-center text-sm"
           >
             <X className="mr-1 h-4 w-4" /> Cancelar
@@ -661,9 +679,9 @@ const SEITONPage = () => {
               Escolha a tarefa que você considera mais prioritária ou cancele uma delas.
             </CardDescription>
             <div className="grid grid-cols-1 gap-4">
-              {renderTaskCard(currentChallenger, "Tarefa A", "Challenger", currentChallenger.priority)}
+              {renderTaskCard(currentChallenger, "Tarefa A", "Challenger", currentChallenger.priority, () => handleTournamentComparison(true))}
               <p className="text-xl font-bold text-gray-700">VS</p>
-              {renderTaskCard(currentOpponent, "Tarefa B", `Posição ${currentOpponentIndex + 1} no Ranking`, currentOpponent.priority)}
+              {renderTaskCard(currentOpponent, "Tarefa B", `Posição ${currentOpponentIndex + 1} no Ranking`, currentOpponent.priority, () => handleTournamentComparison(false))}
             </div>
             <div className="flex justify-center space-x-4 mt-6">
               <Button onClick={() => handleTournamentComparison(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
