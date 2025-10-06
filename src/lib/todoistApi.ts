@@ -238,8 +238,9 @@ export async function completeTask(taskId: string): Promise<boolean> {
       try {
         const errorData = await response.json();
         errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (jsonError) {
+      } catch (jsonError: any) {
         console.warn("Falha ao analisar resposta JSON de erro em completeTask:", jsonError);
+        errorMessage = `Erro ao concluir tarefa: Resposta inválida da API (não-JSON ou JSON malformado). Detalhes: ${jsonError.message}`;
       }
     }
     throw new Error(errorMessage);
@@ -261,8 +262,9 @@ export async function reopenTask(taskId: string): Promise<boolean> {
       try {
         const errorData = await response.json();
         errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (jsonError) {
+      } catch (jsonError: any) {
         console.warn("Falha ao analisar resposta JSON de erro em reopenTask:", jsonError);
+        errorMessage = `Erro ao reabrir tarefa: Resposta inválida da API (não-JSON ou JSON malformado). Detalhes: ${jsonError.message}`;
       }
     }
     throw new Error(errorMessage);
@@ -284,8 +286,9 @@ export async function deleteTask(taskId: string): Promise<boolean> {
       try {
         const errorData = await response.json();
         errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (jsonError) {
+      } catch (jsonError: any) {
         console.warn("Falha ao analisar resposta JSON de erro em deleteTask:", jsonError);
+        errorMessage = `Erro ao deletar tarefa: Resposta inválida da API (não-JSON ou JSON malformado). Detalhes: ${jsonError.message}`;
       }
     }
     throw new Error(errorMessage);

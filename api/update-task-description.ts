@@ -38,8 +38,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         try {
           const errorData = await getResponse.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (jsonError) {
+        } catch (jsonError: any) {
           console.warn("Failed to parse JSON error response from Todoist API on GET in /api/update-task-description:", jsonError);
+          errorMessage = `Failed to fetch task: Invalid API response (non-JSON or malformed JSON). Details: ${jsonError.message}`;
         }
       }
       throw new Error(errorMessage);
@@ -79,8 +80,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         try {
           const errorData = await updateResponse.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (jsonError) {
+        } catch (jsonError: any) {
           console.warn("Failed to parse JSON error response from Todoist API on POST in /api/update-task-description:", jsonError);
+          errorMessage = `Failed to update task description: Invalid API response (non-JSON or malformed JSON). Details: ${jsonError.message}`;
         }
       }
       throw new Error(errorMessage);

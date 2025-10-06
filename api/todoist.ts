@@ -49,8 +49,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           try {
             const errorData = await response.json();
             errorMessage = errorData.error || errorData.message || errorMessage;
-          } catch (jsonError) {
+          } catch (jsonError: any) {
             console.warn("Failed to parse JSON error response from Todoist API in /api/todoist:", jsonError);
+            errorMessage = `Failed to create task: Invalid API response (non-JSON or malformed JSON). Details: ${jsonError.message}`;
           }
         }
         throw new Error(errorMessage);
