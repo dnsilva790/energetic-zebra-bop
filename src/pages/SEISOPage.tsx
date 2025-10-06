@@ -23,8 +23,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import AITutorChat from "@/components/AITutorChat";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch"; // Importar o componente Switch
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
+const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking'; // Nova chave para a preferência
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
 const SEITON_PROGRESS_KEY = 'seiton_progress'; // Chave para o progresso em andamento do SEITON
 const SEITON_FALLBACK_TASK_LIMIT = 12;
@@ -68,6 +70,10 @@ const SEISOPage = () => {
     const savedFilter = localStorage.getItem(SEISO_FILTER_KEY);
     return savedFilter || "today | overdue";
   });
+  const [useSeitonRanking, setUseSeitonRanking] = useState(() => {
+    const savedPreference = localStorage.getItem(SEISO_USE_SEITON_RANKING_KEY);
+    return savedPreference ? JSON.parse(savedPreference) : true; // Padrão para usar SEITON
+  });
   const [sessionStarted, setSessionStarted] = useState(false);
   const [allTasks, setAllTasks] = useState<TodoistTask[]>([]);
   const [p1Tasks, setP1Tasks] = useState<TodoistTask[]>([]);
@@ -100,6 +106,10 @@ const SEISOPage = () => {
     localStorage.setItem(SEISO_FILTER_KEY, filterInput);
   }, [filterInput]);
 
+  useEffect(() => {
+    localStorage.setItem(SEISO_USE_SEITON_RANKING_KEY, JSON.stringify(useSeitonRanking));
+  }, [useSeitonRanking]);
+
   const getPriorityColor = (priority: number) => {
     switch (priority) {
       case 4: return "text-red-600";
@@ -127,7 +137,7 @@ const SEISOPage = () => {
     let tasksToProcess: TodoistTask[] = [];
     let usingSeitonSource = false; // Indica se estamos usando um ranking SEITON (finalizado ou em progresso)
 
-    try {
+    if (useSeitonRanking) { // Apenas tenta carregar do SEITON se a opção estiver ativada
       // 1. Tentar carregar do SEITON_LAST_RANKING_KEY (sessão finalizada)
       const savedLastRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
       if (savedLastRanking) {
@@ -175,61 +185,62 @@ const SEISOPage = () => {
           console.log("SEISOPage - Nenhum SEITON_PROGRESS_KEY encontrado.");
         }
       }
+    } else {
+      console.log("SEISOPage - Usando filtro do usuário (opção 'Usar Ranking SEITON' desativada).");
+    }
 
-      // 3. Se ainda não houver tarefas, usar o filtro do usuário
-      if (tasksToProcess.length === 0) {
-        console.log("SEISOPage - Nenhum ranking SEITON encontrado. Usando filtro do usuário.");
-        const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas do filtro...");
-        if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
-          tasksToProcess = fetchedTasksFromFilter;
-          usingSeitonSource = false; // Não estamos usando ranking SEITON
-          showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
-          console.log("SEISOPage - Loaded tasks from user filter.");
-        } else {
-          console.log("SEISOPage - O filtro do usuário não retornou tarefas.");
-        }
-      }
-
-      // Processar e definir as tarefas se alguma foi encontrada
-      if (tasksToProcess.length > 0) {
-        const filteredAndCleanedTasks = tasksToProcess
-          .filter((task: TodoistTask) => task.parent_id === null)
-          .filter((task: TodoistTask) => !task.is_completed);
-
-        const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
-        const nonP1Tasks = filteredAndCleanedTasks.filter(task => task.priority !== 4);
-
-        let others: TodoistTask[];
-        if (usingSeitonSource) { // Se estiver usando qualquer ranking SEITON, mantém a ordem para não-P1
-          others = nonP1Tasks;
-        } else { // Se estiver usando filtro, embaralha as tarefas não-P1
-          others = shuffleArray(nonP1Tasks);
-        }
-
-        setP1Tasks(p1);
-        setOtherTasks(others);
-        setAllTasks([...p1, ...others]);
-        setIsUsingSeitonRanking(usingSeitonSource);
-        setSessionStarted(true);
-        setCurrentTaskIndex(0);
-        setTasksCompleted(0);
-        setIsSessionFinished(false);
+    // 3. Se ainda não houver tarefas (ou se useSeitonRanking for false), usar o filtro do usuário
+    if (tasksToProcess.length === 0 || !useSeitonRanking) {
+      console.log("SEISOPage - Nenhum ranking SEITON encontrado ou opção desativada. Usando filtro do usuário.");
+      const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas do filtro...");
+      if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
+        tasksToProcess = fetchedTasksFromFilter;
+        usingSeitonSource = false; // Não estamos usando ranking SEITON
+        showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
+        console.log("SEISOPage - Loaded tasks from user filter.");
       } else {
-        showSuccess("Nenhuma tarefa encontrada. Tente outro filtro ou complete o SEITON.");
-        setIsSessionFinished(true);
-        setSessionStarted(false);
-        setIsUsingSeitonRanking(false);
+        console.log("SEISOPage - O filtro do usuário não retornou tarefas.");
       }
-    } catch (error: any) {
-      console.error("SEISO: Erro em fetchTasksAndFilter:", error);
-      setFilterError(error.message || "Ocorreu um erro inesperado ao carregar dados.");
-      showError("Ocorreu um erro inesperado ao carregar dados.");
+    }
+
+    // Processar e definir as tarefas se alguma foi encontrada
+    if (tasksToProcess.length > 0) {
+      const filteredAndCleanedTasks = tasksToProcess
+        .filter((task: TodoistTask) => task.parent_id === null)
+        .filter((task: TodoistTask) => !task.is_completed);
+
+      const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
+      const nonP1Tasks = filteredAndCleanedTasks.filter(task => task.priority !== 4);
+
+      let others: TodoistTask[];
+      if (usingSeitonSource) { // Se estiver usando qualquer ranking SEITON, mantém a ordem para não-P1
+        others = nonP1Tasks;
+      } else { // Se estiver usando filtro, embaralha as tarefas não-P1
+        others = shuffleArray(nonP1Tasks);
+      }
+
+      setP1Tasks(p1);
+      setOtherTasks(others);
+      setAllTasks([...p1, ...others]);
+      setIsUsingSeitonRanking(usingSeitonSource);
+      setSessionStarted(true);
+      setCurrentTaskIndex(0);
+      setTasksCompleted(0);
+      setIsSessionFinished(false);
+    } else {
+      showSuccess("Nenhuma tarefa encontrada. Tente outro filtro ou complete o SEITON.");
+      setIsSessionFinished(true);
       setSessionStarted(false);
       setIsUsingSeitonRanking(false);
-    } finally {
-      setLoading(false);
     }
-  }, [filterInput, navigate]);
+    setLoading(false);
+  }, [filterInput, navigate, useSeitonRanking]);
+
+  useEffect(() => {
+    if (!sessionStarted) { // Só carrega tarefas se a sessão não estiver iniciada
+      fetchTasksAndFilter();
+    }
+  }, [fetchTasksAndFilter, sessionStarted]);
 
   useEffect(() => {
     if (currentTask && sessionStarted) {
@@ -461,10 +472,11 @@ const SEISOPage = () => {
           <h1 className="text-4xl font-extrabold text-orange-800 text-center flex-grow">
             SEISO - Executar Tarefas
           </h1>
-          <p className="text-xl text-orange-700 text-center mb-8">
-            Foque nas suas tarefas prioritárias
-          </p>
+          <div className="w-20"></div>
         </div>
+        <p className="text-xl text-orange-700 text-center mb-8">
+          Foque nas suas tarefas prioritárias
+        </p>
       </div>
 
       {!sessionStarted ? (
@@ -476,6 +488,22 @@ const SEISOPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center justify-between space-x-2 p-2 border rounded-md bg-gray-50">
+              <Label htmlFor="use-seiton-ranking" className="text-base font-medium text-gray-700">
+                Usar Ranking SEITON
+              </Label>
+              <Switch
+                id="use-seiton-ranking"
+                checked={useSeitonRanking}
+                onCheckedChange={setUseSeitonRanking}
+              />
+            </div>
+            <p className="text-sm text-gray-500 -mt-2">
+              {useSeitonRanking
+                ? "Prioriza tarefas do último ranking SEITON. Se não houver, usa o filtro abaixo."
+                : "Usa apenas o filtro do Todoist abaixo, ignorando o ranking SEITON."}
+            </p>
+
             <div className="space-y-2">
               <Label htmlFor="todoist-filter">Filtro Todoist</Label>
               <Input
@@ -488,6 +516,7 @@ const SEISOPage = () => {
                   setFilterError("");
                 }}
                 className={filterError ? "border-red-500" : ""}
+                disabled={useSeitonRanking} // Desabilita se estiver usando ranking SEITON
               />
               {filterError && <p className="text-red-500 text-sm mt-1">{filterError}</p>}
             </div>
