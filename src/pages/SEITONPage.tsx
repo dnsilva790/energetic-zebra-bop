@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { ArrowLeft, Check, X, ExternalLink, Repeat, Play, ChevronLeft, ChevronRight, Bug, Undo2, Clock } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Repeat, Play, ChevronLeft, ChevronRight, Bug, Undo2, Clock, RotateCcw } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, completeTask, updateTask, handleApiCall, reopenTask, updateTaskDeadline } from "@/lib/todoistApi";
@@ -575,6 +575,30 @@ const SEITONPage = () => {
     }
   }, [taskToSetDeadline, currentChallenger]);
 
+  const handleResetRanking = useCallback(async () => {
+    setLoading(true);
+    try {
+      localStorage.removeItem(SEITON_PROGRESS_KEY);
+      localStorage.removeItem(SEITON_LAST_RANKING_KEY);
+      showSuccess("Ranking SEITON resetado com sucesso! Carregando novas tarefas...");
+      // Resetar estados para forçar uma nova inicialização
+      setTournamentQueue([]);
+      setRankedTasks([]);
+      setP3Tasks([]);
+      setCurrentChallenger(null);
+      setCurrentOpponentIndex(null);
+      setComparisonHistory([]);
+      setLastUndoableAction(null);
+      setCurrentStep('loading'); // Voltar para o estado de carregamento para re-fetch
+      await fetchAndSetupTasks(); // Re-fetch tasks
+    } catch (error) {
+      console.error("Erro ao resetar ranking:", error);
+      showError("Falha ao resetar o ranking SEITON.");
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAndSetupTasks]);
+
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -869,16 +893,26 @@ const SEITONPage = () => {
           <Bug size={20} /> {showDebugPanel ? "Esconder Debug" : "Mostrar Debug"}
         </Button>
 
-        {lastUndoableAction && (
+        <div className="flex gap-4">
+          {lastUndoableAction && (
+            <Button
+              variant="outline"
+              onClick={handleUndo}
+              disabled={loading}
+              className="flex items-center gap-2 text-red-700 hover:text-red-900 border-red-300 hover:border-red-400 bg-white/70 backdrop-blur-sm"
+            >
+              <Undo2 size={20} /> Desfazer (Z)
+            </Button>
+          )}
           <Button
             variant="outline"
-            onClick={handleUndo}
+            onClick={handleResetRanking}
             disabled={loading}
-            className="flex items-center gap-2 text-red-700 hover:text-red-900 border-red-300 hover:border-red-400 bg-white/70 backdrop-blur-sm"
+            className="flex items-center gap-2 text-blue-700 hover:text-blue-900 border-blue-300 hover:border-blue-400 bg-white/70 backdrop-blur-sm"
           >
-            <Undo2 size={20} /> Desfazer (Z)
+            <RotateCcw size={20} /> Resetar Ranking
           </Button>
-        )}
+        </div>
       </div>
 
         {showDebugPanel && (
