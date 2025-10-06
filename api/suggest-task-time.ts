@@ -43,7 +43,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (jsonError) {
+        console.error("Failed to parse Gemini API error response as JSON:", jsonError);
+        // Se não conseguir parsear como JSON, use o statusText
+        throw new Error(`Erro na API Gemini: ${response.statusText}. Resposta não-JSON ou vazia.`);
+      }
+      console.error("Gemini API Error Response:", errorData); // Log detalhado do erro
       throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
     }
 
