@@ -24,8 +24,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
 
-  const systemPrompt = `Você é um assistente de produtividade. Dada uma tarefa, sugira 3 a 5 datas e horários ideais para sua conclusão, considerando a complexidade e o tipo de tarefa. Formate cada sugestão como 'YYYY-MM-DD HH:MM - Breve justificativa' ou 'YYYY-MM-DD - Breve justificativa' se não houver horário específico. Use a data atual como referência para 'hoje'. Priorize sugestões para os próximos dias úteis.`;
-  const userPrompt = `Minha tarefa é: "${taskContent}". Descrição: "${taskDescription || 'Nenhuma descrição.'}". Sugira horários.`;
+  // Obter a data atual para passar para a IA
+  const today = new Date();
+  const todayDateString = today.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+
+  const systemPrompt = `Você é um assistente de produtividade. Dada uma tarefa, sugira 3 a 5 datas e horários ideais para sua conclusão, considerando a complexidade e o tipo de tarefa. Formate cada sugestão como 'YYYY-MM-DD HH:MM - Breve justificativa' ou 'YYYY-MM-DD - Breve justificativa' se não houver horário específico. Priorize sugestões para os próximos 7 dias úteis a partir da data atual. Evite sugerir datas muito distantes no futuro.`;
+  const userPrompt = `A data de hoje é ${todayDateString}. Minha tarefa é: "${taskContent}". Descrição: "${taskDescription || 'Nenhuma descrição.'}". Sugira horários.`;
 
   try {
     const response = await fetch(GEMINI_API_URL, {
