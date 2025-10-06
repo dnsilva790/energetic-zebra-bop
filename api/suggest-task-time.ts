@@ -1,24 +1,28 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { format, parseISO, isValid } from 'date-fns';
-import * as dateFnsTz from 'date-fns-tz'; // Importar o módulo inteiro
+import { utcToZonedTime } from 'date-fns-tz'; // Importar especificamente utcToZonedTime
 
 // Helper to convert UTC time string to Brasília time string
-const convertUtcToBrasilia = (date: string, time: string): { data: string, hora_brasilia: string } => {
-  // Se a data ou hora for nula/indefinida, retorna o que foi recebido para evitar erros
+const convertUtcToBrasilia = (date: string, time: string): { data: string | null, hora_brasilia: string | null } => {
   if (!date || !time) {
-    return { data: date, hora_brasilia: time };
+    return { data: null, hora_brasilia: null };
   }
   const utcDateTimeString = `${date}T${time}:00Z`; // Assume time is HH:MM
   const utcDate = parseISO(utcDateTimeString);
   if (!isValid(utcDate)) {
     console.warn(`Invalid UTC date/time string for conversion: ${utcDateTimeString}`);
-    return { data: date, hora_brasilia: time }; // Return original if invalid
+    return { data: null, hora_brasilia: null };
   }
-  const brasiliaDate = dateFnsTz.utcToZonedTime(utcDate, 'America/Sao_Paulo');
-  return {
-    data: format(brasiliaDate, 'yyyy-MM-dd'),
-    hora_brasilia: format(brasiliaDate, 'HH:mm'),
-  };
+  try {
+    const brasiliaDate = utcToZonedTime(utcDate, 'America/Sao_Paulo');
+    return {
+      data: format(brasiliaDate, 'yyyy-MM-dd'),
+      hora_brasilia: format(brasiliaDate, 'HH:mm'),
+    };
+  } catch (tzError: any) {
+    console.error(`Error converting timezone for ${utcDateTimeString}:`, tzError);
+    return { data: null, hora_brasilia: null };
+  }
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -26,9 +30,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed', message: 'Only POST requests are supported.' });
   }
 
-  const geminiApiKey = process.env.VITE_GEMINI_API_KEY;
+  // Mudar para process.env.GEMINI_API_KEY para funções serverless
+  const geminiApiKey = process.env.GEMINI_API_KEY; 
   if (!geminiApiKey) {
-    console.error("VITE_GEMINI_API_KEY environment variable not set.");
+    console.error("GEMINI_API_KEY environment variable not set.");
     return res.status(500).json({ error: 'Server Configuration Error', message: 'Gemini API key is not configured on the server.' });
   }
 
@@ -42,16 +47,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Convert existing agenda tasks from UTC to Brasília for the prompt
   const processedAgendaExistente = agenda_existente.map((item: any) => {
-    // Certifica-se de que item.data e item.hora_utc existem antes de tentar converter
     if (item.data && item.hora_utc) {
       const { data, hora_brasilia } = convertUtcToBrasilia(item.data, item.hora_utc);
-      return {
-        tarefa: item.tarefa,
-        data: data,
-        hora_brasilia: hora_brasilia, // Adiciona hora_brasilia para clareza no prompt
-        duracao_min: item.duracao_min,
-        prioridade: item.prioridade,
-      };
+      if (data && hora_brasilia) { // Apenas inclui se ambos data e hora_brasilia são válidos
+        return {
+          tarefa: item.tarefa,
+          data: data,
+          hora_brasilia: hora_brasilia, // Adiciona hora_brasilia para clareza no prompt
+          duracao_min: item.duracao_min,
+          prioridade: item.prioridade,
+        };
+      }
     }
     return null; // Retorna nulo para itens inválidos, que serão filtrados
   }).filter(Boolean); // Remove quaisquer itens nulos
