@@ -75,16 +75,34 @@ const SEIKETSURecordPage: React.FC = () => {
           .filter((task: TodoistTask) => task.parent_id === null)
           .filter((task: TodoistTask) => !task.is_completed)
           .sort((a, b) => {
-            // Primary sort: priority (descending)
+            // 1. Primary sort: priority (descending)
             if (b.priority !== a.priority) {
               return b.priority - a.priority;
             }
 
-            // Secondary sort: due date (ascending)
+            // 2. Secondary sort: deadline (ascending)
+            const deadlineA = a.deadline ? parseISO(a.deadline) : null;
+            const deadlineB = b.deadline ? parseISO(b.deadline) : null;
+
+            const isValidDeadlineA = deadlineA && isValid(deadlineA);
+            const isValidDeadlineB = deadlineB && isValid(deadlineB);
+
+            if (isValidDeadlineA && isValidDeadlineB) {
+              const deadlineComparison = deadlineA!.getTime() - deadlineB!.getTime();
+              if (deadlineComparison !== 0) {
+                return deadlineComparison;
+              }
+            } else if (isValidDeadlineA) {
+              return -1; // A has a deadline, B does not, so A comes first
+            } else if (isValidDeadlineB) {
+              return 1; // B has a deadline, A does not, so B comes first
+            }
+            // If both have no valid deadline, or deadlines are equal, move to due date
+
+            // 3. Tertiary sort: due date (ascending)
             const dateA = a.due?.date ? parseISO(a.due.date) : null;
             const dateB = b.due?.date ? parseISO(b.due.date) : null;
 
-            // Handle invalid dates or nulls
             const isValidDateA = dateA && isValid(dateA);
             const isValidDateB = dateB && isValid(dateB);
 
