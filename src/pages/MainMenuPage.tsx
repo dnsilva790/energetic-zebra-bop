@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Play, Brain } from "lucide-react"; // Adicionado Brain
+import { Settings, Brush, LayoutDashboard, Play, Brain, Clock } from "lucide-react"; // Adicionado Clock
 import {
   Card,
   CardContent,
@@ -25,6 +25,8 @@ const MainMenuPage = () => {
       navigate("/5s/seiton");
     } else if (sName === "SEISO") {
       navigate("/5s/seiso");
+    } else if (sName === "SEIKETSU") { // Nova rota para SEIKETSU
+      navigate("/5s/seiketsu");
     }
     else {
       showSuccess(`Tela em construção - ${sName}`);
@@ -63,6 +65,13 @@ const MainMenuPage = () => {
             description="Focar e executar tarefas com filtro personalizado"
             colorClass="bg-orange-600 hover:bg-orange-700"
             onClick={() => handleButtonClick("SEISO")}
+          />
+          <FiveSButton
+            icon={Clock} // Novo ícone para SEIKETSU
+            title="SEIKETSU - Revisão Diária"
+            description="Decida o que fazer hoje e o que postergar"
+            colorClass="bg-indigo-600 hover:bg-indigo-700" // Nova cor para SEIKETSU
+            onClick={() => handleButtonClick("SEIKETSU")}
           />
         </CardContent>
       </Card>
