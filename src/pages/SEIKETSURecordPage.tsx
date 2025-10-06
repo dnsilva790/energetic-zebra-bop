@@ -71,18 +71,43 @@ const SEIKETSURecordPage: React.FC = () => {
       const fetchedTasks = await handleApiCall(() => getTasks("(due before: in 0 minutes)"), "Carregando tarefas para revisão...");
 
       if (fetchedTasks && fetchedTasks.length > 0) {
-        const filteredAndCleanedTasks = fetchedTasks
+        const filteredAndSortedTasks = fetchedTasks
           .filter((task: TodoistTask) => task.parent_id === null)
-          .filter((task: TodoistTask) => !task.is_completed);
+          .filter((task: TodoistTask) => !task.is_completed)
+          .sort((a, b) => {
+            // Primary sort: priority (descending)
+            if (b.priority !== a.priority) {
+              return b.priority - a.priority;
+            }
 
-        if (filteredAndCleanedTasks.length > 0) {
-          setTasksToReview(filteredAndCleanedTasks);
+            // Secondary sort: due date (ascending)
+            const dateA = a.due?.date ? parseISO(a.due.date) : null;
+            const dateB = b.due?.date ? parseISO(b.due.date) : null;
+
+            // Handle invalid dates or nulls
+            const isValidDateA = dateA && isValid(dateA);
+            const isValidDateB = dateB && isValid(dateB);
+
+            if (isValidDateA && isValidDateB) {
+              return dateA!.getTime() - dateB!.getTime();
+            }
+            if (isValidDateA) { // A has a valid date, B does not
+              return -1;
+            }
+            if (isValidDateB) { // B has a valid date, A does not
+              return 1;
+            }
+            return 0; // Both have no valid date
+          });
+
+        if (filteredAndSortedTasks.length > 0) {
+          setTasksToReview(filteredAndSortedTasks);
           setCurrentTaskIndex(0);
           setTasksDoneTodayCount(0);
           setTasksPostponedCount(0);
           setTasksCompletedCount(0);
           setIsSessionFinished(false);
-          showSuccess(`Sessão de revisão iniciada com ${filteredAndCleanedTasks.length} tarefas.`);
+          showSuccess(`Sessão de revisão iniciada com ${filteredAndSortedTasks.length} tarefas.`);
         } else {
           showSuccess("Nenhuma tarefa pendente encontrada para revisão. Bom trabalho!");
           setIsSessionFinished(true);
