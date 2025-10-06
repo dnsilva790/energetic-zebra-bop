@@ -1,0 +1,25 @@
+{
+  "id": "789123",
+  "project_id": "2203306140",
+  "section_id": "7025",
+  "content": "Comprar mantimentos para a semana",
+  "description": "Leite, ovos, pão integral, frutas e vegetais frescos.",
+  "is_completed": false,
+  "labels": ["casa", "compras"],
+  "parent_id": null,
+  "order": 1,
+  "priority": 4,
+  "due": {
+    "date": "2024-12-25",
+    "string": "25 de dezembro às 18h",
+    "lang": "pt",
+    "is_recurring": false,
+    "datetime": "2024-12-25T18:00:00Z"
+  },
+  "url": "https://todoist.com/app/task/789123",
+  "comment_count": 1,
+  "created_at": "2024-11-01T10:00:00Z",
+  "creator_id": "1234567",
+  "assignee_id": null,
+  "assigner_id": null
+}
