@@ -122,6 +122,7 @@ export async function updateTaskDescription(taskId: string, contentToAppend: str
       is_completed: rawUpdatedTask.is_completed,
       project_id: rawUpdatedTask.project_id,
       parent_id: rawUpdatedTask.parent_id,
+      deadline: rawUpdatedTask.deadline, // Incluir o campo deadline
     };
   } catch (error: any) {
     console.error("Client-side error calling /api/update-task-description:", error);
@@ -170,6 +171,7 @@ export async function getTasks(filter?: string): Promise<TodoistTask[]> {
       is_completed: task.is_completed,
       project_id: task.project_id,
       parent_id: task.parent_id,
+      deadline: task.deadline, // Incluir o campo deadline
       // Outros campos como project_name, classificacao, deadline serão adicionados posteriormente se necessário
     };
   });
@@ -221,6 +223,7 @@ export async function updateTask(taskId: string, data: any): Promise<TodoistTask
     is_completed: rawUpdatedTask.is_completed,
     project_id: rawUpdatedTask.project_id,
     parent_id: rawUpdatedTask.parent_id,
+    deadline: rawUpdatedTask.deadline, // Incluir o campo deadline
   };
 }
 
@@ -333,6 +336,7 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
     is_completed: rawUpdatedTask.is_completed,
     project_id: rawUpdatedTask.project_id,
     parent_id: rawUpdatedTask.parent_id,
+    deadline: rawUpdatedTask.deadline, // Incluir o campo deadline
   };
 }
 
