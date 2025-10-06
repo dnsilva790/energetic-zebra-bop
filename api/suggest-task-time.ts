@@ -16,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Server Configuration Error', message: 'Gemini API key is not configured on the server.' });
   }
 
-  const { taskContent, taskDescription } = req.body;
+  const { taskContent, taskDescription, systemPrompt: customSystemPrompt } = req.body; // Recebe o customSystemPrompt
 
   if (!taskContent) {
     return res.status(400).json({ error: 'Bad Request', message: 'Missing taskContent in request body.' });
@@ -28,7 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const today = new Date();
   const todayDateString = today.toISOString().split('T')[0]; // Formato YYYY-MM-DD
 
-  const systemPrompt = `Você é um assistente de produtividade. Dada uma tarefa, sugira 3 a 5 datas e horários ideais para sua conclusão, considerando a complexidade e o tipo de tarefa. Formate cada sugestão como 'YYYY-MM-DD HH:MM - Breve justificativa' ou 'YYYY-MM-DD - Breve justificativa' se não houver horário específico. Priorize sugestões para os próximos 7 dias úteis a partir da data atual. Evite sugerir datas muito distantes no futuro.`;
+  // Usar o prompt personalizado se fornecido, caso contrário, usar o padrão
+  const finalSystemPrompt = customSystemPrompt || `Você é um assistente de produtividade. Dada uma tarefa, sugira 3 a 5 datas e horários ideais para sua conclusão, considerando a complexidade e o tipo de tarefa. Formate cada sugestão como 'YYYY-MM-DD HH:MM - Breve justificativa' ou 'YYYY-MM-DD - Breve justificativa' se não houver horário específico. Priorize sugestões para os próximos 7 dias úteis a partir da data atual. Evite sugerir datas muito distantes no futuro.`;
   const userPrompt = `A data de hoje é ${todayDateString}. Minha tarefa é: "${taskContent}". Descrição: "${taskDescription || 'Nenhuma descrição.'}". Sugira horários.`;
 
   try {
@@ -39,8 +40,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       body: JSON.stringify({
         contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: "Ok, entendi. Por favor, forneça a tarefa." }] }, // Exemplo de resposta do modelo para o prompt do sistema
+          { role: 'user', parts: [{ text: finalSystemPrompt }] }, // Usa o prompt final
+          { role: 'model', parts: [{ text: "Ok, entendi. Por favor, forneça a tarefa." }] }, 
           { role: 'user', parts: [{ text: userPrompt }] },
         ],
       }),
@@ -54,14 +55,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error("Failed to parse Gemini API error response as JSON:", jsonError);
         throw new Error(`Erro na API Gemini: ${response.statusText}. Resposta não-JSON ou vazia.`);
       }
-      console.error("Gemini API Error Response:", errorData); // Log detalhado do erro
+      console.error("Gemini API Error Response:", errorData); 
       throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
     }
 
     const data = await response.json();
     const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter sugestões da IA.";
 
-    // Adicionando uma verificação defensiva para o tipo de aiResponseContent
     if (typeof aiResponseContent !== 'string') {
       console.error("Tipo inesperado para aiResponseContent:", typeof aiResponseContent, "Valor:", aiResponseContent);
       throw new Error("O conteúdo da resposta da IA não é uma string. Não é possível processar as sugestões.");
@@ -72,17 +72,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const processedLines = aiResponseContent.split('\n')
       .map((line: string) => {
         const match = line.match(datePattern);
-        return match ? match[1] : null; // Retorna apenas a parte da data/hora
+        return match ? match[1] : null; 
       })
-      .filter(Boolean); // Isso deve sempre retornar um array
+      .filter(Boolean); 
 
     let suggestions: string[];
     try {
-      // Logs para depuração antes do slice
       console.log("Tipo de processedLines antes do slice:", typeof processedLines);
       console.log("Valor de processedLines antes do slice:", processedLines);
 
-      // Verificação final para garantir que é um array antes de chamar slice
       if (!Array.isArray(processedLines)) {
         throw new Error("processedLines não é um array. Não é possível chamar .slice().");
       }

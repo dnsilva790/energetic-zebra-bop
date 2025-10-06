@@ -9,10 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain
-} from "lucide-react"; // Adicionado XCircle e Brain
+} from "lucide-react"; 
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, handleApiCall, updateTaskDueDate, completeTask, getAISuggestedTimes } from "@/lib/todoistApi"; // Importar getAISuggestedTimes
+import { getTasks, handleApiCall, updateTaskDueDate, completeTask, getAISuggestedTimes } from "@/lib/todoistApi"; 
 import { format, parseISO, setHours, setMinutes, isValid, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
@@ -40,6 +40,10 @@ const SEIKETSURecordPage: React.FC = () => {
 
   const currentTask = tasksToReview[currentTaskIndex];
   const totalTasks = tasksToReview.length;
+
+  // Chave e prompt padrão para a IA de sugestão de tarefas
+  const AI_TASK_SUGGESTION_SYSTEM_PROMPT_KEY = 'ai_task_suggestion_system_prompt';
+  const DEFAULT_TASK_SUGGESTION_PROMPT = `Você é um assistente de produtividade. Dada uma tarefa, sugira 3 a 5 datas e horários ideais para sua conclusão, considerando a complexidade e o tipo de tarefa. Formate cada sugestão como 'YYYY-MM-DD HH:MM - Breve justificativa' ou 'YYYY-MM-DD - Breve justificativa' se não houver horário específico. Priorize sugestões para os próximos 7 dias úteis a partir da data atual. Evite sugerir datas muito distantes no futuro.`;
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -142,8 +146,9 @@ const SEIKETSURecordPage: React.FC = () => {
     setIsAISuggesting(true);
     setAiSuggestions([]);
     try {
+      const customPrompt = localStorage.getItem(AI_TASK_SUGGESTION_SYSTEM_PROMPT_KEY) || DEFAULT_TASK_SUGGESTION_PROMPT;
       const suggestions = await handleApiCall(
-        () => getAISuggestedTimes(currentTask.content, currentTask.description || ''),
+        () => getAISuggestedTimes(currentTask.content, currentTask.description || '', customPrompt), // Passa o prompt
         "Obtendo sugestões da IA...",
         "Sugestões da IA recebidas!"
       );

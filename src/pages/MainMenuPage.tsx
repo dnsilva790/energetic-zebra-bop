@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Play, Brain, Clock } from "lucide-react"; // Adicionado Clock
+import { Settings, Brush, LayoutDashboard, Play, Brain, Clock } from "lucide-react"; 
 import {
   Card,
   CardContent,
@@ -25,7 +25,7 @@ const MainMenuPage = () => {
       navigate("/5s/seiton");
     } else if (sName === "SEISO") {
       navigate("/5s/seiso");
-    } else if (sName === "SEIKETSU") { // Nova rota para SEIKETSU
+    } else if (sName === "SEIKETSU") { 
       navigate("/5s/seiketsu");
     }
     else {
@@ -67,10 +67,10 @@ const MainMenuPage = () => {
             onClick={() => handleButtonClick("SEISO")}
           />
           <FiveSButton
-            icon={Clock} // Novo ícone para SEIKETSU
+            icon={Clock} 
             title="SEIKETSU - Revisão Diária"
             description="Decida o que fazer hoje e o que postergar"
-            colorClass="bg-indigo-600 hover:bg-indigo-700" // Nova cor para SEIKETSU
+            colorClass="bg-indigo-600 hover:bg-indigo-700" 
             onClick={() => handleButtonClick("SEIKETSU")}
           />
         </CardContent>
@@ -92,6 +92,14 @@ const MainMenuPage = () => {
         >
           <Brain size={20} />
           Configurações do Tutor IA
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => navigate("/ai-task-suggestion-settings")}
+          className="flex items-center gap-2 text-teal-700 hover:text-teal-900 border-teal-300 hover:border-teal-400 bg-white/70 backdrop-blur-sm"
+        >
+          <Brain size={20} />
+          Configurações da IA de Sugestão
         </Button>
       </div>
       <MadeWithDyad />

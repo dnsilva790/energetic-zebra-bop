@@ -340,16 +340,17 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
  * Obtém sugestões de data e hora da IA para uma tarefa.
  * @param taskContent O conteúdo (título) da tarefa.
  * @param taskDescription A descrição da tarefa.
+ * @param systemPrompt O prompt do sistema personalizado para a IA.
  * @returns Um array de strings com sugestões de data/hora ou undefined em caso de erro.
  */
-export async function getAISuggestedTimes(taskContent: string, taskDescription: string): Promise<string[] | undefined> {
+export async function getAISuggestedTimes(taskContent: string, taskDescription: string, systemPrompt: string): Promise<string[] | undefined> {
   try {
     const response = await fetch('/api/suggest-task-time', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ taskContent, taskDescription }),
+      body: JSON.stringify({ taskContent, taskDescription, systemPrompt }), // Passa o systemPrompt
     });
 
     if (!response.ok) {
