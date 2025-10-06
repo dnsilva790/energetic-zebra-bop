@@ -1,41 +1,125 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Check, X, ExternalLink, Repeat } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, Clock
+} from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, getProjects, completeTask, reopenTask, handleApiCall } from "@/lib/todoistApi";
-import { TodoistTask, TodoistProject } from "@/lib/types";
+import { getTasks, completeTask, handleApiCall, updateTaskDueDate, updateTaskDeadline } from "@/lib/todoistApi";
+import { format, parseISO, setHours, setMinutes, isValid } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
-import { toast } from "sonner";
-import { formatDateForDisplay } from "@/lib/utils"; // Importar a nova função
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn, formatDateForDisplay } from "@/lib/utils";
+import AITutorChat from "@/components/AITutorChat";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch"; // Importar o componente Switch
+import SetDeadlineDialog from "@/components/SetDeadlineDialog"; // Importar o novo componente
+
+const SEISO_FILTER_KEY = 'seiso_filter_input';
+const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking'; // Nova chave para a preferência
+const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
+const SEITON_PROGRESS_KEY = 'seiton_progress'; // Chave para o progresso em andamento do SEITON
+const SEITON_FALLBACK_TASK_LIMIT = 12;
+
+interface SeitonRankingData {
+  rankedTasks: TodoistTask[];
+  p3Tasks: TodoistTask[];
+}
+
+// Interface para o progresso salvo do SEITON (copiada de SEITONPage para consistência)
+interface SeitonProgress {
+  tournamentQueue: TodoistTask[];
+  rankedTasks: TodoistTask[];
+  p3Tasks: TodoistTask[];
+  currentStep: 'loading' | 'tournamentComparison' | 'result';
+  currentChallenger: TodoistTask | null;
+  currentOpponentIndex: number | null;
+  comparisonHistory: any[];
+}
+
+const formatTime = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+};
+
+const shuffleArray = (array: any[]) => {
+  let currentIndex = array.length, randomIndex;
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex--;
+    [array[currentIndex], array[randomIndex]] = [
+      array[randomIndex], array[currentIndex]];
+  }
+  return array;
+};
 
 const SEIRIPage = () => {
   const navigate = useNavigate();
+  const [filterInput, setFilterInput] = useState(() => {
+    const savedFilter = localStorage.getItem(SEISO_FILTER_KEY);
+    return savedFilter || "today | overdue";
+  });
+  const [useSeitonRanking, setUseSeitonRanking] = useState(() => {
+    const savedPreference = localStorage.getItem(SEISO_USE_SEITON_RANKING_KEY);
+    return savedPreference ? JSON.parse(savedPreference) : true; // Padrão para usar SEITON
+  });
+  const [sessionStarted, setSessionStarted] = useState(false);
   const [allTasks, setAllTasks] = useState<TodoistTask[]>([]);
+  const [p1Tasks, setP1Tasks] = useState<TodoistTask[]>([]);
+  const [otherTasks, setOtherTasks] = useState<TodoistTask[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
-  const [keptTasksCount, setKeptTasksCount] = useState(0);
-  const [deletedTasksCount, setDeletedTasksCount] = useState(0);
-  const [showSummary, setShowSummary] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [tasksCompleted, setTasksCompleted] = useState(0);
+  const [isSessionFinished, setIsSessionFinished] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [filterError, setFilterError] = useState("");
 
-  const [lastDeletedTask, setLastDeletedTask] = useState<TodoistTask | null>(null);
-  const [lastDeletedTaskOriginalIndex, setLastDeletedTaskOriginalIndex] = useState<number | null>(null);
-  const [undoToastId, setUndoToastId] = useState<string | null>(null);
+  const [isUsingSeitonRanking, setIsUsingSeitonRanking] = useState(false);
 
-  const currentTask = allTasks[currentTaskIndex];
-  const totalTasks = allTasks.length;
+  const [countdownInputDuration, setCountdownInputDuration] = useState("25");
+  const [countdownTimeLeft, setCountdownTimeLeft] = useState(0);
+  const [isCountdownActive, setIsCountdownActive] = useState(false);
+  const [isCountdownPaused, setIsCountdownPaused] = useState(false);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const alarmAudioRef = useRef<HTMLAudioElement>(null);
+
+  const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
+  const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
+  const [selectedDueTime, setSelectedDueTime] = useState<string>("");
+
+  const [isAITutorChatOpen, setIsAITutorChatOpen] = useState(false);
+
+  const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
+  const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
+
+  const totalTasks = p1Tasks.length + otherTasks.length;
+  const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
+
+  useEffect(() => {
+    localStorage.setItem(SEISO_FILTER_KEY, filterInput);
+  }, [filterInput]);
+
+  useEffect(() => {
+    localStorage.setItem(SEISO_USE_SEITON_RANKING_KEY, JSON.stringify(useSeitonRanking));
+  }, [useSeitonRanking]);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
-      case 4: return "text-red-600"; // P1
-      case 3: return "text-yellow-600"; // P2
-      case 2: return "text-blue-600"; // P3
-      case 1: return "text-gray-600"; // P4
+      case 4: return "text-red-600";
+      case 3: return "text-yellow-600";
+      case 2: return "text-blue-600";
+      case 1: return "text-gray-600";
       default: return "text-gray-600";
     }
   };
@@ -50,172 +134,356 @@ const SEIRIPage = () => {
     }
   };
 
-  const fetchTasksAndProjects = useCallback(async () => {
+  const fetchTasksAndFilter = useCallback(async () => {
     setLoading(true);
-    try {
-      const [tasks, projects] = await Promise.all([
-        handleApiCall(getTasks, "Carregando tarefas..."),
-        handleApiCall(getProjects, "Carregando projetos..."),
-      ]);
+    setFilterError("");
+    
+    let tasksToProcess: TodoistTask[] = [];
+    let usingSeitonSource = false;
 
-      if (tasks && projects) {
-        const projectMap = new Map(projects.map((p: TodoistProject) => [p.id, p.name]));
-        const tasksWithProjectNames = tasks
-          .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-          .filter((task: TodoistTask) => task.priority === 1) // Filtra apenas tarefas com prioridade 1 (P4)
-          .map((task: TodoistTask) => {
-            const projectName = projectMap.get(task.project_id) || "Caixa de Entrada";
-            return {
-              ...task,
-              project_name: projectName
-            };
-          });
-        setAllTasks(tasksWithProjectNames);
-        if (tasksWithProjectNames.length === 0) {
-          setShowSummary(true);
+    console.log("SEISOPage - fetchTasksAndFilter: useSeitonRanking is", useSeitonRanking);
+
+    // 1. Tentar carregar tarefas do filtro do usuário primeiro
+    console.log("SEISOPage - Tentando carregar tarefas do filtro do usuário:", filterInput);
+    const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas do filtro...");
+    
+    if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
+      tasksToProcess = fetchedTasksFromFilter;
+      usingSeitonSource = false;
+      showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
+      console.log("SEISOPage - Loaded tasks from user filter:", fetchedTasksFromFilter.map(t => t.content));
+    } else {
+      console.log("SEISOPage - O filtro do usuário não retornou tarefas.");
+
+      // 2. Se o filtro estiver vazio E a opção "Usar Ranking SEITON" estiver ativada, tentar carregar do SEITON
+      if (useSeitonRanking) {
+        console.log("SEISOPage - Filtro vazio e 'Usar Ranking SEITON' ativado. Tentando carregar tarefas do ranking SEITON...");
+        
+        // Tentar carregar do SEITON_LAST_RANKING_KEY (sessão finalizada)
+        const savedLastRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
+        console.log("SEISOPage - SEITON_LAST_RANKING_KEY raw:", savedLastRanking);
+        if (savedLastRanking) {
+          try {
+            const parsedLastRanking: SeitonRankingData = JSON.parse(savedRanking);
+            const combinedSeitonTasks = [...parsedLastRanking.rankedTasks, ...parsedLastRanking.p3Tasks];
+            const seitonTopTasks = combinedSeitonTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+            if (seitonTopTasks.length > 0) {
+              tasksToProcess = seitonTopTasks;
+              usingSeitonSource = true;
+              showSuccess(`Sessão iniciada com ${seitonTopTasks.length} tarefas do último ranking SEITON (finalizado).`);
+              console.log("SEISOPage - Loaded tasks from SEITON_LAST_RANKING_KEY:", seitonTopTasks.map(t => t.content));
+            } else {
+              console.log("SEISOPage - SEITON_LAST_RANKING_KEY encontrado, mas não contém tarefas úteis após combinação/limite.");
+            }
+          } catch (e) {
+            console.error("Erro ao analisar SEITON_LAST_RANKING_KEY:", e);
+            showError("Erro ao carregar o último ranking SEITON finalizado.");
+          }
         } else {
-          setCurrentTaskIndex(0); // Reset index to start from the beginning
-          setKeptTasksCount(0);
-          setDeletedTasksCount(0);
-          setShowSummary(false);
+          console.log("SEISOPage - Nenhum SEITON_LAST_RANKING_KEY encontrado.");
+        }
+
+        // Se ainda não houver tarefas, tentar SEITON_PROGRESS_KEY (sessão em progresso)
+        if (tasksToProcess.length === 0) {
+          console.log("SEISOPage - Nenhuma tarefa do ranking finalizado. Tentando ranking em progresso...");
+          const savedInProgressRanking = localStorage.getItem(SEITON_PROGRESS_KEY);
+          console.log("SEISOPage - SEITON_PROGRESS_KEY raw:", savedInProgressRanking);
+          if (savedInProgressRanking) {
+            try {
+              const parsedInProgressRanking: SeitonProgress = JSON.parse(savedInProgressRanking);
+              const combinedInProgressTasks = [...parsedInProgressRanking.rankedTasks, ...parsedInProgressRanking.p3Tasks];
+              const seitonInProgressTasks = combinedInProgressTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+              if (seitonInProgressTasks.length > 0) {
+                tasksToProcess = seitonInProgressTasks;
+                usingSeitonSource = true;
+                showSuccess(`Sessão iniciada com ${seitonInProgressTasks.length} tarefas do ranking SEITON (em progresso).`);
+                console.log("SEISOPage - Loaded tasks from SEITON_PROGRESS_KEY:", seitonInProgressTasks.map(t => t.content));
+              } else {
+                console.log("SEISOPage - SEITON_PROGRESS_KEY encontrado, mas não contém tarefas úteis após combinação/limite.");
+              }
+            } catch (e) {
+              console.error("Erro ao analisar SEITON_PROGRESS_KEY:", e);
+              showError("Erro ao carregar o ranking SEITON em progresso.");
+            }
+          } else {
+            console.log("SEISOPage - Nenhum SEITON_PROGRESS_KEY encontrado.");
+          }
         }
       } else {
-        showError("Não foi possível carregar as tarefas ou projetos do Todoist.");
-        navigate("/main-menu");
+        console.log("SEISOPage - Filtro vazio e 'Usar Ranking SEITON' desativado. Não tentando carregar do SEITON.");
       }
-    } catch (error) {
-      console.error("SEIRI: Erro em fetchTasksAndProjects:", error);
-      showError("Ocorreu um erro inesperado ao carregar dados.");
-      navigate("/main-menu");
-    } finally {
-      setLoading(false);
     }
-  }, [navigate]);
+
+    console.log("SEISOPage - Tasks to process BEFORE final filtering (total):", tasksToProcess.length);
+    // Processar e definir as tarefas se alguma foi encontrada
+    if (tasksToProcess.length > 0) {
+      const filteredAndCleanedTasks = tasksToProcess
+        .filter((task: TodoistTask) => task.parent_id === null)
+        .filter((task: TodoistTask) => !task.is_completed);
+
+      console.log("SEISOPage - Tasks AFTER final filtering (parent_id === null && !is_completed):", filteredAndCleanedTasks.length);
+
+      const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
+      const nonP1Tasks = filteredAndCleanedTasks.filter(task => task.priority !== 4);
+
+      let others: TodoistTask[];
+      if (usingSeitonSource) { // Se estiver usando qualquer ranking SEITON, mantém a ordem para não-P1
+        others = nonP1Tasks;
+      } else { // Se estiver usando filtro, embaralha as tarefas não-P1
+        others = shuffleArray(nonP1Tasks);
+      }
+
+      setP1Tasks(p1);
+      setOtherTasks(others);
+      setAllTasks([...p1, ...others]);
+      setIsUsingSeitonRanking(usingSeitonSource);
+      setSessionStarted(true);
+      setCurrentTaskIndex(0);
+      setTasksCompleted(0);
+      setIsSessionFinished(false);
+    } else {
+      showSuccess("Nenhuma tarefa encontrada. Tente outro filtro ou complete o SEITON.");
+      setIsSessionFinished(true);
+      setSessionStarted(false);
+      setIsUsingSeitonRanking(false);
+    }
+    setLoading(false);
+  }, [filterInput, navigate, useSeitonRanking]);
 
   useEffect(() => {
-    // Always fetch fresh tasks when the component mounts
-    fetchTasksAndProjects();
-  }, [fetchTasksAndProjects]);
+    if (!sessionStarted) { // Só carrega tarefas se a sessão não estiver iniciada
+      fetchTasksAndFilter();
+    }
+  }, [fetchTasksAndFilter, sessionStarted]);
+
+  useEffect(() => {
+    if (currentTask && sessionStarted) {
+      const initialDuration = parseInt(countdownInputDuration) * 60;
+      setCountdownTimeLeft(initialDuration > 0 ? initialDuration : 0);
+      setIsCountdownActive(false);
+      setIsCountdownPaused(false);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    }
+  }, [currentTask, sessionStarted, countdownInputDuration]);
+
+  useEffect(() => {
+    if (isCountdownActive && countdownTimeLeft > 0) {
+      countdownTimerRef.current = setInterval(() => {
+        setCountdownTimeLeft((prevTime) => prevTime - 1);
+      }, 1000);
+    } else if (countdownTimeLeft === 0 && isCountdownActive) {
+      setIsCountdownActive(false);
+      showSuccess("Tempo esgotado para a tarefa!");
+      if (alarmAudioRef.current) {
+        alarmAudioRef.current.play().catch(e => console.error("Error playing alarm sound:", e));
+      }
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    }
+
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, [isCountdownActive, countdownTimeLeft]);
+
+  const startCountdown = useCallback(() => {
+    if (countdownTimeLeft > 0) {
+      setIsCountdownActive(true);
+      setIsCountdownPaused(false);
+    } else {
+      const initialDuration = parseInt(countdownInputDuration) * 60;
+      if (initialDuration > 0) {
+        setCountdownTimeLeft(initialDuration);
+        setIsCountdownActive(true);
+        setIsCountdownPaused(false);
+      } else {
+        showError("Por favor, insira um tempo válido para o contador.");
+      }
+    }
+  }, [countdownTimeLeft, countdownInputDuration]);
+
+  const pauseCountdown = useCallback(() => {
+    setIsCountdownActive(false);
+    setIsCountdownPaused(true);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+  }, []);
+
+  const resetCountdown = useCallback(() => {
+    setIsCountdownActive(false);
+    setIsCountdownPaused(false);
+    const initialDuration = parseInt(countdownInputDuration) * 60;
+    setCountdownTimeLeft(initialDuration > 0 ? initialDuration : 0);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+  }, [countdownInputDuration]);
+
+  const stopAllTimers = useCallback(() => {
+    setIsCountdownActive(false);
+    setIsCountdownPaused(false);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (alarmAudioRef.current) {
+      alarmAudioRef.current.pause();
+      alarmAudioRef.current.currentTime = 0;
+    }
+  }, []);
 
   const moveToNextTask = useCallback(() => {
-    if (undoToastId) {
-      toast.dismiss(undoToastId);
-      setUndoToastId(null);
-    }
-    setLastDeletedTask(null);
-    setLastDeletedTaskOriginalIndex(null);
-
+    stopAllTimers();
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
     } else {
-      setShowSummary(true);
-      // No need to remove from localStorage as we don't save progress anymore
+      setIsSessionFinished(true);
     }
-  }, [currentTaskIndex, totalTasks, undoToastId]);
+  }, [currentTaskIndex, totalTasks, stopAllTimers]);
 
-  const handleKeep = useCallback(() => {
+  const handleCompleteTask = useCallback(async () => {
     if (currentTask) {
-      const updatedTasks = allTasks.map((task, idx) =>
-        idx === currentTaskIndex ? { ...task, classificacao: 'essencial' } : task
-      );
-      setAllTasks(updatedTasks);
-      setKeptTasksCount(keptTasksCount + 1);
-      showSuccess("Tarefa marcada como essencial!");
-      moveToNextTask();
-    }
-  }, [currentTask, allTasks, currentTaskIndex, keptTasksCount, moveToNextTask]);
-
-  const handleDelete = useCallback(async () => {
-    if (!currentTask) return;
-
-    setLastDeletedTask(currentTask);
-    setLastDeletedTaskOriginalIndex(currentTaskIndex);
-
-    const success = await handleApiCall(
-      () => completeTask(currentTask.id),
-      "Deletando tarefa...",
-      "Tarefa deletada com sucesso!"
-    );
-
-    if (success) {
-      setDeletedTasksCount((prev) => prev + 1);
-
-      const updatedTasks = allTasks.filter((task) => task.id !== currentTask.id);
-      setAllTasks(updatedTasks);
-
-      const id = toast.custom((t) => (
-        <div className="flex items-center justify-between p-3 bg-gray-800 text-white rounded-md shadow-lg">
-          <span>Tarefa deletada.</span>
-          <Button
-            variant="link"
-            onClick={() => handleUndo(t.id)}
-            className="text-blue-400 hover:text-blue-200 ml-4"
-          >
-            Desfazer
-          </Button>
-        </div>
-      ), { duration: 5000 });
-      setUndoToastId(id);
-
-      if (currentTaskIndex >= updatedTasks.length) {
-        setShowSummary(true);
-        // No need to remove from localStorage as we don't save progress anymore
+      const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
+      if (success) {
+        setTasksCompleted(tasksCompleted + 1);
+        stopAllTimers();
+        moveToNextTask();
       } else {
-        // No need to save progress here
+        showError("Falha ao concluir a tarefa no Todoist.");
+      }
+    }
+  }, [currentTask, stopAllTimers, moveToNextTask, tasksCompleted]);
+
+  const handleSkipTask = useCallback(() => {
+    showSuccess("Tarefa pulada.");
+    moveToNextTask();
+  }, [moveToNextTask]);
+
+  const handleOpenRescheduleDialog = useCallback(() => {
+    if (currentTask?.due?.date) {
+      const parsedDate = parseISO(currentTask.due.date);
+      setSelectedDueDate(isValid(parsedDate) ? parsedDate : undefined);
+      if (currentTask.due.string.includes('T') || currentTask.due.string.includes(':')) {
+        const timeMatch = currentTask.due.string.match(/(\d{2}:\d{2})/);
+        setSelectedDueTime(timeMatch ? timeMatch[1] : "");
+      } else {
+        setSelectedDueTime("");
       }
     } else {
-      showError("Falha ao deletar a tarefa.");
-      setLastDeletedTask(null);
-      setLastDeletedTaskOriginalIndex(null);
+      setSelectedDueDate(undefined);
+      setSelectedDueTime("");
     }
-  }, [currentTask, currentTaskIndex, allTasks]);
+    setShowRescheduleDialog(true);
+  }, [currentTask]);
 
-  const handleUndo = useCallback(async (toastId: string) => {
-    if (!lastDeletedTask || lastDeletedTaskOriginalIndex === null) {
-      toast.dismiss(toastId);
-      showError("Não há tarefa para desfazer.");
+  const handleSaveReschedule = useCallback(async () => {
+    if (!currentTask || !selectedDueDate) {
+      showError("Por favor, selecione uma data para reagendar.");
       return;
     }
 
+    let newDueDateString = format(selectedDueDate, "yyyy-MM-dd");
+    if (selectedDueTime) {
+      const [hours, minutes] = selectedDueTime.split(':').map(Number);
+      if (!isNaN(hours) && !isNaN(minutes)) {
+        let dateWithTime = setHours(selectedDueDate, hours);
+        dateWithTime = setMinutes(dateWithTime, minutes);
+        newDueDateString = format(dateWithTime, "yyyy-MM-dd'T'HH:mm:ss");
+      }
+    }
+
     const success = await handleApiCall(
-      () => reopenTask(lastDeletedTask.id),
-      "Desfazendo exclusão...",
-      "Tarefa restaurada com sucesso!"
+      () => updateTaskDueDate(currentTask.id, newDueDateString),
+      "Reagendando tarefa...",
+      "Tarefa reagendada com sucesso!"
     );
 
     if (success) {
-      setDeletedTasksCount((prev) => prev - 1);
-
-      const newAllTasks = [...allTasks];
-      newAllTasks.splice(lastDeletedTaskOriginalIndex, 0, lastDeletedTask);
-      setAllTasks(newAllTasks);
-
-      setCurrentTaskIndex(lastDeletedTaskOriginalIndex);
-
-      if (showSummary) {
-        setShowSummary(false);
-      }
-
-      toast.dismiss(toastId);
-      setUndoToastId(null);
-      setLastDeletedTask(null);
-      setLastDeletedTaskOriginalIndex(null);
-      // No need to save progress here
+      setAllTasks(prevTasks => prevTasks.map(task => 
+        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
+      ));
+      setP1Tasks(prevTasks => prevTasks.map(task => 
+        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
+      ));
+      setOtherTasks(prevTasks => prevTasks.map(task => 
+        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
+      ));
+      setShowRescheduleDialog(false);
+      moveToNextTask();
     } else {
-      showError("Falha ao restaurar a tarefa.");
+      showError("Falha ao reagendar a tarefa.");
     }
-  }, [lastDeletedTask, lastDeletedTaskOriginalIndex, allTasks, showSummary]);
+  }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
+
+  const handleGuideMe = useCallback(() => {
+    if (!currentTask) {
+      showError("Nenhuma tarefa selecionada para guiar.");
+      return;
+    }
+    setIsAITutorChatOpen(true); // Abre a sidebar
+  }, [currentTask]);
+
+  const handleOpenSetDeadlineDialog = useCallback(() => {
+    if (!currentTask) {
+      showError("Nenhuma tarefa selecionada para definir data limite.");
+      return;
+    }
+    setTaskToSetDeadline(currentTask);
+    setShowSetDeadlineDialog(true);
+  }, [currentTask]);
+
+  const handleSaveDeadline = useCallback(async (newDeadline: string | null) => {
+    if (!taskToSetDeadline) return;
+
+    setLoading(true);
+    try {
+      const updatedTask = await handleApiCall(
+        () => updateTaskDeadline(taskToSetDeadline.id, newDeadline),
+        "Atualizando data limite...",
+        newDeadline ? "Data limite definida com sucesso!" : "Data limite removida com sucesso!"
+      );
+
+      if (updatedTask) {
+        // Atualizar as listas de tarefas com a tarefa modificada
+        const updateTaskInList = (list: TodoistTask[]) => 
+          list.map(t => t.id === updatedTask.id ? updatedTask : t);
+
+        setAllTasks(updateTaskInList);
+        setP1Tasks(updateTaskInList);
+        setOtherTasks(updateTaskInList);
+
+        // Se a tarefa atual é a que foi modificada, atualize-a
+        if (currentTask?.id === updatedTask.id) {
+          // Isso é um pouco mais complexo porque currentTask é derivado.
+          // A maneira mais simples é re-fetchar as tarefas ou garantir que o estado `allTasks`
+          // seja a fonte da verdade e `currentTask` seja sempre derivado dele.
+          // Por enquanto, a atualização de `allTasks` deve ser suficiente para o próximo render.
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao salvar deadline:", error);
+      showError("Falha ao salvar a data limite.");
+    } finally {
+      setLoading(false);
+      setShowSetDeadlineDialog(false);
+      setTaskToSetDeadline(null);
+    }
+  }, [taskToSetDeadline, currentTask]);
+
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (showSummary || loading || !currentTask) return;
+      // Desativa atalhos de teclado se qualquer modal/sidebar estiver aberto
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || isAITutorChatOpen || showSetDeadlineDialog) return;
 
-      if (event.key === 'd' || event.key === 'D') {
+      if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
-        handleDelete();
-      } else if (event.key === 'k' || event.key === 'K') {
+        handleCompleteTask();
+      } else if (event.key === 'p' || event.key === 'P') {
         event.preventDefault();
-        handleKeep();
+        handleSkipTask();
+      } else if (event.key === 'r' || event.key === 'R') {
+        event.preventDefault();
+        handleOpenRescheduleDialog();
+      } else if (event.key === 'g' || event.key === 'G') { // 'G' for Guide Me
+        event.preventDefault();
+        handleGuideMe();
+      } else if (event.key === 'd' || event.key === 'D') { // 'D' for Deadline
+        event.preventDefault();
+        handleOpenSetDeadlineDialog();
       }
     };
 
@@ -223,123 +491,338 @@ const SEIRIPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [showSummary, loading, currentTask, handleDelete, handleKeep]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, isAITutorChatOpen, showSetDeadlineDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe, handleOpenSetDeadlineDialog]);
 
-  const progressValue = totalTasks > 0 ? ((currentTaskIndex + (showSummary ? 1 : 0)) / totalTasks) * 100 : 0;
+  const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
+  const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
+    ? ((parseInt(countdownInputDuration) * 60 - countdownTimeLeft) / (parseInt(countdownInputDuration) * 60)) * 100 
+    : 0;
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-green-100 p-4">
-        <p className="text-lg text-green-600">Carregando tarefas para faxina...</p>
+      <div className="min-h-screen flex items-center justify-center bg-orange-100 p-4">
+        <p className="text-lg text-orange-600">Carregando tarefas...</p>
+      </div>
+    );
+  }
+
+  if (isSessionFinished) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-orange-100 p-4">
+        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
+          <CardTitle className="text-3xl font-bold text-gray-800">Sessão Concluída!</CardTitle>
+          <CardDescription className="text-lg text-gray-600">
+            Você concluiu {tasksCompleted} de {allTasks.length} tarefas.
+          </CardDescription>
+          <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
+            Voltar ao Menu Principal
+          </Button>
+          <Button variant="outline" onClick={() => { setIsSessionFinished(false); setSessionStarted(false); setFilterInput(localStorage.getItem(SEISO_FILTER_KEY) || "today | overdue"); }} className="mt-2">
+            Iniciar Nova Sessão
+          </Button>
+        </Card>
+        <MadeWithDyad />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-green-100 p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-orange-100 p-4 relative">
+      {/* Área de conteúdo principal */}
       <div className="w-full max-w-3xl mb-6">
         <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" onClick={() => navigate("/main-menu")} className="text-green-800 hover:bg-green-200">
+          <Button variant="ghost" onClick={() => navigate("/main-menu")} className="text-orange-800 hover:bg-orange-200">
             <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
           </Button>
-          <h1 className="text-4xl font-extrabold text-green-800 text-center flex-grow">
-            SEIRI - Faxina do Backlog
+          <h1 className="text-4xl font-extrabold text-orange-800 text-center flex-grow">
+            SEISO - Executar Tarefas
           </h1>
           <div className="w-20"></div>
         </div>
-        <p className="text-xl text-green-700 text-center mb-8">
-          Revise cada tarefa: manter ou deletar?
+        <p className="text-xl text-orange-700 text-center mb-8">
+          Foque nas suas tarefas prioritárias
         </p>
       </div>
 
-      <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm">
-        <CardContent className="p-6">
-          {showSummary ? (
-            <div className="text-center space-y-4">
-              <CardTitle className="text-2xl font-bold text-gray-800">Revisão Concluída!</CardTitle>
-              <CardDescription className="text-lg text-gray-600">
-                Você revisou {totalTasks} tarefas.
-              </CardDescription>
-              <p className="text-green-600 font-semibold">Manteve: {keptTasksCount}</p>
-              <p className="text-red-600 font-semibold">Deletou: {deletedTasksCount}</p>
-              <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
-                Voltar ao Menu Principal
-              </Button>
+      {!sessionStarted ? (
+        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold text-gray-800">Definir Filtro de Tarefas</CardTitle>
+            <CardDescription className="text-lg text-gray-600 mt-2">
+              Insira um filtro do Todoist para suas tarefas de hoje.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between space-x-2 p-2 border rounded-md bg-gray-50">
+              <Label htmlFor="use-seiton-ranking" className="text-base font-medium text-gray-700">
+                Usar Ranking SEITON como fallback
+              </Label>
+              <Switch
+                id="use-seiton-ranking"
+                checked={useSeitonRanking}
+                onCheckedChange={setUseSeitonRanking}
+              />
             </div>
-          ) : (
-            currentTask ? (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
-                    {currentTask.content}
-                    {currentTask.due?.is_recurring && (
-                      <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
-                    )}
-                    <a
-                      href={`https://todoist.com/app/task/${currentTask.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-gray-400 hover:text-blue-600 transition-colors"
-                      aria-label="Abrir no Todoist"
-                    >
-                      <ExternalLink className="h-5 w-5" />
-                    </a>
-                  </CardTitle>
-                  {currentTask.description && (
-                    <CardDescription className="text-gray-700 mb-2">
-                      {currentTask.description}
-                    </CardDescription>
-                  )}
-                  <p className="text-sm text-gray-500">
-                    Projeto: <span className="font-medium text-gray-700">{currentTask.project_name}</span>
-                  </p>
-                  <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
-                    Prioridade: {getPriorityLabel(currentTask.priority)}
-                  </p>
-                  {currentTask.due?.date && (
-                    <p className="text-sm text-gray-500">
-                      Vencimento: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.due)}</span>
-                    </p>
-                  )}
-                  {currentTask.deadline && (
-                    <p className="text-sm text-gray-500">
-                      Data Limite: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.deadline)}</span>
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex justify-center space-x-4 mt-6">
-                  <Button
-                    onClick={handleDelete}
-                    className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center"
-                  >
-                    <X className="mr-2 h-5 w-5" /> DELETAR (D)
-                  </Button>
-                  <Button
-                    onClick={handleKeep}
-                    className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center"
-                  >
-                    <Check className="mr-2 h-5 w-5" /> MANTER (K)
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center text-gray-600">
-                <p>Nenhuma tarefa encontrada ou carregando...</p>
-              </div>
-            )
-          )}
-        </CardContent>
-        {!showSummary && currentTask && (
-          <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
-            <p className="text-sm text-gray-600 mb-2">
-              Tarefa {currentTaskIndex + 1} de {totalTasks}
+            <p className="text-sm text-gray-500 -mt-2">
+              {useSeitonRanking
+                ? "Se o filtro estiver vazio, tentará carregar tarefas do ranking SEITON."
+                : "Usa apenas o filtro do Todoist abaixo, sem recorrer ao ranking SEITON."}
             </p>
-            <Progress value={progressValue} className="w-full h-2 bg-green-200 [&>*]:bg-green-600" />
-          </CardFooter>
-        )}
-      </Card>
+
+            <div className="space-y-2">
+              <Label htmlFor="todoist-filter">Filtro Todoist</Label>
+              <Input
+                id="todoist-filter"
+                type="text"
+                placeholder="Ex: today | overdue"
+                value={filterInput}
+                onChange={(e) => {
+                  setFilterInput(e.target.value);
+                  setFilterError("");
+                }}
+                className={filterError ? "border-red-500" : ""}
+              />
+              {filterError && <p className="text-red-500 text-sm mt-1">{filterError}</p>}
+            </div>
+            <Button
+              onClick={fetchTasksAndFilter}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md transition-colors"
+              disabled={loading}
+            >
+              {loading ? "Carregando..." : "Iniciar Sessão"}
+            </Button>
+            <p className="text-sm text-gray-500 mt-4">
+              <a href="https://todoist.com/help/articles/introduction-to-filters" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                Saiba mais sobre filtros do Todoist
+              </a>
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
+          {currentTask && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
+                  {currentTask.content}
+                  {currentTask.due?.is_recurring && (
+                    <Repeat className="h-5 w-5 text-blue-500" title="Tarefa Recorrente" />
+                  )}
+                  <a
+                    href={`https://todoist.com/app/task/${currentTask.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-blue-600 transition-colors"
+                    aria-label="Abrir no Todoist"
+                  >
+                    <ExternalLink className="h-5 w-5" />
+                  </a>
+                </CardTitle>
+                {currentTask.description && (
+                  <CardDescription className="text-gray-700 mb-2">
+                    {currentTask.description}
+                  </CardDescription>
+                )}
+                <p className={`text-lg font-semibold ${getPriorityColor(currentTask.priority)} mb-1`}>
+                  Prioridade: {getPriorityLabel(currentTask.priority)}
+                </p>
+                {currentTask.due?.date && (
+                  <p className="text-sm text-gray-500">
+                    Vencimento: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.due)}</span>
+                  </p>
+                )}
+                {currentTask.deadline && (
+                  <p className="text-sm text-gray-500">
+                    Data Limite: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.deadline)}</span>
+                  </p>
+                )}
+                {isUsingSeitonRanking && (
+                  <p className="text-sm text-purple-600 font-medium mt-2">
+                    (Esta tarefa é uma sugestão do ranking SEITON)
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col items-center space-y-3 p-4 border rounded-lg bg-red-50/50">
+                <h3 className="text-xl font-bold text-red-700">Contador de Tempo</h3>
+                <div className="flex items-center space-x-4">
+                  <Label htmlFor="countdown-input-duration" className="text-lg">Tempo Máximo (min):</Label>
+                  <Input
+                    id="countdown-input-duration"
+                    type="number"
+                    value={countdownInputDuration}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setCountdownInputDuration(value);
+                      if (!isCountdownActive && !isCountdownPaused) {
+                        setCountdownTimeLeft(parseInt(value) * 60 || 0);
+                      }
+                    }}
+                    className="w-24 text-center text-lg font-bold"
+                    disabled={isCountdownActive}
+                    min="1"
+                  />
+                </div>
+                <div className="text-6xl font-bold text-red-800">
+                  {formatTime(countdownTimeLeft)}
+                </div>
+                <Progress value={countdownProgressValue} className="w-full h-2 bg-red-200 [&>*]:bg-red-600" />
+                <div className="flex space-x-2">
+                  {!isCountdownActive && !isCountdownPaused && (
+                    <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700 text-white">
+                      <Play className="h-5 w-5" /> Iniciar
+                    </Button>
+                  )}
+                  {isCountdownActive && (
+                    <Button onClick={pauseCountdown} className="bg-yellow-600 hover:bg-yellow-700 text-white">
+                      <Pause className="h-5 w-5" /> Pausar
+                    </Button>
+                  )}
+                  {isCountdownPaused && (
+                    <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700 text-white">
+                      <Play className="h-5 w-5" /> Continuar
+                    </Button>
+                  )}
+                  <Button onClick={resetCountdown} className="bg-gray-600 hover:bg-gray-700 text-white">
+                      <Square className="h-5 w-5" /> Resetar
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex justify-center space-x-4 mt-6">
+                <Button
+                  onClick={handleCompleteTask}
+                  className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  <Check className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
+                </Button>
+                <Button
+                  onClick={handleSkipTask}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  <SkipForward className="mr-2 h-5 w-5" /> PRÓXIMA (P)
+                </Button>
+                <Button
+                  onClick={handleOpenRescheduleDialog}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  <CalendarDays className="mr-2 h-5 w-5" /> REAGENDAR (R)
+                </Button>
+                <Button
+                  onClick={handleOpenSetDeadlineDialog}
+                  className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  <Clock className="mr-2 h-5 w-5" /> DATA LIMITE (D)
+                </Button>
+                <Button
+                  onClick={handleGuideMe}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  Guiar-me (TDAH) (G)
+                </Button>
+              </div>
+            </div>
+          )}
+          {!isSessionFinished && currentTask && (
+            <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
+              <p className="text-sm text-gray-600 mb-2">
+                Tarefa {currentTaskIndex + 1} de {totalTasks}
+              </p>
+              <Progress value={taskProgressValue} className="w-full h-2 bg-orange-200 [&>*]:bg-orange-600" />
+            </CardFooter>
+          )}
+        </Card>
+      )}
+
+      <audio ref={alarmAudioRef} src="/alarm.mp3" preload="auto" />
+
       <MadeWithDyad />
+
+      <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
+        <SheetContent className="flex flex-col">
+          {currentTask && (
+            <AITutorChat
+              taskTitle={currentTask.content}
+              taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
+              taskId={currentTask.id}
+              onClose={() => setIsAITutorChatOpen(false)}
+              isTaskCompleted={currentTask.is_completed} // Passando a nova prop
+              className="flex-grow"
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Reagendar Tarefa</DialogTitle>
+            <DialogDescription>
+              Selecione uma nova data e, opcionalmente, um horário para a tarefa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="date" className="text-right">
+                Data
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-[240px] justify-start text-left font-normal col-span-3",
+                      !selectedDueDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    {selectedDueDate ? format(selectedDueDate, "PPP", { locale: ptBR }) : <span>Escolha uma data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDueDate}
+                    onSelect={setSelectedDueDate}
+                    initialFocus
+                    locale={ptBR}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="time" className="text-right">
+                Horário (HH:MM)
+              </Label>
+              <Input
+                id="time"
+                type="time"
+                value={selectedDueTime}
+                onChange={(e) => setSelectedDueTime(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button onClick={handleSaveReschedule} disabled={!selectedDueDate || loading}>
+              Salvar Reagendamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {taskToSetDeadline && (
+        <SetDeadlineDialog
+          isOpen={showSetDeadlineDialog}
+          onClose={() => setShowSetDeadlineDialog(false)}
+          currentDeadline={taskToSetDeadline.deadline}
+          onSave={handleSaveDeadline}
+          loading={loading}
+        />
+      )}
     </div>
   );
 };

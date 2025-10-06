@@ -4,15 +4,16 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { ArrowLeft, Check, X, ExternalLink, Repeat, Play, ChevronLeft, ChevronRight, Bug, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Repeat, Play, ChevronLeft, ChevronRight, Bug, Undo2, Clock } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, completeTask, updateTask, handleApiCall, reopenTask } from "@/lib/todoistApi";
+import { getTasks, completeTask, updateTask, handleApiCall, reopenTask, updateTaskDeadline } from "@/lib/todoistApi";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils"; // Importar cn e formatDateForDisplay
+import SetDeadlineDialog from "@/components/SetDeadlineDialog"; // Importar o novo componente
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 const SEITON_PROGRESS_KEY = 'seiton_progress';
@@ -65,6 +66,9 @@ const SEITONPage = () => {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   const [lastUndoableAction, setLastUndoableAction] = useState<UndoState | null>(null); // Novo estado para desfazer
+
+  const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
+  const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -532,10 +536,49 @@ const SEITONPage = () => {
     }
   }, [lastUndoableAction, reopenTask, setLoading, setTournamentQueue, setRankedTasks, setP3Tasks, setCurrentChallenger, setCurrentOpponentIndex, setCurrentStep]);
 
+  const handleOpenSetDeadlineDialog = useCallback((task: TodoistTask) => {
+    setTaskToSetDeadline(task);
+    setShowSetDeadlineDialog(true);
+  }, []);
+
+  const handleSaveDeadline = useCallback(async (newDeadline: string | null) => {
+    if (!taskToSetDeadline) return;
+
+    setLoading(true);
+    try {
+      const updatedTask = await handleApiCall(
+        () => updateTaskDeadline(taskToSetDeadline.id, newDeadline),
+        "Atualizando data limite...",
+        newDeadline ? "Data limite definida com sucesso!" : "Data limite removida com sucesso!"
+      );
+
+      if (updatedTask) {
+        // Atualizar as listas de tarefas com a tarefa modificada
+        const updateTaskInList = (list: TodoistTask[]) => 
+          list.map(t => t.id === updatedTask.id ? updatedTask : t);
+
+        setTournamentQueue(updateTaskInList);
+        setRankedTasks(updateTaskInList);
+        setP3Tasks(updateTaskInList);
+
+        if (currentChallenger?.id === updatedTask.id) {
+          setCurrentChallenger(updatedTask);
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao salvar deadline:", error);
+      showError("Falha ao salvar a data limite.");
+    } finally {
+      setLoading(false);
+      setShowSetDeadlineDialog(false);
+      setTaskToSetDeadline(null);
+    }
+  }, [taskToSetDeadline, currentChallenger]);
+
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading) return;
+      if (loading || showSetDeadlineDialog) return; // Desativa atalhos se o diálogo de deadline estiver aberto
 
       if (currentStep === 'tournamentComparison' && currentChallenger && currentOpponentIndex !== null) {
         if (event.key === '1') {
@@ -564,7 +607,7 @@ const SEITONPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask, handleUndo]);
+  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask, handleUndo, showSetDeadlineDialog]);
 
   // Effect to save final ranking when currentStep becomes 'result'
   useEffect(() => {
@@ -676,7 +719,7 @@ const SEITONPage = () => {
             </p>
           )}
         </CardContent>
-        <CardFooter className="flex justify-center mt-4 p-0">
+        <CardFooter className="flex justify-center gap-2 mt-4 p-0">
           <Button
             onClick={(e) => {
               e.stopPropagation(); // Impede que o clique no botão acione o clique do card
@@ -685,6 +728,16 @@ const SEITONPage = () => {
             className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-4 rounded-md transition-colors flex items-center text-sm"
           >
             <X className="mr-1 h-4 w-4" /> Cancelar
+          </Button>
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenSetDeadlineDialog(task);
+            }}
+            variant="outline"
+            className="border-gray-300 text-gray-700 hover:bg-gray-100 font-semibold py-1 px-4 rounded-md transition-colors flex items-center text-sm"
+          >
+            <Clock className="mr-1 h-4 w-4" /> Definir Data Limite
           </Button>
         </CardFooter>
       </Card>
@@ -882,6 +935,16 @@ const SEITONPage = () => {
           </Card>
         )}
       <MadeWithDyad />
+
+      {taskToSetDeadline && (
+        <SetDeadlineDialog
+          isOpen={showSetDeadlineDialog}
+          onClose={() => setShowSetDeadlineDialog(false)}
+          currentDeadline={taskToSetDeadline.deadline}
+          onSave={handleSaveDeadline}
+          loading={loading}
+        />
+      )}
     </div>
   );
 };

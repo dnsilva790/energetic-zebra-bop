@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { TodoistTask, TodoistProject, AISuggestion, AISuggestionResponse } from "./types"; // Importar os novos tipos
-import { format, parseISO } from "date-fns";
+import { format, parseISO, isValid } from "date-fns";
 
 const TODOIST_CONFIG = {
   baseURL: 'https://api.todoist.com/rest/v2',
@@ -44,7 +44,8 @@ export async function handleApiCall<T>(apiFunction: () => Promise<T>, loadingMes
   }
 }
 
-// Funções específicas da API do Todoist
+// Regex para encontrar e extrair o deadline da descrição
+const DEADLINE_REGEX = /\[DEADLINE:\s*(.*?)]/i;
 
 /**
  * Cria uma ou mais tarefas no Todoist através do endpoint Serverless.
@@ -114,6 +115,11 @@ export async function updateTaskDescription(taskId: string, contentToAppend: str
         is_recurring: rawUpdatedTask.due.is_recurring,
       };
     }
+
+    // Extrair deadline da descrição atualizada
+    const deadlineMatch = rawUpdatedTask.description?.match(DEADLINE_REGEX);
+    const extractedDeadline = deadlineMatch ? deadlineMatch[1] : null;
+
     return {
       id: rawUpdatedTask.id,
       content: rawUpdatedTask.content,
@@ -123,7 +129,7 @@ export async function updateTaskDescription(taskId: string, contentToAppend: str
       is_completed: rawUpdatedTask.is_completed,
       project_id: rawUpdatedTask.project_id,
       parent_id: rawUpdatedTask.parent_id,
-      deadline: rawUpdatedTask.deadline, // Incluir o campo deadline
+      deadline: extractedDeadline, // Incluir o campo deadline extraído
     };
   } catch (error: any) {
     console.error("Client-side error calling /api/update-task-description:", error);
@@ -149,7 +155,7 @@ export async function getTasks(filter?: string): Promise<TodoistTask[]> {
   
   const rawTasks = await response.json();
 
-  // Mapear as tarefas para o formato TodoistTask, ajustando o campo 'due'
+  // Mapear as tarefas para o formato TodoistTask, ajustando o campo 'due' e 'deadline'
   const processedTasks: TodoistTask[] = rawTasks.map((task: any) => {
     let processedDue = null;
     if (task.due) {
@@ -163,6 +169,10 @@ export async function getTasks(filter?: string): Promise<TodoistTask[]> {
       };
     }
 
+    // Extrair deadline da descrição
+    const deadlineMatch = task.description?.match(DEADLINE_REGEX);
+    const extractedDeadline = deadlineMatch ? deadlineMatch[1] : null;
+
     return {
       id: task.id,
       content: task.content,
@@ -172,7 +182,7 @@ export async function getTasks(filter?: string): Promise<TodoistTask[]> {
       is_completed: task.is_completed,
       project_id: task.project_id,
       parent_id: task.parent_id,
-      deadline: task.deadline, // Incluir o campo deadline
+      deadline: extractedDeadline, // Incluir o campo deadline extraído
       // Outros campos como project_name, classificacao, deadline serão adicionados posteriormente se necessário
     };
   });
@@ -203,7 +213,7 @@ export async function updateTask(taskId: string, data: any): Promise<TodoistTask
     const errorData = await response.json();
     throw new Error(errorData.error || `Erro ao atualizar tarefa: ${response.statusText}`);
   }
-  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due' novamente
+  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due' e 'deadline' novamente
   const rawUpdatedTask = await response.json();
   let processedDue = null;
   if (rawUpdatedTask.due) {
@@ -215,6 +225,11 @@ export async function updateTask(taskId: string, data: any): Promise<TodoistTask
       is_recurring: rawUpdatedTask.due.is_recurring,
     };
   }
+
+  // Extrair deadline da descrição atualizada
+  const deadlineMatch = rawUpdatedTask.description?.match(DEADLINE_REGEX);
+  const extractedDeadline = deadlineMatch ? deadlineMatch[1] : null;
+
   return {
     id: rawUpdatedTask.id,
     content: rawUpdatedTask.content,
@@ -224,7 +239,7 @@ export async function updateTask(taskId: string, data: any): Promise<TodoistTask
     is_completed: rawUpdatedTask.is_completed,
     project_id: rawUpdatedTask.project_id,
     parent_id: rawUpdatedTask.parent_id,
-    deadline: rawUpdatedTask.deadline, // Incluir o campo deadline
+    deadline: extractedDeadline, // Incluir o campo deadline extraído
   };
 }
 
@@ -316,7 +331,7 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
     const errorData = await response.json();
     throw new Error(errorData.error || `Erro ao atualizar data de vencimento da tarefa: ${response.statusText}`);
   }
-  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due' novamente
+  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due' e 'deadline' novamente
   const rawUpdatedTask = await response.json();
   let processedDue = null;
   if (rawUpdatedTask.due) {
@@ -328,6 +343,11 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
       is_recurring: rawUpdatedTask.due.is_recurring,
     };
   }
+
+  // Extrair deadline da descrição atualizada
+  const deadlineMatch = rawUpdatedTask.description?.match(DEADLINE_REGEX);
+  const extractedDeadline = deadlineMatch ? deadlineMatch[1] : null;
+
   return {
     id: rawUpdatedTask.id,
     content: rawUpdatedTask.content,
@@ -337,9 +357,88 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
     is_completed: rawUpdatedTask.is_completed,
     project_id: rawUpdatedTask.project_id,
     parent_id: rawUpdatedTask.parent_id,
-    deadline: rawUpdatedTask.deadline, // Incluir o campo deadline
+    deadline: extractedDeadline, // Incluir o campo deadline extraído
   };
 }
+
+/**
+ * Atualiza o campo 'deadline' de uma tarefa, armazenando-o na descrição.
+ * @param taskId O ID da tarefa a ser atualizada.
+ * @param newDeadline A nova string de deadline (YYYY-MM-DDTHH:MM:SS) ou null para remover.
+ * @returns O objeto TodoistTask atualizado ou undefined em caso de erro.
+ */
+export async function updateTaskDeadline(taskId: string, newDeadline: string | null): Promise<TodoistTask | undefined> {
+  try {
+    // 1. Obter a tarefa atual para pegar a descrição
+    const currentTask = await handleApiCall(() => getTasks(`id: ${taskId}`), "Obtendo tarefa para atualizar deadline...");
+    if (!currentTask || currentTask.length === 0) {
+      throw new Error("Tarefa não encontrada para atualizar deadline.");
+    }
+    const taskToUpdate = currentTask[0];
+    let currentDescription = taskToUpdate.description || '';
+
+    // 2. Remover qualquer deadline antigo da descrição
+    let updatedDescription = currentDescription.replace(DEADLINE_REGEX, '').trim();
+
+    // 3. Adicionar o novo deadline se não for null
+    if (newDeadline) {
+      updatedDescription = `${updatedDescription}\n[DEADLINE: ${newDeadline}]`.trim();
+    }
+
+    // 4. Chamar a função serverless para atualizar a descrição
+    const response = await fetch('/api/update-task-description', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ taskId, contentToAppend: updatedDescription }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Erro ao atualizar deadline da tarefa: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (result.status === 'error') {
+      throw new Error(result.message || 'Erro ao atualizar deadline da tarefa.');
+    }
+    
+    // Mapear a tarefa atualizada para o tipo TodoistTask
+    const rawUpdatedTask = result.task;
+    let processedDue = null;
+    if (rawUpdatedTask.due) {
+      const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
+      processedDue = {
+        date: dateValue,
+        string: rawUpdatedTask.due.string,
+        lang: rawUpdatedTask.due.lang,
+        is_recurring: rawUpdatedTask.due.is_recurring,
+      };
+    }
+
+    // Extrair deadline da descrição atualizada
+    const deadlineMatch = rawUpdatedTask.description?.match(DEADLINE_REGEX);
+    const extractedDeadline = deadlineMatch ? deadlineMatch[1] : null;
+
+    return {
+      id: rawUpdatedTask.id,
+      content: rawUpdatedTask.content,
+      description: rawUpdatedTask.description,
+      due: processedDue,
+      priority: rawUpdatedTask.priority,
+      is_completed: rawUpdatedTask.is_completed,
+      project_id: rawUpdatedTask.project_id,
+      parent_id: rawUpdatedTask.parent_id,
+      deadline: extractedDeadline, // Incluir o campo deadline extraído
+    };
+
+  } catch (error: any) {
+    console.error("Client-side error in updateTaskDeadline:", error);
+    throw error;
+  }
+}
+
 
 /**
  * Obtém sugestões de data e hora da IA para uma tarefa.
