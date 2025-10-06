@@ -21,7 +21,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
-import { toZonedTime, fromZonedTime } from 'date-fns-tz'; // Importação correta via named imports
 
 const SEIKETSURecordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -368,7 +367,7 @@ Retorne um JSON válido com 3 a 5 sugestões:
 - [ ] Incluí pelo menos 2 opções de HOJE se viável?
 - [ ] Verifiquei conflitos com P1, P2, P3 (ignorando P4)?
 - [ ] Garanti 15min buffer entre tarefas?
-- [ ] Respeitei janelas cognitivas (ALTA→ouro, MÉDIA→inter, BAIXA→declínio)?
+- [ ] Respeitei janelas cognitivas (ALTA→ouro, MÉDIA→inter, BAIXA→declinio)?
 - [ ] Ordenei por prioridade (mesmo dia primeiro, depois melhor adequação)?
 - [ ] Badges corretos (🟢 HOJE, ⭐ IDEAL, ✅ VIÁVEL)?
 - [ ] JSON válido e completo?
@@ -544,15 +543,13 @@ Retorne um JSON válido com 3 a 5 sugestões:
       const existingAgenda = allActiveTasks
         .filter(task => task.priority !== 1) // Filter out P4 tasks
         .map(task => {
+          // Use task.due.date directly (which is UTC from Todoist API)
           const dueDateTime = task.due?.date ? parseISO(task.due.date) : null;
-          let dueDateInBrasilia = dueDateTime
-            ? toZonedTime(dueDateTime, "America/Sao_Paulo")
-            : null;
 
           return {
             tarefa: task.content,
-            data: dueDateInBrasilia ? format(dueDateInBrasilia, "yyyy-MM-dd") : null,
-            hora_utc: dueDateInBrasilia ? format(dueDateInBrasilia, "HH:mm") : null, // This is already in Brasília time
+            data: dueDateTime ? format(dueDateTime, "yyyy-MM-dd") : null, // Send UTC date
+            hora_utc: dueDateTime ? format(dueDateTime, "HH:mm") : null, // Send UTC time
             duracao_min: 60, // Placeholder, as Todoist API doesn't provide duration directly
             prioridade: `P${task.priority}`,
           };
@@ -585,17 +582,10 @@ Retorne um JSON válido com 3 a 5 sugestões:
     if (!currentTask) return;
 
     // A sugestão da IA já vem no formato de Brasília (YYYY-MM-DD HH:MM)
-    const dateTimeStringBrasilia = `${suggestion.data}T${suggestion.hora}:00`;
-    const dateInBrasilia = parseISO(dateTimeStringBrasilia);
-
-    if (!isValid(dateInBrasilia)) {
-      showError("Sugestão da IA inválida. Por favor, selecione manualmente.");
-      return;
-    }
-
-    // Converter a data/hora de Brasília para UTC para enviar ao Todoist
-    const dateInUtc = fromZonedTime(dateInBrasilia, 'America/Sao_Paulo');
-    const newDueDateString = format(dateInUtc, "yyyy-MM-dd'T'HH:mm:ss'Z'"); // Formato ISO 8601 com Z para UTC
+    // Vamos enviar essa string diretamente para o Todoist.
+    // O Todoist, se não receber um fuso horário explícito, geralmente interpreta como local.
+    // Como a IA está gerando em Brasília, isso deve funcionar.
+    const newDueDateString = `${suggestion.data}T${suggestion.hora}:00`;
 
     const success = await handleApiCall(
       () => updateTaskDueDate(currentTask.id, newDueDateString),

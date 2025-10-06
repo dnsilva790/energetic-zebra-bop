@@ -14,9 +14,4 @@ export default defineConfig(() => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  optimizeDeps: {
-    // Re-adicionando 'date-fns-tz' à exclusão. Isso é uma prática comum para resolver
-    // problemas de importação com esta biblioteca em ambientes Vite.
-    exclude: ['date-fns-tz']
-  },
 }));

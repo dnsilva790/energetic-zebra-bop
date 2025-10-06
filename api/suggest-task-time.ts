@@ -1,26 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { format, parseISO, isValid } from 'date-fns';
-import * as dateFnsTz from 'date-fns-tz'; // Importar o módulo inteiro
-
-// Helper to convert UTC time string to Brasília time string
-const convertUtcToBrasilia = (date: string, time: string): { data: string, hora_brasilia: string } => {
-  // Se a data ou hora for nula/indefinida, retorna o que foi recebido para evitar erros
-  if (!date || !time) {
-    return { data: date, hora_brasilia: time };
-  }
-
-  const utcDateTimeString = `${date}T${time}:00Z`; // Assume time is HH:MM
-  const utcDate = parseISO(utcDateTimeString);
-  if (!isValid(utcDate)) {
-    console.warn(`Invalid UTC date/time string for conversion: ${utcDateTimeString}`);
-    return { data: date, hora_brasilia: time }; // Return original if invalid
-  }
-  const brasiliaDate = dateFnsTz.utcToZonedTime(utcDate, 'America/Sao_Paulo');
-  return {
-    data: format(brasiliaDate, 'yyyy-MM-dd'),
-    hora_brasilia: format(brasiliaDate, 'HH:mm'),
-  };
-};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -41,21 +20,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`; // Usando 1.5-flash para melhor manipulação de JSON
 
-  // Convert existing agenda tasks from UTC to Brasília for the prompt
+  // Passa a agenda existente diretamente para a IA, que é instruída a lidar com a conversão de UTC para Brasília.
   const processedAgendaExistente = agenda_existente.map((item: any) => {
-    // Certifica-se de que item.data e item.hora_utc existem antes de tentar converter
-    if (item.data && item.hora_utc) {
-      const { data, hora_brasilia } = convertUtcToBrasilia(item.data, item.hora_utc);
-      return {
-        tarefa: item.tarefa,
-        data: data,
-        hora_brasilia: hora_brasilia, // Adiciona hora_brasilia para clareza no prompt
-        duracao_min: item.duracao_min,
-        prioridade: item.prioridade,
-      };
-    }
-    return null; // Retorna nulo para itens inválidos, que serão filtrados
-  }).filter(Boolean); // Remove quaisquer itens nulos
+    return {
+      tarefa: item.tarefa,
+      data: item.data, // Já deve ser UTC do Todoist
+      hora_utc: item.hora_utc, // Já deve ser UTC do Todoist
+      duracao_min: item.duracao_min,
+      prioridade: item.prioridade,
+    };
+  });
 
   const userPromptContent = {
     hora_atual: hora_atual, // Isso já deve estar no horário de Brasília com offset do cliente
