@@ -23,13 +23,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import AITutorChat from "@/components/AITutorChat";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch"; // Importar o componente Switch
-import SetDeadlineDialog from "@/components/SetDeadlineDialog"; // Importar o novo componente
+import { Switch } from "@/components/ui/switch";
+import SetDeadlineDialog from "@/components/SetDeadlineDialog";
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
-const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking'; // Nova chave para a preferência
+const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
-const SEITON_PROGRESS_KEY = 'seiton_progress'; // Chave para o progresso em andamento do SEITON
+const SEITON_PROGRESS_KEY = 'seiton_progress';
 const SEITON_FALLBACK_TASK_LIMIT = 12;
 
 interface SeitonRankingData {
@@ -37,7 +37,6 @@ interface SeitonRankingData {
   p3Tasks: TodoistTask[];
 }
 
-// Interface para o progresso salvo do SEITON (copiada de SEITONPage para consistência)
 interface SeitonProgress {
   tournamentQueue: TodoistTask[];
   rankedTasks: TodoistTask[];
@@ -73,13 +72,11 @@ const SEISOPage = () => {
   });
   const [useSeitonRanking, setUseSeitonRanking] = useState(() => {
     const savedPreference = localStorage.getItem(SEISO_USE_SEITON_RANKING_KEY);
-    return savedPreference ? JSON.parse(savedPreference) : true; // Padrão para usar SEITON
+    return savedPreference ? JSON.parse(savedPreference) : true;
   });
   const [sessionStarted, setSessionStarted] = useState(false);
-  const [allTasks, setAllTasks] = useState<TodoistTask[]>([]);
-  const [p1Tasks, setP1Tasks] = useState<TodoistTask[]>([]);
-  const [otherTasks, setOtherTasks] = useState<TodoistTask[]>([]);
-  const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
+  const [allTasksInSession, setAllTasksInSession] = useState<TodoistTask[]>([]); // Lista de tarefas da sessão
+  const [currentTaskIndex, setCurrentTaskIndex] = useState(0); // Índice da tarefa atual na lista
   const [tasksCompleted, setTasksCompleted] = useState(0);
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -103,8 +100,9 @@ const SEISOPage = () => {
   const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
   const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
 
-  const totalTasks = p1Tasks.length + otherTasks.length;
-  const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
+  // Deriva a tarefa atual e o total de tarefas da lista da sessão
+  const totalTasks = allTasksInSession.length;
+  const currentTask = allTasksInSession[currentTaskIndex];
 
   useEffect(() => {
     localStorage.setItem(SEISO_FILTER_KEY, filterInput);
@@ -164,7 +162,7 @@ const SEISOPage = () => {
         console.log("SEISOPage - SEITON_LAST_RANKING_KEY raw:", savedLastRanking);
         if (savedLastRanking) {
           try {
-            const parsedLastRanking: SeitonRankingData = JSON.parse(savedRanking);
+            const parsedLastRanking: SeitonRankingData = JSON.parse(savedLastRanking);
             const combinedSeitonTasks = [...parsedLastRanking.rankedTasks, ...parsedLastRanking.p3Tasks];
             const seitonTopTasks = combinedSeitonTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
             if (seitonTopTasks.length > 0) {
@@ -233,12 +231,11 @@ const SEISOPage = () => {
         others = shuffleArray(nonP1Tasks);
       }
 
-      setP1Tasks(p1);
-      setOtherTasks(others);
-      setAllTasks([...p1, ...others]);
+      const combinedTasks = [...p1, ...others];
+      setAllTasksInSession(combinedTasks); // Atualiza a lista de tarefas da sessão
       setIsUsingSeitonRanking(usingSeitonSource);
       setSessionStarted(true);
-      setCurrentTaskIndex(0);
+      setCurrentTaskIndex(0); // Sempre começa da primeira tarefa
       setTasksCompleted(0);
       setIsSessionFinished(false);
     } else {
@@ -246,12 +243,13 @@ const SEISOPage = () => {
       setIsSessionFinished(true);
       setSessionStarted(false);
       setIsUsingSeitonRanking(false);
+      setAllTasksInSession([]); // Garante que a lista esteja vazia
     }
     setLoading(false);
   }, [filterInput, navigate, useSeitonRanking]);
 
   useEffect(() => {
-    if (!sessionStarted) { // Só carrega tarefas se a sessão não estiver iniciada
+    if (!sessionStarted) {
       fetchTasksAndFilter();
     }
   }, [fetchTasksAndFilter, sessionStarted]);
@@ -325,32 +323,38 @@ const SEISOPage = () => {
     }
   }, []);
 
-  const moveToNextTask = useCallback(() => {
+  // Nova função para lidar com a conclusão de uma ação na tarefa
+  const handleTaskActionComplete = useCallback(() => {
     stopAllTimers();
-    if (currentTaskIndex < totalTasks - 1) {
-      setCurrentTaskIndex(currentTaskIndex + 1);
-    } else {
-      setIsSessionFinished(true);
-    }
-  }, [currentTaskIndex, totalTasks, stopAllTimers]);
+    setAllTasksInSession(prevTasks => {
+      const updatedTasks = prevTasks.filter(task => task.id !== currentTask?.id);
+      if (updatedTasks.length === 0) {
+        setIsSessionFinished(true);
+      }
+      return updatedTasks;
+    });
+    // currentTaskIndex permanece o mesmo, efetivamente apontando para a próxima tarefa
+    // na lista agora mais curta.
+  }, [currentTask, stopAllTimers]);
 
   const handleCompleteTask = useCallback(async () => {
     if (currentTask) {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
       if (success) {
         setTasksCompleted(tasksCompleted + 1);
-        stopAllTimers();
-        moveToNextTask();
+        handleTaskActionComplete();
       } else {
         showError("Falha ao concluir a tarefa no Todoist.");
       }
     }
-  }, [currentTask, stopAllTimers, moveToNextTask, tasksCompleted]);
+  }, [currentTask, tasksCompleted, handleTaskActionComplete]);
 
   const handleSkipTask = useCallback(() => {
-    showSuccess("Tarefa pulada.");
-    moveToNextTask();
-  }, [moveToNextTask]);
+    if (currentTask) {
+      showSuccess("Tarefa pulada.");
+      handleTaskActionComplete();
+    }
+  }, [currentTask, handleTaskActionComplete]);
 
   const handleOpenRescheduleDialog = useCallback(() => {
     if (currentTask?.due?.date) {
@@ -392,28 +396,19 @@ const SEISOPage = () => {
     );
 
     if (success) {
-      setAllTasks(prevTasks => prevTasks.map(task => 
-        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
-      ));
-      setP1Tasks(prevTasks => prevTasks.map(task => 
-        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
-      ));
-      setOtherTasks(prevTasks => prevTasks.map(task => 
-        task.id === currentTask.id ? { ...task, due: { ...task.due, date: newDueDateString, string: newDueDateString, is_recurring: false } as any } : task
-      ));
       setShowRescheduleDialog(false);
-      moveToNextTask();
+      handleTaskActionComplete();
     } else {
       showError("Falha ao reagendar a tarefa.");
     }
-  }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
+  }, [currentTask, selectedDueDate, selectedDueTime, handleTaskActionComplete]);
 
   const handleGuideMe = useCallback(() => {
     if (!currentTask) {
       showError("Nenhuma tarefa selecionada para guiar.");
       return;
     }
-    setIsAITutorChatOpen(true); // Abre a sidebar
+    setIsAITutorChatOpen(true);
   }, [currentTask]);
 
   const handleOpenSetDeadlineDialog = useCallback(() => {
@@ -437,21 +432,8 @@ const SEISOPage = () => {
       );
 
       if (updatedTask) {
-        // Atualizar as listas de tarefas com a tarefa modificada
-        const updateTaskInList = (list: TodoistTask[]) => 
-          list.map(t => t.id === updatedTask.id ? updatedTask : t);
-
-        setAllTasks(updateTaskInList);
-        setP1Tasks(updateTaskInList);
-        setOtherTasks(updateTaskInList);
-
-        // Se a tarefa atual é a que foi modificada, atualize-a
-        if (currentTask?.id === updatedTask.id) {
-          // Isso é um pouco mais complexo porque currentTask é derivado.
-          // A maneira mais simples é re-fetchar as tarefas ou garantir que o estado `allTasks`
-          // seja a fonte da verdade e `currentTask` seja sempre derivado dele.
-          // Por enquanto, a atualização de `allTasks` deve ser suficiente para o próximo render.
-        }
+        // Atualizar a tarefa na lista da sessão
+        setAllTasksInSession(prevTasks => prevTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
       }
     } catch (error) {
       console.error("Erro ao salvar deadline:", error);
@@ -461,12 +443,11 @@ const SEISOPage = () => {
       setShowSetDeadlineDialog(false);
       setTaskToSetDeadline(null);
     }
-  }, [taskToSetDeadline, currentTask]);
+  }, [taskToSetDeadline]);
 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Desativa atalhos de teclado se qualquer modal/sidebar estiver aberto
       if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || isAITutorChatOpen || showSetDeadlineDialog) return;
 
       if (event.key === 'c' || event.key === 'C') {
@@ -478,10 +459,10 @@ const SEISOPage = () => {
       } else if (event.key === 'r' || event.key === 'R') {
         event.preventDefault();
         handleOpenRescheduleDialog();
-      } else if (event.key === 'g' || event.key === 'G') { // 'G' for Guide Me
+      } else if (event.key === 'g' || event.key === 'G') {
         event.preventDefault();
         handleGuideMe();
-      } else if (event.key === 'd' || event.key === 'D') { // 'D' for Deadline
+      } else if (event.key === 'd' || event.key === 'D') {
         event.preventDefault();
         handleOpenSetDeadlineDialog();
       }
@@ -512,7 +493,7 @@ const SEISOPage = () => {
         <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
           <CardTitle className="text-3xl font-bold text-gray-800">Sessão Concluída!</CardTitle>
           <CardDescription className="text-lg text-gray-600">
-            Você concluiu {tasksCompleted} de {allTasks.length} tarefas.
+            Você concluiu {tasksCompleted} de {allTasksInSession.length} tarefas.
           </CardDescription>
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
@@ -528,7 +509,6 @@ const SEISOPage = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-orange-100 p-4 relative">
-      {/* Área de conteúdo principal */}
       <div className="w-full max-w-3xl mb-6">
         <div className="flex items-center justify-between mb-4">
           <Button variant="ghost" onClick={() => navigate("/main-menu")} className="text-orange-800 hover:bg-orange-200">
@@ -600,7 +580,7 @@ const SEISOPage = () => {
         </Card>
       ) : (
         <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
-          {currentTask && (
+          {currentTask ? (
             <div className="space-y-6">
               <div className="text-center">
                 <CardTitle className="text-3xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
@@ -722,6 +702,10 @@ const SEISOPage = () => {
                 </Button>
               </div>
             </div>
+          ) : (
+            <div className="text-center text-gray-600">
+              <p>Nenhuma tarefa encontrada para esta sessão.</p>
+            </div>
           )}
           {!isSessionFinished && currentTask && (
             <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
@@ -739,14 +723,14 @@ const SEISOPage = () => {
       <MadeWithDyad />
 
       <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
-        <SheetContent className="flex flex-col sm:max-w-lg md:max-w-xl"> {/* Aumenta a largura aqui */}
+        <SheetContent className="flex flex-col sm:max-w-lg md:max-w-xl">
           {currentTask && (
             <AITutorChat
               taskTitle={currentTask.content}
               taskDescription={currentTask.description || 'Nenhuma descrição fornecida.'}
               taskId={currentTask.id}
               onClose={() => setIsAITutorChatOpen(false)}
-              isTaskCompleted={currentTask.is_completed} // Passando a nova prop
+              isTaskCompleted={currentTask.is_completed}
               className="flex-grow"
             />
           )}

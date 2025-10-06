@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { format, parseISO, isValid } from 'date-fns';
-import { utcToZonedTime } from 'date-fns-tz'; // Importar especificamente utcToZonedTime
+import { utcToZonedTime } from 'date-fns-tz';
 
 // Helper to convert UTC time string to Brasília time string
 const convertUtcToBrasilia = (date: string, time: string): { data: string | null, hora_brasilia: string | null } => {
@@ -10,7 +10,7 @@ const convertUtcToBrasilia = (date: string, time: string): { data: string | null
   const utcDateTimeString = `${date}T${time}:00Z`; // Assume time is HH:MM
   const utcDate = parseISO(utcDateTimeString);
   if (!isValid(utcDate)) {
-    console.warn(`Invalid UTC date/time string for conversion: ${utcDateTimeString}`);
+    console.warn(`SERVERLESS: Invalid UTC date/time string for conversion: ${utcDateTimeString}`);
     return { data: null, hora_brasilia: null };
   }
   try {
@@ -20,53 +20,55 @@ const convertUtcToBrasilia = (date: string, time: string): { data: string | null
       hora_brasilia: format(brasiliaDate, 'HH:mm'),
     };
   } catch (tzError: any) {
-    console.error(`Error converting timezone for ${utcDateTimeString}:`, tzError);
+    console.error(`SERVERLESS: Error converting timezone for ${utcDateTimeString}:`, tzError);
     return { data: null, hora_brasilia: null };
   }
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  try { // Outer try-catch to catch any unhandled errors in the function
+  try {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method Not Allowed', message: 'Only POST requests are supported.' });
     }
 
-    const geminiApiKey = process.env.GEMINI_API_KEY; 
+    const geminiApiKey = process.env.GEMINI_API_KEY;
     if (!geminiApiKey) {
-      console.error("GEMINI_API_KEY environment variable not set.");
+      console.error("SERVERLESS: GEMINI_API_KEY environment variable not set.");
       return res.status(500).json({ error: 'Server Configuration Error', message: 'Gemini API key is not configured on the server.' });
     }
 
     const { systemPrompt, hora_atual, nova_tarefa, agenda_existente } = req.body;
 
     if (!systemPrompt || !hora_atual || !nova_tarefa || !agenda_existente) {
+      console.error("SERVERLESS: Missing required fields in request body.", { systemPrompt: !!systemPrompt, hora_atual: !!hora_atual, nova_tarefa: !!nova_tarefa, agenda_existente: !!agenda_existente });
       return res.status(400).json({ error: 'Bad Request', message: 'Missing systemPrompt, hora_atual, nova_tarefa, or agenda_existente in request body.' });
     }
 
-    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`; // Usando 1.5-flash para melhor manipulação de JSON
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
 
-    // Convert existing agenda tasks from UTC to Brasília for the prompt
     const processedAgendaExistente = agenda_existente.map((item: any) => {
       if (item.data && item.hora_utc) {
         const { data, hora_brasilia } = convertUtcToBrasilia(item.data, item.hora_utc);
-        if (data && hora_brasilia) { // Apenas inclui se ambos data e hora_brasilia são válidos
+        if (data && hora_brasilia) {
           return {
             tarefa: item.tarefa,
             data: data,
-            hora_brasilia: hora_brasilia, // Adiciona hora_brasilia para clareza no prompt
+            hora_brasilia: hora_brasilia,
             duracao_min: item.duracao_min,
             prioridade: item.prioridade,
           };
         }
       }
-      return null; // Retorna nulo para itens inválidos, que serão filtrados
-    }).filter(Boolean); // Remove quaisquer itens nulos
+      return null;
+    }).filter(Boolean);
 
     const userPromptContent = {
-      hora_atual: hora_atual, // Isso já deve estar no horário de Brasília com offset do cliente
+      hora_atual: hora_atual,
       nova_tarefa: nova_tarefa,
       agenda_existente: processedAgendaExistente,
     };
+
+    console.log("SERVERLESS: User prompt content sent to Gemini:", JSON.stringify(userPromptContent, null, 2));
 
     let geminiResponse;
     try {
@@ -82,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
           ],
           generationConfig: {
-            responseMimeType: "application/json", // Solicita saída JSON
+            responseMimeType: "application/json",
           },
         }),
       });
@@ -93,24 +95,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (contentType && contentType.includes('application/json')) {
           try {
             errorData = await geminiResponse.json();
-          } catch (jsonError) {
-            console.error("Failed to parse Gemini API error response as JSON:", jsonError);
+          } catch (jsonError: any) {
+            console.error("SERVERLESS: Failed to parse Gemini API error response as JSON:", jsonError);
             throw new Error(`Erro na API Gemini: ${geminiResponse.statusText}. Resposta não-JSON ou malformada.`);
           }
         } else {
           const textError = await geminiResponse.text();
-          console.error("Gemini API Non-JSON Error Response:", textError);
-          throw new Error(`Erro na API Gemini: ${geminiResponse.statusText}. Resposta: ${textError.substring(0, 200)}`);
+          console.error("SERVERLESS: Gemini API Non-JSON Error Response:", textError);
+          throw new Error(`Erro na API Gemini: ${geminiResponse.statusText}. Resposta: ${textError.substring(0, 500)}`);
         }
-        console.error("Gemini API Error Response:", errorData);
+        console.error("SERVERLESS: Gemini API Error Response:", errorData);
         throw new Error(errorData.error?.message || `Erro na API Gemini: ${geminiResponse.statusText}`);
       }
 
-      const data = await geminiResponse.json();
+      const rawGeminiData = await geminiResponse.text();
+      console.log("SERVERLESS: Raw Gemini response:", rawGeminiData);
+
+      const data = JSON.parse(rawGeminiData);
       const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (typeof aiResponseContent !== 'string') {
-        console.error("Unexpected type for aiResponseContent:", typeof aiResponseContent, "Value:", aiResponseContent);
+        console.error("SERVERLESS: Unexpected type for aiResponseContent:", typeof aiResponseContent, "Value:", aiResponseContent);
         throw new Error("O conteúdo da resposta da IA não é uma string. Não é possível processar as sugestões.");
       }
 
@@ -118,31 +123,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         parsedSuggestions = JSON.parse(aiResponseContent);
       } catch (jsonParseError: any) {
-        console.error("Failed to parse AI response as JSON:", jsonParseContent, "Raw content:", aiResponseContent);
+        console.error("SERVERLESS: Failed to parse AI response as JSON:", aiResponseContent, "Error:", jsonParseError);
         throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
       }
 
-      // Validate the structure of parsedSuggestions
       if (!parsedSuggestions || !Array.isArray(parsedSuggestions.sugestoes)) {
-        console.error("AI response does not contain a 'sugestoes' array:", parsedSuggestions);
+        console.error("SERVERLESS: AI response does not contain a 'sugestoes' array:", parsedSuggestions);
         throw new Error("A resposta da IA não está no formato esperado (missing 'sugestoes' array).");
       }
 
       return res.status(200).json({
         status: 'success',
         message: 'AI suggestions retrieved successfully.',
-        suggestions: parsedSuggestions.sugestoes, // Retorna as sugestões estruturadas
+        suggestions: parsedSuggestions.sugestoes,
         metadata: parsedSuggestions.metadata,
       });
 
     } catch (geminiCallError: any) {
-      console.error(`Error during Gemini API call or parsing:`, geminiCallError.message);
-      // Re-throw to be caught by the outer try-catch
+      console.error(`SERVERLESS: Error during Gemini API call or parsing:`, geminiCallError.message, geminiCallError.stack);
       throw geminiCallError;
     }
 
   } catch (error: any) {
-    console.error(`Unhandled error in /api/suggest-task-time:`, error.message, error.stack);
+    console.error(`SERVERLESS: Unhandled error in /api/suggest-task-time:`, error.message, error.stack);
     return res.status(500).json({
       status: 'error',
       message: 'Failed to get AI suggestions due to an internal server error.',
