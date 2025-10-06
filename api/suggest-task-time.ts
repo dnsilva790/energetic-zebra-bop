@@ -50,11 +50,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await response.json();
     const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter sugestões da IA.";
 
-    // A IA deve retornar uma lista de sugestões formatadas.
-    // Vamos tentar extrair as linhas que parecem sugestões de data/hora.
+    // Regex mais robusto para encontrar o padrão de data e hora (YYYY-MM-DD HH:MM ou YYYY-MM-DD)
+    // Ele ignora caracteres no início da linha (como bullet points ou números de lista)
+    const datePattern = /(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?)/;
+    
     const suggestions = aiResponseContent.split('\n')
-      .map((line: string) => line.trim())
-      .filter((line: string) => line.match(/^\d{4}-\d{2}-\d{2}/)) // Filtra linhas que começam com YYYY-MM-DD
+      .map((line: string) => {
+        const match = line.match(datePattern);
+        return match ? match[1] : null; // Retorna apenas a parte da data/hora
+      })
+      .filter(Boolean) as string[] // Filtra nulos e garante que o tipo é string[]
       .slice(0, 5); // Limita a 5 sugestões
 
     return res.status(200).json({
