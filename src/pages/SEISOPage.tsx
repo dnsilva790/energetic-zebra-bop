@@ -135,19 +135,19 @@ const SEISOPage = () => {
     setFilterError("");
     
     let tasksToProcess: TodoistTask[] = [];
-    let usingSeitonSource = false; // Indica se estamos usando um ranking SEITON (finalizado ou em progresso)
+    let usingSeitonSource = false;
 
     console.log("SEISOPage - fetchTasksAndFilter: useSeitonRanking is", useSeitonRanking);
 
-    if (useSeitonRanking) { // Apenas tenta carregar do SEITON se a opção estiver ativada
+    if (useSeitonRanking) { // Se a opção "Usar Ranking SEITON" estiver ATIVADA
       console.log("SEISOPage - Tentando carregar tarefas do ranking SEITON...");
+      
       // 1. Tentar carregar do SEITON_LAST_RANKING_KEY (sessão finalizada)
       const savedLastRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
       console.log("SEISOPage - SEITON_LAST_RANKING_KEY raw:", savedLastRanking);
       if (savedLastRanking) {
         try {
           const parsedLastRanking: SeitonRankingData = JSON.parse(savedLastRanking);
-          // Combine rankedTasks and p3Tasks from the final ranking
           const combinedSeitonTasks = [...parsedLastRanking.rankedTasks, ...parsedLastRanking.p3Tasks];
           const seitonTopTasks = combinedSeitonTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
           if (seitonTopTasks.length > 0) {
@@ -174,7 +174,6 @@ const SEISOPage = () => {
         if (savedInProgressRanking) {
           try {
             const parsedInProgressRanking: SeitonProgress = JSON.parse(savedInProgressRanking);
-            // Combine rankedTasks and p3Tasks from the in-progress ranking
             const combinedInProgressTasks = [...parsedInProgressRanking.rankedTasks, ...parsedInProgressRanking.p3Tasks];
             const seitonInProgressTasks = combinedInProgressTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
             if (seitonInProgressTasks.length > 0) {
@@ -193,13 +192,12 @@ const SEISOPage = () => {
           console.log("SEISOPage - Nenhum SEITON_PROGRESS_KEY encontrado.");
         }
       }
-    } else {
-      console.log("SEISOPage - Opção 'Usar Ranking SEITON' desativada. Ignorando rankings SEITON.");
-    }
 
-    // 3. Se ainda não houver tarefas (ou se useSeitonRanking for false), usar o filtro do usuário
-    if (tasksToProcess.length === 0 || !useSeitonRanking) {
-      console.log("SEISOPage - Nenhum ranking SEITON encontrado ou opção desativada. Usando filtro do usuário:", filterInput);
+      // Se useSeitonRanking for true, mas nenhuma tarefa SEITON foi encontrada, tasksToProcess permanecerá vazia.
+      // Não haverá fallback para o filtro neste caso.
+
+    } else { // Se a opção "Usar Ranking SEITON" estiver DESATIVADA, usar APENAS o filtro do usuário
+      console.log("SEISOPage - Opção 'Usar Ranking SEITON' desativada. Usando filtro do usuário:", filterInput);
       const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas do filtro...");
       if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
         tasksToProcess = fetchedTasksFromFilter;
@@ -211,14 +209,14 @@ const SEISOPage = () => {
       }
     }
 
-    console.log("SEISOPage - Tasks to process BEFORE filtering (total):", tasksToProcess.length);
+    console.log("SEISOPage - Tasks to process BEFORE final filtering (total):", tasksToProcess.length);
     // Processar e definir as tarefas se alguma foi encontrada
     if (tasksToProcess.length > 0) {
       const filteredAndCleanedTasks = tasksToProcess
         .filter((task: TodoistTask) => task.parent_id === null)
         .filter((task: TodoistTask) => !task.is_completed);
 
-      console.log("SEISOPage - Tasks AFTER filtering (parent_id === null && !is_completed):", filteredAndCleanedTasks.length);
+      console.log("SEISOPage - Tasks AFTER final filtering (parent_id === null && !is_completed):", filteredAndCleanedTasks.length);
 
       const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
       const nonP1Tasks = filteredAndCleanedTasks.filter(task => task.priority !== 4);
@@ -511,7 +509,7 @@ const SEISOPage = () => {
             </div>
             <p className="text-sm text-gray-500 -mt-2">
               {useSeitonRanking
-                ? "Prioriza tarefas do último ranking SEITON. Se não houver, usa o filtro abaixo."
+                ? "Prioriza tarefas do último ranking SEITON. Se não houver, nenhuma tarefa será carregada."
                 : "Usa apenas o filtro do Todoist abaixo, ignorando o ranking SEITON."}
             </p>
 
