@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import { TodoistTask, TodoistProject, AISuggestion, AISuggestionResponse } from "./types"; // Importar os novos tipos
 import { format, parseISO } from "date-fns";
-import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz'; // Importação explícita das funções
+import * as dateFnsTz from 'date-fns-tz'; // Importação do módulo inteiro como namespace
 
 const TODOIST_CONFIG = {
   baseURL: 'https://api.todoist.com/rest/v2',
