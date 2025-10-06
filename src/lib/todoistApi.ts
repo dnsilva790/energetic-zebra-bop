@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { TodoistTask, TodoistProject } from "./types"; // Importar os tipos
+import { TodoistTask, TodoistProject, AISuggestion, AISuggestionResponse } from "./types"; // Importar os novos tipos
 
 const TODOIST_CONFIG = {
   baseURL: 'https://api.todoist.com/rest/v2',
@@ -319,7 +319,7 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
   const rawUpdatedTask = await response.json();
   let processedDue = null;
   if (rawUpdatedTask.due) {
-    const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
+    const dateValue = rawUpdatedWask.due.datetime || rawUpdatedTask.due.date;
     processedDue = {
       date: dateValue,
       string: rawUpdatedTask.due.string,
@@ -345,16 +345,33 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
  * @param taskContent O conteúdo (título) da tarefa.
  * @param taskDescription A descrição da tarefa.
  * @param systemPrompt O prompt do sistema personalizado para a IA.
- * @returns Um array de strings com sugestões de data/hora ou undefined em caso de erro.
+ * @param currentDateTime A hora atual no fuso horário de Brasília (ISO string com offset).
+ * @param existingAgenda Um array de objetos representando a agenda existente.
+ * @returns Um objeto AISuggestionResponse com sugestões de data/hora ou undefined em caso de erro.
  */
-export async function getAISuggestedTimes(taskContent: string, taskDescription: string, systemPrompt: string): Promise<string[] | undefined> {
+export async function getAISuggestedTimes(
+  taskContent: string,
+  taskDescription: string,
+  systemPrompt: string,
+  currentDateTime: string,
+  existingAgenda: any[]
+): Promise<AISuggestionResponse | undefined> {
   try {
     const response = await fetch('/api/suggest-task-time', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ taskContent, taskDescription, systemPrompt }), // Passa o systemPrompt
+      body: JSON.stringify({
+        systemPrompt,
+        hora_atual: currentDateTime,
+        nova_tarefa: {
+          descricao: taskContent,
+          contexto_adicional: taskDescription,
+          // Prazo e prioridade serão inferidos pela IA do prompt
+        },
+        agenda_existente: existingAgenda,
+      }),
     });
 
     if (!response.ok) {
@@ -366,7 +383,10 @@ export async function getAISuggestedTimes(taskContent: string, taskDescription: 
     if (result.status === 'error') {
       throw new Error(result.message || 'Erro ao obter sugestões da IA.');
     }
-    return result.suggestions;
+    return {
+      sugestoes: result.suggestions,
+      metadata: result.metadata,
+    };
   } catch (error: any) {
     console.error("Client-side error calling /api/suggest-task-time:", error);
     throw error; // Re-throw para ser capturado por handleApiCall

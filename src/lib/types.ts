@@ -22,3 +22,26 @@ export interface TodoistProject {
   name: string;
   color: string;
 }
+
+export interface AISuggestion {
+  data: string; // YYYY-MM-DD
+  hora: string; // HH:MM (Brasília)
+  prioridade_sugestao: number; // 1 (melhor) a 5 (pior)
+  badge: "🟢 HOJE" | "⭐ IDEAL" | "✅ VIÁVEL" | "⚠️ SUBÓTIMO";
+  titulo: string; // Max 50 chars
+  justificativa: string; // 1-2 frases
+  janela: "ouro" | "intermediaria" | "declinio" | "pessoal";
+  reasoning: string; // Internal reasoning
+}
+
+export interface AITaskMetadata {
+  tipo_tarefa: "PROFISSIONAL" | "PESSOAL";
+  demanda_cognitiva: "ALTA" | "MEDIA" | "BAIXA";
+  duracao_estimada_min: number;
+  tarefas_p4_ignoradas: number;
+}
+
+export interface AISuggestionResponse {
+  sugestoes: AISuggestion[];
+  metadata: AITaskMetadata;
+}
