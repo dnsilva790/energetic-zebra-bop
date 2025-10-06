@@ -15,8 +15,8 @@ export default defineConfig(() => ({
     },
   },
   optimizeDeps: {
-    // Removendo 'date-fns-tz' da exclusão para permitir que o Vite o otimize normalmente.
-    // Isso deve resolver o erro de 'Missing specifier'.
-    exclude: [], 
+    // Re-adicionando 'date-fns-tz' à exclusão. Isso é uma prática comum para resolver
+    // problemas de importação com esta biblioteca em ambientes Vite.
+    exclude: ['date-fns-tz'], 
   },
 }));
