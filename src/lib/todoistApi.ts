@@ -232,10 +232,18 @@ export async function completeTask(taskId: string): Promise<boolean> {
     headers
   });
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || `Erro ao concluir tarefa: ${response.statusText}`);
+    let errorMessage = `Erro ao concluir tarefa: ${response.status} ${response.statusText}`;
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (jsonError) {
+        console.warn("Falha ao analisar resposta JSON de erro em completeTask:", jsonError);
+      }
+    }
+    throw new Error(errorMessage);
   }
-  // A API do Todoist retorna 204 No Content para sucesso em 'close', então não há JSON para parsear.
   return true; 
 }
 
@@ -247,8 +255,17 @@ export async function reopenTask(taskId: string): Promise<boolean> {
     headers
   });
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || `Erro ao reabrir tarefa: ${response.statusText}`);
+    let errorMessage = `Erro ao reabrir tarefa: ${response.status} ${response.statusText}`;
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (jsonError) {
+        console.warn("Falha ao analisar resposta JSON de erro em reopenTask:", jsonError);
+      }
+    }
+    throw new Error(errorMessage);
   }
   return true;
 }
@@ -261,10 +278,18 @@ export async function deleteTask(taskId: string): Promise<boolean> {
     headers
   });
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || `Erro ao deletar tarefa: ${response.statusText}`);
+    let errorMessage = `Erro ao deletar tarefa: ${response.status} ${response.statusText}`;
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (jsonError) {
+        console.warn("Falha ao analisar resposta JSON de erro em deleteTask:", jsonError);
+      }
+    }
+    throw new Error(errorMessage);
   }
-  // A API do Todoist retorna 204 No Content para sucesso em 'delete', então não há JSON para parsear.
   return true;
 }
 

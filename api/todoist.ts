@@ -43,8 +43,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to create task: ${response.statusText}`);
+        let errorMessage = `Failed to create task: ${response.statusText}`;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (jsonError) {
+            console.warn("Failed to parse JSON error response from Todoist API in /api/todoist:", jsonError);
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const createdTask = await response.json();

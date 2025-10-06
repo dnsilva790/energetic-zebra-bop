@@ -32,8 +32,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (!getResponse.ok) {
-      const errorData = await getResponse.json();
-      throw new Error(errorData.error || `Failed to fetch task: ${getResponse.statusText}`);
+      let errorMessage = `Failed to fetch task: ${getResponse.statusText}`;
+      const contentType = getResponse.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          const errorData = await getResponse.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          console.warn("Failed to parse JSON error response from Todoist API on GET in /api/update-task-description:", jsonError);
+        }
+      }
+      throw new Error(errorMessage);
     }
     const existingTask = await getResponse.json();
     const currentDescription = existingTask.description || '';
@@ -64,8 +73,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (!updateResponse.ok) {
-      const errorData = await updateResponse.json();
-      throw new Error(errorData.error || `Failed to update task description: ${updateResponse.statusText}`);
+      let errorMessage = `Failed to update task description: ${updateResponse.statusText}`;
+      const contentType = updateResponse.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          const errorData = await updateResponse.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          console.warn("Failed to parse JSON error response from Todoist API on POST in /api/update-task-description:", jsonError);
+        }
+      }
+      throw new Error(errorMessage);
     }
 
     const updatedTask = await updateResponse.json();
