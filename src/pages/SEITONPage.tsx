@@ -171,21 +171,27 @@ const SEITONPage = () => {
         currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
         currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
         currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
-        currentOpponentIndex = loaded.currentOpponentIndex;
         currentComparisonHistory = loaded.comparisonHistory || [];
 
-        // Determine the step based on loaded data
-        if (currentTournamentQueue.length > 0 || currentChallenger) {
-          currentStepState = 'tournamentComparison';
+        // Re-evaluate currentOpponentIndex based on the *filtered* currentRankedTasks
+        if (currentChallenger && currentRankedTasks.length > 0) {
+          currentOpponentIndex = Math.min(RANKING_SIZE - 1, currentRankedTasks.length - 1);
+          currentStepState = 'tournamentComparison'; // Ensure step is comparison if challenger and ranked tasks exist
+          console.log("SEITONPage - Re-evaluated currentOpponentIndex after loading:", currentOpponentIndex);
+        } else if (currentChallenger && currentRankedTasks.length === 0) {
+          // If challenger exists but no ranked tasks, it means challenger should be added directly
+          // This will be handled by startNextTournamentComparison, so ensure opponent index is null.
+          currentOpponentIndex = null;
+          currentStepState = 'tournamentComparison'; // Still in comparison mode, just waiting for direct add
+          console.log("SEITONPage - Set currentOpponentIndex to null as rankedTasks is empty but challenger exists.");
         } else if (currentRankedTasks.length > 0 || currentP3Tasks.length > 0) {
-          // If no active tournament tasks but there are ranked/p3 tasks, it means the tournament might be done
-          // or it's just displaying results.
-          currentStepState = 'result';
+          currentStepState = 'result'; // If no challenger, but ranked tasks, it's results
+          currentOpponentIndex = null;
         } else {
-          // If everything is empty after filtering, it's effectively a fresh start or no tasks.
-          currentStepState = 'result';
+          currentStepState = 'result'; // No tasks at all
+          currentOpponentIndex = null;
         }
-        console.log("SEITONPage - Filtered loaded progress. Queue:", currentTournamentQueue.map(t => t.content), "Ranked:", currentRankedTasks.map(t => t.content), "P3:", currentP3Tasks.map(t => t.content), "Challenger:", currentChallenger?.content || "Nenhum", "Determined Step:", currentStepState);
+        console.log("SEITONPage - Filtered loaded progress. Queue:", currentTournamentQueue.map(t => t.content), "Ranked:", currentRankedTasks.map(t => t.content), "P3:", currentP3Tasks.map(t => t.content), "Challenger:", currentChallenger?.content || "Nenhum", "Determined Step:", currentStepState, "Opponent Index:", currentOpponentIndex);
       }
 
       const processedTaskIds = new Set<string>();
@@ -428,13 +434,13 @@ const SEITONPage = () => {
   }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn]);
 
   const handleCancelTask = useCallback(async (taskIdToCancel: string) => {
-    if (!currentChallenger || currentOpponentIndex === null) {
+    if (!currentChallenger && currentOpponentIndex === null) { // Adjusted condition
         showError("Não há tarefa para cancelar no momento.");
         return;
     }
 
-    const currentOpponent = rankedTasks[currentOpponentIndex];
-    const isChallengerCancelled = currentChallenger.id === taskIdToCancel;
+    const currentOpponent = currentOpponentIndex !== null ? rankedTasks[currentOpponentIndex] : null; // Safely get opponent
+    const isChallengerCancelled = currentChallenger?.id === taskIdToCancel; // Use optional chaining
     const isOpponentCancelled = currentOpponent && currentOpponent.id === taskIdToCancel;
 
     if (!isChallengerCancelled && !isOpponentCancelled) {
@@ -450,7 +456,7 @@ const SEITONPage = () => {
     );
 
     if (success) {
-        showSuccess(`Tarefa "${isChallengerCancelled ? currentChallenger.content : currentOpponent?.content || 'desconhecida'}" cancelada.`);
+        showSuccess(`Tarefa "${isChallengerCancelled ? currentChallenger?.content : currentOpponent?.content || 'desconhecida'}" cancelada.`); // Use optional chaining
 
         if (isChallengerCancelled) {
             setTournamentQueue(prevQueue => prevQueue.filter(task => task.id !== taskIdToCancel));
@@ -466,10 +472,10 @@ const SEITONPage = () => {
         // Record comparison history for cancellation
         setComparisonHistory(prevHistory => [
             {
-                challengerContent: currentChallenger.content,
-                opponentContent: isOpponentCancelled ? currentOpponent.content : "N/A",
+                challengerContent: currentChallenger?.content || "N/A", // Use optional chaining
+                opponentContent: isOpponentCancelled ? currentOpponent?.content || "N/A" : "N/A", // Use optional chaining
                 winner: 'N/A', // No winner in a cancellation
-                action: `Tarefa "${isChallengerCancelled ? currentChallenger.content : currentOpponent?.content || 'desconhecida'}" cancelada.`,
+                action: `Tarefa "${isChallengerCancelled ? currentChallenger?.content : currentOpponent?.content || 'desconhecida'}" cancelada.`, // Use optional chaining
                 timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
             },
             ...prevHistory,
@@ -493,7 +499,12 @@ const SEITONPage = () => {
         } else if (event.key === 'x' || event.key === 'X') { // 'X' for Cancel Challenger
           event.preventDefault();
           // O atalho de teclado 'X' cancelará o desafiante (tarefa de cima) por padrão.
-          handleCancelTask(currentChallenger.id); 
+          // Certifique-se de que currentChallenger não é null antes de acessar .id
+          if (currentChallenger) {
+            handleCancelTask(currentChallenger.id); 
+          } else {
+            showError("Nenhuma tarefa desafiante para cancelar.");
+          }
         }
       }
     };
@@ -555,7 +566,7 @@ const SEITONPage = () => {
 
   const renderTaskCard = (task: TodoistTask | null, title: string, description: string, priorityOverride?: number) => {
     if (!task) {
-        console.log(`renderTaskCard: Task is null for title "${title}".`);
+        console.log(`renderTaskCard: Task is null for title "${title}". This is why the card is not rendering.`);
         return null;
     }
     console.log(`renderTaskCard: Rendering task "${task.content}" for title "${title}".`);
