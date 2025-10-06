@@ -137,20 +137,26 @@ const SEISOPage = () => {
     let tasksToProcess: TodoistTask[] = [];
     let usingSeitonSource = false; // Indica se estamos usando um ranking SEITON (finalizado ou em progresso)
 
+    console.log("SEISOPage - fetchTasksAndFilter: useSeitonRanking is", useSeitonRanking);
+
     if (useSeitonRanking) { // Apenas tenta carregar do SEITON se a opção estiver ativada
+      console.log("SEISOPage - Tentando carregar tarefas do ranking SEITON...");
       // 1. Tentar carregar do SEITON_LAST_RANKING_KEY (sessão finalizada)
       const savedLastRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
+      console.log("SEISOPage - SEITON_LAST_RANKING_KEY raw:", savedLastRanking);
       if (savedLastRanking) {
         try {
           const parsedLastRanking: SeitonRankingData = JSON.parse(savedLastRanking);
-          const seitonTopTasks = parsedLastRanking.rankedTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+          // Combine rankedTasks and p3Tasks from the final ranking
+          const combinedSeitonTasks = [...parsedLastRanking.rankedTasks, ...parsedLastRanking.p3Tasks];
+          const seitonTopTasks = combinedSeitonTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
           if (seitonTopTasks.length > 0) {
             tasksToProcess = seitonTopTasks;
             usingSeitonSource = true;
             showSuccess(`Sessão iniciada com ${seitonTopTasks.length} tarefas do último ranking SEITON (finalizado).`);
-            console.log("SEISOPage - Loaded tasks from SEITON_LAST_RANKING_KEY.");
+            console.log("SEISOPage - Loaded tasks from SEITON_LAST_RANKING_KEY:", seitonTopTasks.map(t => t.content));
           } else {
-            console.log("SEISOPage - SEITON_LAST_RANKING_KEY encontrado, mas não contém tarefas.");
+            console.log("SEISOPage - SEITON_LAST_RANKING_KEY encontrado, mas não contém tarefas úteis após combinação/limite.");
           }
         } catch (e) {
           console.error("Erro ao analisar SEITON_LAST_RANKING_KEY:", e);
@@ -162,20 +168,22 @@ const SEISOPage = () => {
 
       // 2. Se não houver tarefas do ranking finalizado, tentar SEITON_PROGRESS_KEY (sessão em progresso)
       if (tasksToProcess.length === 0) {
+        console.log("SEISOPage - Nenhuma tarefa do ranking finalizado. Tentando ranking em progresso...");
         const savedInProgressRanking = localStorage.getItem(SEITON_PROGRESS_KEY);
+        console.log("SEISOPage - SEITON_PROGRESS_KEY raw:", savedInProgressRanking);
         if (savedInProgressRanking) {
           try {
             const parsedInProgressRanking: SeitonProgress = JSON.parse(savedInProgressRanking);
-            // Combinar rankedTasks e p3Tasks do progresso e pegar o limite
-            const inProgressRankedTasks = [...parsedInProgressRanking.rankedTasks, ...parsedInProgressRanking.p3Tasks];
-            const seitonInProgressTasks = inProgressRankedTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+            // Combine rankedTasks and p3Tasks from the in-progress ranking
+            const combinedInProgressTasks = [...parsedInProgressRanking.rankedTasks, ...parsedInProgressRanking.p3Tasks];
+            const seitonInProgressTasks = combinedInProgressTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
             if (seitonInProgressTasks.length > 0) {
               tasksToProcess = seitonInProgressTasks;
               usingSeitonSource = true;
               showSuccess(`Sessão iniciada com ${seitonInProgressTasks.length} tarefas do ranking SEITON (em progresso).`);
-              console.log("SEISOPage - Loaded tasks from SEITON_PROGRESS_KEY.");
+              console.log("SEISOPage - Loaded tasks from SEITON_PROGRESS_KEY:", seitonInProgressTasks.map(t => t.content));
             } else {
-              console.log("SEISOPage - SEITON_PROGRESS_KEY encontrado, mas não contém tarefas.");
+              console.log("SEISOPage - SEITON_PROGRESS_KEY encontrado, mas não contém tarefas úteis após combinação/limite.");
             }
           } catch (e) {
             console.error("Erro ao analisar SEITON_PROGRESS_KEY:", e);
@@ -186,28 +194,31 @@ const SEISOPage = () => {
         }
       }
     } else {
-      console.log("SEISOPage - Usando filtro do usuário (opção 'Usar Ranking SEITON' desativada).");
+      console.log("SEISOPage - Opção 'Usar Ranking SEITON' desativada. Ignorando rankings SEITON.");
     }
 
     // 3. Se ainda não houver tarefas (ou se useSeitonRanking for false), usar o filtro do usuário
     if (tasksToProcess.length === 0 || !useSeitonRanking) {
-      console.log("SEISOPage - Nenhum ranking SEITON encontrado ou opção desativada. Usando filtro do usuário.");
+      console.log("SEISOPage - Nenhum ranking SEITON encontrado ou opção desativada. Usando filtro do usuário:", filterInput);
       const fetchedTasksFromFilter = await handleApiCall(() => getTasks(filterInput), "Carregando tarefas do filtro...");
       if (fetchedTasksFromFilter && fetchedTasksFromFilter.length > 0) {
         tasksToProcess = fetchedTasksFromFilter;
         usingSeitonSource = false; // Não estamos usando ranking SEITON
         showSuccess(`Sessão iniciada com ${fetchedTasksFromFilter.length} tarefas do filtro.`);
-        console.log("SEISOPage - Loaded tasks from user filter.");
+        console.log("SEISOPage - Loaded tasks from user filter:", fetchedTasksFromFilter.map(t => t.content));
       } else {
         console.log("SEISOPage - O filtro do usuário não retornou tarefas.");
       }
     }
 
+    console.log("SEISOPage - Tasks to process BEFORE filtering (total):", tasksToProcess.length);
     // Processar e definir as tarefas se alguma foi encontrada
     if (tasksToProcess.length > 0) {
       const filteredAndCleanedTasks = tasksToProcess
         .filter((task: TodoistTask) => task.parent_id === null)
         .filter((task: TodoistTask) => !task.is_completed);
+
+      console.log("SEISOPage - Tasks AFTER filtering (parent_id === null && !is_completed):", filteredAndCleanedTasks.length);
 
       const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
       const nonP1Tasks = filteredAndCleanedTasks.filter(task => task.priority !== 4);
