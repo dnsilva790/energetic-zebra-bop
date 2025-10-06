@@ -8,11 +8,11 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat
-} from "lucide-react";
+  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle
+} from "lucide-react"; // Adicionado XCircle para o botão de concluir
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, handleApiCall, updateTaskDueDate } from "@/lib/todoistApi";
+import { getTasks, handleApiCall, updateTaskDueDate, completeTask } from "@/lib/todoistApi"; // Importar completeTask
 import { format, parseISO, setHours, setMinutes, isValid, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
@@ -30,6 +30,7 @@ const SEIKETSURecordPage: React.FC = () => {
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [tasksDoneTodayCount, setTasksDoneTodayCount] = useState(0);
   const [tasksPostponedCount, setTasksPostponedCount] = useState(0);
+  const [tasksCompletedCount, setTasksCompletedCount] = useState(0); // Novo estado para tarefas concluídas
 
   const [showPostponeDialog, setShowPostponeDialog] = useState(false);
   const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
@@ -74,6 +75,7 @@ const SEIKETSURecordPage: React.FC = () => {
           setCurrentTaskIndex(0);
           setTasksDoneTodayCount(0);
           setTasksPostponedCount(0);
+          setTasksCompletedCount(0); // Resetar contador de concluídas
           setIsSessionFinished(false);
           showSuccess(`Sessão de revisão iniciada com ${filteredAndCleanedTasks.length} tarefas.`);
         } else {
@@ -110,6 +112,18 @@ const SEIKETSURecordPage: React.FC = () => {
       setTasksDoneTodayCount(prev => prev + 1);
       showSuccess("Tarefa marcada para fazer hoje!");
       moveToNextTask();
+    }
+  }, [currentTask, moveToNextTask]);
+
+  const handleCompleteTask = useCallback(async () => {
+    if (currentTask) {
+      const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
+      if (success) {
+        setTasksCompletedCount(prev => prev + 1); // Incrementar contador de concluídas
+        moveToNextTask();
+      } else {
+        showError("Falha ao concluir a tarefa no Todoist.");
+      }
     }
   }, [currentTask, moveToNextTask]);
 
@@ -163,6 +177,9 @@ const SEIKETSURecordPage: React.FC = () => {
       } else if (event.key === 'p' || event.key === 'P') { // 'P' for Postegar
         event.preventDefault();
         handlePostponeClick();
+      } else if (event.key === 'c' || event.key === 'C') { // 'C' for Concluída
+        event.preventDefault();
+        handleCompleteTask();
       }
     };
 
@@ -170,7 +187,7 @@ const SEIKETSURecordPage: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, showPostponeDialog, handleDoTodayQuick, handlePostponeClick]);
+  }, [loading, isSessionFinished, currentTask, showPostponeDialog, handleDoTodayQuick, handlePostponeClick, handleCompleteTask]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
 
@@ -191,6 +208,7 @@ const SEIKETSURecordPage: React.FC = () => {
             Você revisou {totalTasks} tarefas.
           </CardDescription>
           <p className="text-green-600 font-semibold">Decididas para Hoje: {tasksDoneTodayCount}</p>
+          <p className="text-red-600 font-semibold">Concluídas: {tasksCompletedCount}</p> {/* Exibir tarefas concluídas */}
           <p className="text-blue-600 font-semibold">Postergadas: {tasksPostponedCount}</p>
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
@@ -217,7 +235,7 @@ const SEIKETSURecordPage: React.FC = () => {
           <div className="w-20"></div> {/* Espaçador */}
         </div>
         <p className="text-xl text-indigo-700 text-center mb-8">
-          Decida rapidamente: fazer hoje ou postergar?
+          Decida rapidamente: fazer hoje, concluir ou postergar?
         </p>
       </div>
 
@@ -266,6 +284,12 @@ const SEIKETSURecordPage: React.FC = () => {
                 className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
               >
                 <Check className="mr-2 h-5 w-5" /> FAZER HOJE (R)
+              </Button>
+              <Button
+                onClick={handleCompleteTask}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+              >
+                <XCircle className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
               </Button>
               <Button
                 onClick={handlePostponeClick}
