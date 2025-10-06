@@ -428,48 +428,52 @@ Retorne um JSON válido com 3 a 5 sugestões:
             // 2. Secondary sort: deadline (ascending)
             let deadlineA: Date | null = null;
             if (typeof a.deadline === 'string' && a.deadline.trim() !== '') {
-                deadlineA = parseISO(a.deadline);
+                const parsed = parseISO(a.deadline);
+                if (isValid(parsed)) {
+                    deadlineA = parsed;
+                }
             }
             let deadlineB: Date | null = null;
             if (typeof b.deadline === 'string' && b.deadline.trim() !== '') {
-                deadlineB = parseISO(b.deadline);
+                const parsed = parseISO(b.deadline);
+                if (isValid(parsed)) {
+                    deadlineB = parsed;
+                }
             }
 
-            const isValidDeadlineA = deadlineA && isValid(deadlineA);
-            const isValidDeadlineB = deadlineB && isValid(deadlineB);
-
-            if (isValidDeadlineA && isValidDeadlineB) {
-              const deadlineComparison = deadlineA!.getTime() - deadlineB!.getTime();
+            if (deadlineA && deadlineB) { // Both are valid Date objects
+              const deadlineComparison = deadlineA.getTime() - deadlineB.getTime();
               if (deadlineComparison !== 0) {
                 return deadlineComparison;
               }
-            } else if (isValidDeadlineA) {
-              return -1; // A has a valid deadline, B does not, so A comes first
-            } else if (isValidDeadlineB) {
-              return 1; // B has a valid deadline, A does not, so B comes first
+            } else if (deadlineA) { // Only A has a valid deadline
+              return -1;
+            } else if (deadlineB) { // Only B has a valid deadline
+              return 1;
             }
             // If both have no valid deadline, or deadlines are equal, move to due date
 
             // 3. Tertiary sort: due date (ascending)
             let dateA: Date | null = null;
             if (a.due?.date && typeof a.due.date === 'string' && a.due.date.trim() !== '') {
-                dateA = parseISO(a.due.date);
+                const parsed = parseISO(a.due.date);
+                if (isValid(parsed)) {
+                    dateA = parsed;
+                }
             }
             let dateB: Date | null = null;
             if (b.due?.date && typeof b.due.date === 'string' && b.due.date.trim() !== '') {
-                dateB = parseISO(b.due.date);
+                const parsed = parseISO(b.due.date);
+                if (isValid(parsed)) {
+                    dateB = parsed;
+                }
             }
 
-            const isValidDateA = dateA && isValid(dateA);
-            const isValidDateB = dateB && isValid(dateB);
-
-            if (isValidDateA && isValidDateB) {
-              return dateA!.getTime() - dateB!.getTime();
-            }
-            if (isValidDateA) { // A has a valid date, B does not
+            if (dateA && dateB) { // Both are valid Date objects
+              return dateA.getTime() - dateB.getTime();
+            } else if (dateA) { // Only A has a valid due date
               return -1;
-            }
-            if (isValidDateB) { // B has a valid date, A does not
+            } else if (dateB) { // Only B has a valid due date
               return 1;
             }
             return 0; // Both have no valid date
@@ -622,6 +626,37 @@ Retorne um JSON válido com 3 a 5 sugestões:
       showError("Falha ao postergar a tarefa.");
     }
   }, [currentTask, moveToNextTask]);
+
+  const handleSavePostpone = useCallback(async () => {
+    if (!currentTask || !selectedDueDate) {
+      showError("Por favor, selecione uma data para postergar.");
+      return;
+    }
+
+    let newDueDateString = format(selectedDueDate, "yyyy-MM-dd");
+    if (selectedDueTime) {
+      const [hours, minutes] = selectedDueTime.split(':').map(Number);
+      if (!isNaN(hours) && !isNaN(minutes)) {
+        let dateWithTime = setHours(selectedDueDate, hours);
+        dateWithTime = setMinutes(dateWithTime, minutes);
+        newDueDateString = format(dateWithTime, "yyyy-MM-dd'T'HH:mm:ss");
+      }
+    }
+
+    const success = await handleApiCall(
+      () => updateTaskDueDate(currentTask.id, newDueDateString),
+      "Postergando tarefa...",
+      "Tarefa postergada com sucesso!"
+    );
+
+    if (success) {
+      setTasksPostponedCount(prev => prev + 1);
+      setShowPostponeDialog(false);
+      moveToNextTask();
+    } else {
+      showError("Falha ao postergar a tarefa.");
+    }
+  }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
