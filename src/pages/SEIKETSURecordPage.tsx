@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
-import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz'; // Importação correta via named imports
+import { toZonedTime, fromZonedTime } from 'date-fns-tz'; // Importação correta via named imports
 
 const SEIKETSURecordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -227,7 +227,7 @@ Retorne um JSON válido com 3 a 5 sugestões:
   * "⭐ IDEAL" - melhor horário possível (janela + demanda)
   * "✅ VIÁVEL" - alternativas adequadas
   * "⚠️ SUBÓTIMO" - funciona mas não é ideal
-- \`titulo\`: Max 50 chars, resumo rápido
+- \`titulo\`: Max 50 chars
 - \`justificativa\`: 1-2 frases explicando a escolha
 - \`janela\`: "ouro" | "intermediaria" | "declinio" | "pessoal"
 - \`reasoning\`: (interno) Explique seu raciocínio completo
@@ -546,7 +546,7 @@ Retorne um JSON válido com 3 a 5 sugestões:
         .map(task => {
           const dueDateTime = task.due?.date ? parseISO(task.due.date) : null;
           let dueDateInBrasilia = dueDateTime
-            ? utcToZonedTime(dueDateTime, "America/Sao_Paulo")
+            ? toZonedTime(dueDateTime, "America/Sao_Paulo")
             : null;
 
           return {
@@ -594,7 +594,7 @@ Retorne um JSON válido com 3 a 5 sugestões:
     }
 
     // Converter a data/hora de Brasília para UTC para enviar ao Todoist
-    const dateInUtc = zonedTimeToUtc(dateInBrasilia, 'America/Sao_Paulo');
+    const dateInUtc = fromZonedTime(dateInBrasilia, 'America/Sao_Paulo');
     const newDueDateString = format(dateInUtc, "yyyy-MM-dd'T'HH:mm:ss'Z'"); // Formato ISO 8601 com Z para UTC
 
     const success = await handleApiCall(
