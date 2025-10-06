@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { format, parseISO, isValid } from 'date-fns';
-import { utcToZonedTime } from 'date-fns-tz'; // Importar utcToZonedTime
+import * as dateFnsTz from 'date-fns-tz'; // Importar o módulo inteiro
 
 // Helper to convert UTC time string to Brasília time string
 const convertUtcToBrasilia = (date: string, time: string): { data: string, hora_brasilia: string } => {
@@ -15,7 +15,7 @@ const convertUtcToBrasilia = (date: string, time: string): { data: string, hora_
     console.warn(`Invalid UTC date/time string for conversion: ${utcDateTimeString}`);
     return { data: date, hora_brasilia: time }; // Return original if invalid
   }
-  const brasiliaDate = utcToZonedTime(utcDate, 'America/Sao_Paulo');
+  const brasiliaDate = dateFnsTz.utcToZonedTime(utcDate, 'America/Sao_Paulo');
   return {
     data: format(brasiliaDate, 'yyyy-MM-dd'),
     hora_brasilia: format(brasiliaDate, 'HH:mm'),
