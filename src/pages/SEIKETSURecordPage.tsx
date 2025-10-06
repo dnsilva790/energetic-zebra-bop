@@ -61,8 +61,8 @@ const SEIKETSURecordPage: React.FC = () => {
   const fetchTasksForReview = useCallback(async () => {
     setLoading(true);
     try {
-      // Filtra tarefas que são 'today' ou 'overdue'
-      const fetchedTasks = await handleApiCall(() => getTasks("today | overdue"), "Carregando tarefas para revisão...");
+      // Usando o filtro mais abrangente para tarefas pendentes
+      const fetchedTasks = await handleApiCall(() => getTasks("(due before: in 0 minutes)"), "Carregando tarefas para revisão...");
 
       if (fetchedTasks && fetchedTasks.length > 0) {
         const filteredAndCleanedTasks = fetchedTasks
@@ -77,11 +77,11 @@ const SEIKETSURecordPage: React.FC = () => {
           setIsSessionFinished(false);
           showSuccess(`Sessão de revisão iniciada com ${filteredAndCleanedTasks.length} tarefas.`);
         } else {
-          showSuccess("Nenhuma tarefa 'hoje' ou 'atrasada' encontrada para revisão. Bom trabalho!");
+          showSuccess("Nenhuma tarefa pendente encontrada para revisão. Bom trabalho!");
           setIsSessionFinished(true);
         }
       } else {
-        showSuccess("Nenhuma tarefa 'hoje' ou 'atrasada' encontrada para revisão. Bom trabalho!");
+        showSuccess("Nenhuma tarefa pendente encontrada para revisão. Bom trabalho!");
         setIsSessionFinished(true);
       }
     } catch (error: any) {
