@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
-import * as dateFnsTz from 'date-fns-tz'; // Importação do módulo inteiro como namespace
+import dateFnsTz from 'date-fns-tz'; // Importação como default export
 
 const SEIKETSURecordPage: React.FC = () => {
   const navigate = useNavigate();

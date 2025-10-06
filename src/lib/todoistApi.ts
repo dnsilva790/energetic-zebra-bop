@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import { TodoistTask, TodoistProject, AISuggestion, AISuggestionResponse } from "./types"; // Importar os novos tipos
 import { format, parseISO } from "date-fns";
-import * as dateFnsTz from 'date-fns-tz'; // Importação do módulo inteiro como namespace
+import dateFnsTz from 'date-fns-tz'; // Importação como default export
 
 const TODOIST_CONFIG = {
   baseURL: 'https://api.todoist.com/rest/v2',
@@ -321,7 +321,7 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
   const rawUpdatedTask = await response.json();
   let processedDue = null;
   if (rawUpdatedTask.due) {
-    const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
+    const dateValue = rawUpdatedT`ask.due.datetime || rawUpdatedTask.due.date;
     processedDue = {
       date: dateValue,
       string: rawUpdatedTask.due.string,
