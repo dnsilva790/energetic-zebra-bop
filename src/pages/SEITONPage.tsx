@@ -51,7 +51,7 @@ const SEITONPage = () => {
   const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]); // Novo estado para histórico
   
   const [loading, setLoading] = useState(true);
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(true); // Alterado para true por padrão para depuração
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -554,7 +554,11 @@ const SEITONPage = () => {
   };
 
   const renderTaskCard = (task: TodoistTask | null, title: string, description: string, priorityOverride?: number) => {
-    if (!task) return null;
+    if (!task) {
+        console.log(`renderTaskCard: Task is null for title "${title}".`);
+        return null;
+    }
+    console.log(`renderTaskCard: Rendering task "${task.content}" for title "${title}".`);
     const displayPriority = priorityOverride !== undefined ? priorityOverride : task.priority;
     return (
       <Card className="w-full shadow-lg bg-white/80 backdrop-blur-sm p-4">
@@ -602,6 +606,16 @@ const SEITONPage = () => {
     );
   };
 
+  // Adicionando logs no ciclo de renderização principal
+  console.log("SEITONPage Render Cycle:");
+  console.log("  Loading:", loading);
+  console.log("  Current Step:", currentStep);
+  console.log("  Current Challenger:", currentChallenger?.content || "N/A");
+  console.log("  Current Opponent Index:", currentOpponentIndex);
+  console.log("  Tournament Queue Length:", tournamentQueue.length);
+  console.log("  Ranked Tasks Length:", rankedTasks.length);
+  console.log("  P3 Tasks Length:", p3Tasks.length);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-blue-100 p-4">
@@ -629,7 +643,7 @@ const SEITONPage = () => {
       </div>
 
       <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
-        {currentStep === 'tournamentComparison' && currentChallenger && currentOpponent && currentOpponentIndex !== null && (
+        {currentStep === 'tournamentComparison' && currentChallenger && currentOpponent && currentOpponentIndex !== null ? (
           <div className="space-y-6 text-center">
             <CardTitle className="text-2xl font-bold text-gray-800">Qual é mais importante?</CardTitle>
             <CardDescription className="text-lg text-gray-700">
@@ -649,9 +663,7 @@ const SEITONPage = () => {
               </Button>
             </div>
           </div>
-        )}
-
-        {currentStep === 'result' && (
+        ) : currentStep === 'result' ? (
           <div className="space-y-6 text-center">
             <CardTitle className="text-3xl font-bold text-gray-800">Ranking atualizado!</CardTitle>
             <CardDescription className="text-lg text-gray-600">
@@ -699,17 +711,12 @@ const SEITONPage = () => {
               Voltar ao Menu Principal
             </Button>
           </div>
-        )}
-
-        {currentStep !== 'loading' && !currentChallenger && tournamentQueue.length === 0 && currentStep !== 'result' && (
+        ) : (
           <div className="text-center space-y-4">
-            <CardTitle className="text-2xl font-bold text-gray-800">Todas as tarefas foram processadas!</CardTitle>
+            <CardTitle className="text-2xl font-bold text-gray-800">Processando tarefas...</CardTitle>
             <CardDescription className="text-lg text-gray-600">
-              Indo para o resultado...
+              Aguarde enquanto organizamos seu backlog.
             </CardDescription>
-            <Button onClick={() => setCurrentStep('result')} className="mt-4 bg-blue-600 hover:bg-blue-700">
-              Ver Resultados
-            </Button>
           </div>
         )}
       </Card>
