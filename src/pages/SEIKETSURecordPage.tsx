@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
-import * as dateFnsTz from 'date-fns-tz'; // Importar o módulo inteiro
+import { zonedTimeToUtc, utcToZonedTime } from 'date-fns-tz'; // Importar para conversão de fuso horário
 
 const SEIKETSURecordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -435,8 +435,8 @@ Retorne um JSON válido com 3 a 5 sugestões:
                 deadlineB = parseISO(b.deadline);
             }
 
-            const isValidDeadlineA = deadlineA && dateFnsTz.isValid(deadlineA);
-            const isValidDeadlineB = deadlineB && dateFnsTz.isValid(deadlineB);
+            const isValidDeadlineA = deadlineA && isValid(deadlineA);
+            const isValidDeadlineB = deadlineB && isValid(deadlineB);
 
             if (isValidDeadlineA && isValidDeadlineB) {
               const deadlineComparison = deadlineA!.getTime() - deadlineB!.getTime();
@@ -460,8 +460,8 @@ Retorne um JSON válido com 3 a 5 sugestões:
                 dateB = parseISO(b.due.date);
             }
 
-            const isValidDateA = dateA && dateFnsTz.isValid(dateA);
-            const isValidDateB = dateB && dateFnsTz.isValid(dateB);
+            const isValidDateA = dateA && isValid(dateA);
+            const isValidDateB = dateB && isValid(dateB);
 
             if (isValidDateA && isValidDateB) {
               return dateA!.getTime() - dateB!.getTime();
@@ -557,7 +557,7 @@ Retorne um JSON válido com 3 a 5 sugestões:
         .map(task => {
           const dueDateTime = task.due?.date ? parseISO(task.due.date) : null;
           let dueDateInBrasilia = dueDateTime
-            ? dateFnsTz.utcToZonedTime(dueDateTime, "America/Sao_Paulo")
+            ? utcToZonedTime(dueDateTime, "America/Sao_Paulo")
             : null;
 
           return {
@@ -599,13 +599,13 @@ Retorne um JSON válido com 3 a 5 sugestões:
     const dateTimeStringBrasilia = `${suggestion.data}T${suggestion.hora}:00`;
     const dateInBrasilia = parseISO(dateTimeStringBrasilia);
 
-    if (!dateFnsTz.isValid(dateInBrasilia)) {
+    if (!isValid(dateInBrasilia)) {
       showError("Sugestão da IA inválida. Por favor, selecione manualmente.");
       return;
     }
 
     // Converter a data/hora de Brasília para UTC para enviar ao Todoist
-    const dateInUtc = dateFnsTz.zonedTimeToUtc(dateInBrasilia, 'America/Sao_Paulo');
+    const dateInUtc = zonedTimeToUtc(dateInBrasilia, 'America/Sao_Paulo');
     const newDueDateString = format(dateInUtc, "yyyy-MM-dd'T'HH:mm:ss'Z'"); // Formato ISO 8601 com Z para UTC
 
     const success = await handleApiCall(
