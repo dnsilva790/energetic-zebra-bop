@@ -739,7 +739,7 @@ const SEIRIPage = () => {
       <MadeWithDyad />
 
       <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
-        <SheetContent className="flex flex-col">
+        <SheetContent className="flex flex-col sm:max-w-lg md:max-w-xl"> {/* Aumenta a largura aqui */}
           {currentTask && (
             <AITutorChat
               taskTitle={currentTask.content}

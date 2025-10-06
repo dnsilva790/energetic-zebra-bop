@@ -8,11 +8,11 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat
+  ArrowLeft, Play, Pause, Square, Check, SkipForward, CalendarDays, ExternalLink, Repeat, Clock
 } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, completeTask, handleApiCall, updateTaskDueDate } from "@/lib/todoistApi";
+import { getTasks, completeTask, handleApiCall, updateTaskDueDate, updateTaskDeadline } from "@/lib/todoistApi";
 import { format, parseISO, setHours, setMinutes, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
@@ -24,6 +24,7 @@ import { cn, formatDateForDisplay } from "@/lib/utils";
 import AITutorChat from "@/components/AITutorChat";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch"; // Importar o componente Switch
+import SetDeadlineDialog from "@/components/SetDeadlineDialog"; // Importar o novo componente
 
 const SEISO_FILTER_KEY = 'seiso_filter_input';
 const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking'; // Nova chave para a preferência
@@ -99,6 +100,9 @@ const SEISOPage = () => {
 
   const [isAITutorChatOpen, setIsAITutorChatOpen] = useState(false);
 
+  const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
+  const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
+
   const totalTasks = p1Tasks.length + otherTasks.length;
   const currentTask = currentTaskIndex < p1Tasks.length ? p1Tasks[currentTaskIndex] : otherTasks[currentTaskIndex - p1Tasks.length];
 
@@ -160,7 +164,7 @@ const SEISOPage = () => {
         console.log("SEISOPage - SEITON_LAST_RANKING_KEY raw:", savedLastRanking);
         if (savedLastRanking) {
           try {
-            const parsedLastRanking: SeitonRankingData = JSON.parse(savedLastRanking);
+            const parsedLastRanking: SeitonRankingData = JSON.parse(savedRanking);
             const combinedSeitonTasks = [...parsedLastRanking.rankedTasks, ...parsedLastRanking.p3Tasks];
             const seitonTopTasks = combinedSeitonTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
             if (seitonTopTasks.length > 0) {
@@ -412,10 +416,58 @@ const SEISOPage = () => {
     setIsAITutorChatOpen(true); // Abre a sidebar
   }, [currentTask]);
 
+  const handleOpenSetDeadlineDialog = useCallback(() => {
+    if (!currentTask) {
+      showError("Nenhuma tarefa selecionada para definir data limite.");
+      return;
+    }
+    setTaskToSetDeadline(currentTask);
+    setShowSetDeadlineDialog(true);
+  }, [currentTask]);
+
+  const handleSaveDeadline = useCallback(async (newDeadline: string | null) => {
+    if (!taskToSetDeadline) return;
+
+    setLoading(true);
+    try {
+      const updatedTask = await handleApiCall(
+        () => updateTaskDeadline(taskToSetDeadline.id, newDeadline),
+        "Atualizando data limite...",
+        newDeadline ? "Data limite definida com sucesso!" : "Data limite removida com sucesso!"
+      );
+
+      if (updatedTask) {
+        // Atualizar as listas de tarefas com a tarefa modificada
+        const updateTaskInList = (list: TodoistTask[]) => 
+          list.map(t => t.id === updatedTask.id ? updatedTask : t);
+
+        setAllTasks(updateTaskInList);
+        setP1Tasks(updateTaskInList);
+        setOtherTasks(updateTaskInList);
+
+        // Se a tarefa atual é a que foi modificada, atualize-a
+        if (currentTask?.id === updatedTask.id) {
+          // Isso é um pouco mais complexo porque currentTask é derivado.
+          // A maneira mais simples é re-fetchar as tarefas ou garantir que o estado `allTasks`
+          // seja a fonte da verdade e `currentTask` seja sempre derivado dele.
+          // Por enquanto, a atualização de `allTasks` deve ser suficiente para o próximo render.
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao salvar deadline:", error);
+      showError("Falha ao salvar a data limite.");
+    } finally {
+      setLoading(false);
+      setShowSetDeadlineDialog(false);
+      setTaskToSetDeadline(null);
+    }
+  }, [taskToSetDeadline, currentTask]);
+
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Desativa atalhos de teclado se qualquer modal/sidebar estiver aberto
-      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || isAITutorChatOpen) return;
+      if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || isAITutorChatOpen || showSetDeadlineDialog) return;
 
       if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
@@ -429,6 +481,9 @@ const SEISOPage = () => {
       } else if (event.key === 'g' || event.key === 'G') { // 'G' for Guide Me
         event.preventDefault();
         handleGuideMe();
+      } else if (event.key === 'd' || event.key === 'D') { // 'D' for Deadline
+        event.preventDefault();
+        handleOpenSetDeadlineDialog();
       }
     };
 
@@ -436,7 +491,7 @@ const SEISOPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, isAITutorChatOpen, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe]);
+  }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, isAITutorChatOpen, showSetDeadlineDialog, handleCompleteTask, handleSkipTask, handleOpenRescheduleDialog, handleGuideMe, handleOpenSetDeadlineDialog]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
   const countdownProgressValue = countdownTimeLeft > 0 && parseInt(countdownInputDuration) * 60 > 0 
@@ -654,6 +709,12 @@ const SEISOPage = () => {
                   <CalendarDays className="mr-2 h-5 w-5" /> REAGENDAR (R)
                 </Button>
                 <Button
+                  onClick={handleOpenSetDeadlineDialog}
+                  className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
+                >
+                  <Clock className="mr-2 h-5 w-5" /> DATA LIMITE (D)
+                </Button>
+                <Button
                   onClick={handleGuideMe}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
                 >
@@ -678,7 +739,7 @@ const SEISOPage = () => {
       <MadeWithDyad />
 
       <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
-        <SheetContent className="flex flex-col">
+        <SheetContent className="flex flex-col sm:max-w-lg md:max-w-xl"> {/* Aumenta a largura aqui */}
           {currentTask && (
             <AITutorChat
               taskTitle={currentTask.content}
@@ -752,6 +813,16 @@ const SEISOPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {taskToSetDeadline && (
+        <SetDeadlineDialog
+          isOpen={showSetDeadlineDialog}
+          onClose={() => setShowSetDeadlineDialog(false)}
+          currentDeadline={taskToSetDeadline.deadline}
+          onSave={handleSaveDeadline}
+          loading={loading}
+        />
+      )}
     </div>
   );
 };
