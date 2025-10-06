@@ -4,10 +4,10 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { ArrowLeft, Check, X, ExternalLink, Repeat, Play, ChevronLeft, ChevronRight, Bug } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Repeat, Play, ChevronLeft, ChevronRight, Bug, Undo2 } from "lucide-react";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
-import { getTasks, completeTask, updateTask, handleApiCall } from "@/lib/todoistApi";
+import { getTasks, completeTask, updateTask, handleApiCall, reopenTask } from "@/lib/todoistApi";
 import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO, isValid } from "date-fns";
@@ -38,6 +38,17 @@ interface ComparisonEntry {
   timestamp: string;
 }
 
+// Novo tipo para o estado de desfazer
+interface UndoState {
+  type: 'compare' | 'cancel';
+  snapshotTournamentQueue: TodoistTask[];
+  snapshotRankedTasks: TodoistTask[];
+  snapshotP3Tasks: TodoistTask[];
+  snapshotCurrentChallenger: TodoistTask | null;
+  snapshotCurrentOpponentIndex: number | null;
+  cancelledTaskId?: string; // Apenas para tipo 'cancel'
+}
+
 const SEITONPage = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<SeitonStep>('loading');
@@ -51,7 +62,9 @@ const SEITONPage = () => {
   const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]); // Novo estado para histórico
   
   const [loading, setLoading] = useState(true);
-  const [showDebugPanel, setShowDebugPanel] = useState(false); // Alterado para false por padrão
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  const [lastUndoableAction, setLastUndoableAction] = useState<UndoState | null>(null); // Novo estado para desfazer
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -220,6 +233,7 @@ const SEITONPage = () => {
       setCurrentOpponentIndex(currentOpponentIndex);
       setCurrentStep(currentStepState); // Set the determined step
       setComparisonHistory(currentComparisonHistory); // Definir histórico
+      setLastUndoableAction(null); // Reset undo state on fresh load
 
       if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0 && !currentChallenger) {
         showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
@@ -312,6 +326,16 @@ const SEITONPage = () => {
       console.error("SEITONPage - handleTournamentComparison: Invalid state for comparison.");
       return;
     }
+
+    // Salvar estado atual para desfazer
+    setLastUndoableAction({
+      type: 'compare',
+      snapshotTournamentQueue: tournamentQueue,
+      snapshotRankedTasks: rankedTasks,
+      snapshotP3Tasks: p3Tasks,
+      snapshotCurrentChallenger: currentChallenger,
+      snapshotCurrentOpponentIndex: currentOpponentIndex,
+    });
 
     console.log(`SEITONPage - handleTournamentComparison: Challenger wins? ${challengerWins}. Challenger: ${currentChallenger.content}, Opponent Index: ${currentOpponentIndex}`);
 
@@ -431,16 +455,16 @@ const SEITONPage = () => {
       setCurrentStep('result');
       localStorage.removeItem(SEITON_PROGRESS_KEY);
     }
-  }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn]);
+  }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn, setLastUndoableAction]);
 
   const handleCancelTask = useCallback(async (taskIdToCancel: string) => {
-    if (!currentChallenger && currentOpponentIndex === null) { // Adjusted condition
+    if (!currentChallenger && currentOpponentIndex === null) {
         showError("Não há tarefa para cancelar no momento.");
         return;
     }
 
-    const currentOpponent = currentOpponentIndex !== null ? rankedTasks[currentOpponentIndex] : null; // Safely get opponent
-    const isChallengerCancelled = currentChallenger?.id === taskIdToCancel; // Use optional chaining
+    const currentOpponent = currentOpponentIndex !== null ? rankedTasks[currentOpponentIndex] : null;
+    const isChallengerCancelled = currentChallenger?.id === taskIdToCancel;
     const isOpponentCancelled = currentOpponent && currentOpponent.id === taskIdToCancel;
 
     if (!isChallengerCancelled && !isOpponentCancelled) {
@@ -449,6 +473,17 @@ const SEITONPage = () => {
         return;
     }
 
+    // Salvar estado atual para desfazer
+    setLastUndoableAction({
+      type: 'cancel',
+      snapshotTournamentQueue: tournamentQueue,
+      snapshotRankedTasks: rankedTasks,
+      snapshotP3Tasks: p3Tasks,
+      snapshotCurrentChallenger: currentChallenger,
+      snapshotCurrentOpponentIndex: currentOpponentIndex,
+      cancelledTaskId: taskIdToCancel,
+    });
+
     const success = await handleApiCall(
         () => completeTask(taskIdToCancel),
         "Cancelando tarefa...",
@@ -456,7 +491,7 @@ const SEITONPage = () => {
     );
 
     if (success) {
-        showSuccess(`Tarefa "${isChallengerCancelled ? currentChallenger?.content : currentOpponent?.content || 'desconhecida'}" cancelada.`); // Use optional chaining
+        showSuccess(`Tarefa "${isChallengerCancelled ? currentChallenger?.content : currentOpponent?.content || 'desconhecida'}" cancelada.`);
 
         if (isChallengerCancelled) {
             setTournamentQueue(prevQueue => prevQueue.filter(task => task.id !== taskIdToCancel));
@@ -472,18 +507,58 @@ const SEITONPage = () => {
         // Record comparison history for cancellation
         setComparisonHistory(prevHistory => [
             {
-                challengerContent: currentChallenger?.content || "N/A", // Use optional chaining
-                opponentContent: isOpponentCancelled ? currentOpponent?.content || "N/A" : "N/A", // Use optional chaining
+                challengerContent: currentChallenger?.content || "N/A",
+                opponentContent: isOpponentCancelled ? currentOpponent?.content || "N/A" : "N/A",
                 winner: 'N/A', // No winner in a cancellation
-                action: `Tarefa "${isChallengerCancelled ? currentChallenger?.content : currentOpponent?.content || 'desconhecida'}" cancelada.`, // Use optional chaining
+                action: `Tarefa "${isChallengerCancelled ? currentChallenger?.content : currentOpponent?.content || 'desconhecida'}" cancelada.`,
                 timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
             },
             ...prevHistory,
         ].slice(0, 3));
     } else {
         showError("Falha ao cancelar a tarefa.");
+        setLastUndoableAction(null); // Clear undo state if API call fails
     }
-}, [currentChallenger, currentOpponentIndex, rankedTasks, completeTask]);
+}, [currentChallenger, currentOpponentIndex, rankedTasks, completeTask, tournamentQueue, p3Tasks, setLastUndoableAction]);
+
+  const handleUndo = useCallback(async () => {
+    if (!lastUndoableAction) {
+      showError("Não há ação para desfazer.");
+      return;
+    }
+
+    setLoading(true); // Indica carregamento durante a operação de desfazer
+
+    try {
+      if (lastUndoableAction.type === 'cancel' && lastUndoableAction.cancelledTaskId) {
+        // Desfazer um cancelamento: reabrir tarefa no Todoist
+        const success = await handleApiCall(
+          () => reopenTask(lastUndoableAction.cancelledTaskId!),
+          "Desfazendo cancelamento...",
+          "Tarefa restaurada no Todoist!"
+        );
+        if (!success) {
+          throw new Error("Falha ao reabrir a tarefa no Todoist.");
+        }
+      }
+      // Restaurar o estado do snapshot
+      setTournamentQueue(lastUndoableAction.snapshotTournamentQueue);
+      setRankedTasks(lastUndoableAction.snapshotRankedTasks);
+      setP3Tasks(lastUndoableAction.snapshotP3Tasks);
+      setCurrentChallenger(lastUndoableAction.snapshotCurrentChallenger);
+      setCurrentOpponentIndex(lastUndoableAction.snapshotCurrentOpponentIndex);
+      setCurrentStep('tournamentComparison'); // Assume que voltamos para a comparação
+
+      setLastUndoableAction(null); // Limpar estado de desfazer
+      showSuccess("Ação desfeita com sucesso!");
+    } catch (error: any) {
+      console.error("Erro ao desfazer ação:", error);
+      showError(`Falha ao desfazer ação: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [lastUndoableAction, reopenTask, setLoading, setTournamentQueue, setRankedTasks, setP3Tasks, setCurrentChallenger, setCurrentOpponentIndex, setCurrentStep]);
+
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -505,6 +580,9 @@ const SEITONPage = () => {
           } else {
             showError("Nenhuma tarefa desafiante para cancelar.");
           }
+        } else if (event.key === 'z' || event.key === 'Z') { // 'Z' for Undo
+          event.preventDefault();
+          handleUndo();
         }
       }
     };
@@ -513,7 +591,7 @@ const SEITONPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask]);
+  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask, handleUndo]);
 
   // Effect to save final ranking when currentStep becomes 'result'
   useEffect(() => {
@@ -665,10 +743,11 @@ const SEITONPage = () => {
           <h1 className="text-4xl font-extrabold text-blue-800 text-center flex-grow">
             SEITON - Planejar Dia
           </h1>
-          <p className="text-xl text-blue-700 text-center mb-8">
-            Priorize suas tarefas com torneio
-          </p>
+          <div className="w-20"></div> {/* Espaçador para centralizar o título */}
         </div>
+        <p className="text-xl text-blue-700 text-center mb-8">
+          Priorize suas tarefas com torneio
+        </p>
       </div>
 
       <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
@@ -750,7 +829,7 @@ const SEITONPage = () => {
         )}
       </Card>
       
-      <div className="mt-8 w-full max-w-3xl">
+      <div className="mt-8 w-full max-w-3xl flex justify-between items-center">
         <Button
           variant="outline"
           onClick={() => setShowDebugPanel(!showDebugPanel)}
@@ -759,8 +838,20 @@ const SEITONPage = () => {
           <Bug size={20} /> {showDebugPanel ? "Esconder Debug" : "Mostrar Debug"}
         </Button>
 
+        {lastUndoableAction && (
+          <Button
+            variant="outline"
+            onClick={handleUndo}
+            disabled={loading}
+            className="flex items-center gap-2 text-red-700 hover:text-red-900 border-red-300 hover:border-red-400 bg-white/70 backdrop-blur-sm"
+          >
+            <Undo2 size={20} /> Desfazer (Z)
+          </Button>
+        )}
+      </div>
+
         {showDebugPanel && (
-          <Card className="mt-4 p-4 shadow-lg bg-white/90 backdrop-blur-sm text-left text-sm">
+          <Card className="mt-4 p-4 shadow-lg bg-white/90 backdrop-blur-sm text-left text-sm w-full max-w-3xl">
             <CardTitle className="text-xl font-bold mb-3">Painel de Debug</CardTitle>
             <div className="space-y-3">
               <p><strong>Current Step:</strong> {currentStep}</p>
@@ -812,7 +903,6 @@ const SEITONPage = () => {
             </div>
           </Card>
         )}
-      </div>
       <MadeWithDyad />
     </div>
   );
