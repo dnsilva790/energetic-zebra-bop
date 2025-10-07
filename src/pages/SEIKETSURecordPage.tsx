@@ -236,8 +236,10 @@ const SEIKETSURecordPage: React.FC = () => {
     setAiError(null);
 
     const systemPrompt = localStorage.getItem(AI_SUGGESTION_SYSTEM_PROMPT_KEY) || DEFAULT_SUGGESTION_PROMPT;
+    const now = new Date();
+    const formattedNow = format(now, "dd/MM/yyyy HH:mm", { locale: ptBR });
 
-    const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}.`;
+    const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}. Data e hora atuais: ${formattedNow}.`;
     const prompt = `${systemPrompt}\n${taskDetails}\nSugestões:`;
 
     try {
