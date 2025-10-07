@@ -28,7 +28,7 @@ const convertUtcToBrasilia = (date: string, time: string): { data: string | null
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('=== suggest-task-time called ===');
   console.log('Environment check:', {
-    hasGeminiApiKey: !!process.env.GEMINI_API_KEY,
+    hasGeminiApiKey: !!process.env.VITE_GEMINI_API_KEY, // Changed to VITE_GEMINI_API_KEY
   });
 
   try {
@@ -37,9 +37,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(405).json({ error: 'Method Not Allowed', message: 'Only POST requests are supported.' });
     }
 
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const geminiApiKey = process.env.VITE_GEMINI_API_KEY; // Changed to VITE_GEMINI_API_KEY
     if (!geminiApiKey) {
-      console.error("SERVERLESS: GEMINI_API_KEY environment variable not set.");
+      console.error("SERVERLESS: VITE_GEMINI_API_KEY environment variable not set."); // Changed message
       return res.status(500).json({ error: 'Server Configuration Error', message: 'Gemini API key is not configured on the server.' });
     }
 
