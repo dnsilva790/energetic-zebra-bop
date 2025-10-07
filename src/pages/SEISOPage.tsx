@@ -249,18 +249,58 @@ const SEISOPage = () => {
 
       console.log("SEISOPage - Tasks AFTER final filtering (parent_id === null && !is_completed):", filteredAndCleanedTasks.length);
 
-      const p1 = filteredAndCleanedTasks.filter(task => task.priority === 4);
-      const nonP1Tasks = filteredAndCleanedTasks.filter(task => task.priority !== 4);
+      // Nova lógica de ordenação: priorizar tarefas com asterisco
+      const sortedTasks = filteredAndCleanedTasks.sort((a, b) => {
+        const aStartsAst = a.content.startsWith('*');
+        const bStartsAst = b.content.startsWith('*');
 
-      let others: TodoistTask[];
-      if (usingSeitonSource) { // Se estiver usando qualquer ranking SEITON, mantém a ordem para não-P1
-        others = nonP1Tasks;
-      } else { // Se estiver usando filtro, embaralha as tarefas não-P1
-        others = shuffleArray(nonP1Tasks);
-      }
+        if (aStartsAst && !bStartsAst) return -1; // A vem primeiro
+        if (!aStartsAst && bStartsAst) return 1;  // B vem primeiro
+        // Se ambos ou nenhum começam com '*', prossegue para a ordenação existente
 
-      const combinedTasks = [...p1, ...others];
-      setAllTasksInSession(combinedTasks);
+        // Primary sort: priority (descending)
+        if (b.priority !== a.priority) {
+          return b.priority - a.priority;
+        }
+
+        const parseAndValidateDate = (dateString: string | null | undefined): Date | null => {
+          if (typeof dateString === 'string' && dateString.trim() !== '') {
+            const parsed = parseISO(dateString);
+            return isValid(parsed) ? parsed : null;
+          }
+          return null;
+        };
+
+        // Secondary sort: deadline (ascending)
+        const deadlineA = a.deadline?.date ? parseAndValidateDate(a.deadline.date) : null;
+        const deadlineB = b.deadline?.date ? parseAndValidateDate(b.deadline.date) : null;
+
+        if (deadlineA && deadlineB) {
+          const deadlineComparison = deadlineA.getTime() - deadlineB.getTime();
+          if (deadlineComparison !== 0) {
+            return deadlineComparison;
+          }
+        } else if (deadlineA) {
+          return -1; // Task A has a deadline, Task B doesn't, so A comes first
+        } else if (deadlineB) {
+          return 1; // Task B has a deadline, Task A doesn't, so B comes first
+        }
+
+        // Tertiary sort: due date (ascending)
+        const dateA = parseAndValidateDate(a.due?.date);
+        const dateB = parseAndValidateDate(b.due?.date);
+
+        if (dateA && dateB) {
+          return dateA.getTime() - dateB.getTime();
+        } else if (dateA) {
+          return -1; // Task A has a due date, Task B doesn't, so A comes first
+        } else if (dateB) {
+          return 1; // Task B has a due date, Task A doesn't, so B comes first
+        }
+        return 0; // Both have no valid date or deadline
+      });
+
+      setAllTasksInSession(sortedTasks);
       setIsUsingSeitonRanking(usingSeitonSource);
       setSessionStarted(true); // Inicia a sessão se houver tarefas
       setCurrentTaskIndex(0);

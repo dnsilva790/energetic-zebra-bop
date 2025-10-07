@@ -337,7 +337,10 @@ const SEIKETSURecordPage: React.FC = () => {
       }
 
       const data = await response.json();
-      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "indefinido";
+      // Verificação mais robusta para data.candidates
+      const candidates = data.candidates;
+      const aiResponseContent = (Array.isArray(candidates) && candidates.length > 0 && candidates[0]?.content?.parts?.[0]?.text) || "indefinido";
+      
       const classification = aiResponseContent.toLowerCase().trim();
 
       if (classification === 'pessoal' || classification === 'profissional') {
@@ -408,6 +411,11 @@ const SEIKETSURecordPage: React.FC = () => {
           // Ajustar o início do bloco se for no passado em relação ao currentSearchDate
           if (isBefore(blockStart, currentSearchDate)) {
             blockStart = currentSearchDate;
+          }
+
+          // Garantir que blockStart não exceda blockEnd após o ajuste
+          if (isAfter(blockStart, blockEnd)) {
+            continue; // Este bloco está efetivamente encerrado ou começa muito tarde
           }
 
           // Gerar slots de 15 minutos dentro do bloco
