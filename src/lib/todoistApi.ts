@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { TodoistTask, TodoistProject, AISuggestion, AISuggestionResponse } from "./types"; // Importar os novos tipos
 import { format, parseISO, isValid } from "date-fns";
+import { toZonedTime } from 'date-fns-tz'; // Importar toZonedTime
 
 const TODOIST_CONFIG = {
   baseURL: 'https://api.todoist.com/rest/v2',
@@ -46,6 +47,29 @@ export async function handleApiCall<T>(apiFunction: () => Promise<T>, loadingMes
 
 // Regex para encontrar e extrair o deadline da descrição
 const DEADLINE_REGEX = /\[DEADLINE:\s*(.*?)]/i;
+
+// Helper para converter string de tempo UTC para string de tempo de Brasília
+const convertUtcToBrasilia = (date: string, time: string): { data: string | null, hora_brasilia: string | null } => {
+  if (!date || !time) {
+    return { data: null, hora_brasilia: null };
+  }
+  const utcDateTimeString = `${date}T${time}:00Z`; // Assume time is HH:MM
+  const utcDate = parseISO(utcDateTimeString);
+  if (!isValid(utcDate)) {
+    console.warn(`CLIENT: Invalid UTC date/time string for conversion: ${utcDateTimeString}`);
+    return { data: null, hora_brasilia: null };
+  }
+  try {
+    const brasiliaDate = toZonedTime(utcDate, 'America/Sao_Paulo'); // Usando toZonedTime
+    return {
+      data: format(brasiliaDate, 'yyyy-MM-dd'),
+      hora_brasilia: format(brasiliaDate, 'HH:mm'),
+    };
+  } catch (tzError: any) {
+    console.error(`CLIENT: Error converting timezone for ${utcDateTimeString}:`, tzError);
+    return { data: null, hora_brasilia: null };
+  }
+};
 
 /**
  * Cria uma ou mais tarefas no Todoist através do endpoint Serverless.
@@ -456,40 +480,113 @@ export async function getAISuggestedTimes(
   currentDateTime: string,
   existingAgenda: any[]
 ): Promise<AISuggestionResponse | undefined> {
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+  if (!GEMINI_API_KEY) {
+    console.error("CLIENT: VITE_GEMINI_API_KEY environment variable not set.");
+    throw new Error("Chave da API do Gemini não configurada. Por favor, adicione-a ao seu arquivo .env.");
+  }
+
+  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
   try {
-    const response = await fetch('/api/suggest-task-time', {
+    const processedAgendaExistente = existingAgenda.map((item: any) => {
+      if (item.data && item.hora_utc) {
+        const { data, hora_brasilia } = convertUtcToBrasilia(item.data, item.hora_utc);
+        if (data && hora_brasilia) {
+          return {
+            tarefa: item.tarefa,
+            data: data,
+            hora_brasilia: hora_brasilia,
+            duracao_min: item.duracao_min,
+            prioridade: item.prioridade,
+          };
+        }
+      }
+      return null;
+    }).filter(Boolean);
+
+    const userPromptContent = {
+      hora_atual: currentDateTime,
+      nova_tarefa: {
+        descricao: taskContent,
+        contexto_adicional: taskDescription,
+      },
+      agenda_existente: processedAgendaExistente,
+    };
+
+    const geminiResponse = await fetch(GEMINI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        systemPrompt,
-        hora_atual: currentDateTime,
-        nova_tarefa: {
-          descricao: taskContent,
-          contexto_adicional: taskDescription,
-          // Prazo e prioridade serão inferidos pela IA do prompt
-        },
-        agenda_existente: existingAgenda,
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
+        ],
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Client-side: Error response from /api/suggest-task-time:", errorData);
-      throw new Error(errorData.details || errorData.message || `Erro ao obter sugestões da IA: ${response.statusText}`);
+    if (!geminiResponse.ok) {
+      let errorMessage = `Erro na API Gemini: Status ${geminiResponse.status}`;
+      let errorDetails = '';
+      const contentType = geminiResponse.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          const errorData = await geminiResponse.json();
+          errorDetails = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+          errorMessage += `. Detalhes: ${errorDetails}`;
+        } catch (jsonError: any) {
+          console.warn("CLIENT: Failed to parse Gemini API error response as JSON:", jsonError);
+          errorMessage += `. Resposta JSON malformada. Erro de parsing: ${jsonError.message}`;
+        }
+      } else {
+        const textError = await geminiResponse.text();
+        errorDetails = textError.substring(0, 500);
+        errorMessage += `. Resposta: ${errorDetails}`;
+      }
+      
+      console.error("CLIENT: Gemini API Error Response - Status:", geminiResponse.status, "Status Text:", geminiResponse.statusText, "Details:", errorDetails);
+      throw new Error(errorMessage);
     }
 
-    const result = await response.json();
-    if (result.status === 'error') {
-      throw new Error(result.message || 'Erro ao obter sugestões da IA.');
+    const rawGeminiData = await geminiResponse.text();
+    console.log("CLIENT: Gemini API response received. Length:", rawGeminiData.length);
+
+    const markdownMatch = rawGeminiData.match(/```json\n([\s\S]*?)\n```/);
+    let aiResponseContentString = markdownMatch && markdownMatch[1] ? markdownMatch[1] : rawGeminiData;
+
+    let parsedSuggestions;
+    try {
+      parsedSuggestions = JSON.parse(aiResponseContentString);
+      console.log("CLIENT: Successfully parsed AI response as JSON.");
+    } catch (jsonParseError: any) {
+      console.error("CLIENT: Failed to parse AI response as JSON:", aiResponseContentString, "Error:", jsonParseError);
+      throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
     }
+
+    if (!parsedSuggestions || typeof parsedSuggestions !== 'object' || parsedSuggestions === null) {
+      console.error("CLIENT: A resposta da IA não é um objeto JSON válido ou é nula.");
+      throw new Error("A resposta da IA não está no formato esperado (objeto principal ausente ou inválido).");
+    }
+    if (!Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes')) {
+      console.error("CLIENT: A resposta da IA não possui a propriedade 'sugestoes'.");
+      throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' ausente).");
+    }
+    if (Object.prototype.toString.call(parsedSuggestions.sugestoes) !== '[object Array]') {
+      console.error("CLIENT: A propriedade 'sugestoes' da resposta da IA não é um array. Tipo real:", typeof parsedSuggestions.sugestoes, "Valor:", parsedSuggestions.sugestoes);
+      throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' não é um array).");
+    }
+
     return {
-      sugestoes: result.suggestions,
-      metadata: result.metadata,
+      sugestoes: parsedSuggestions.sugestoes,
+      metadata: parsedSuggestions.metadata,
     };
+
   } catch (error: any) {
-    console.error("Client-side error calling /api/suggest-task-time:", error);
-    throw error; // Re-throw para ser capturado por handleApiCall
+    console.error(`CLIENT: Error during Gemini API call or parsing:`, error.message, error.stack);
+    throw error;
   }
 }

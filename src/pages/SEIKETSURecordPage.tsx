@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain
+  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain, AlertCircle
 } from "lucide-react"; 
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
@@ -401,6 +401,31 @@ Retorne um JSON válido com 3 a 5 sugestões:
       default: return "Sem Prioridade";
     }
   };
+
+  // Check for Gemini API Key
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+  // --- Early exit if API key is missing ---
+  if (!GEMINI_API_KEY) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-indigo-100 p-4">
+        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
+          <CardTitle className="text-3xl font-bold text-red-800">Erro de Configuração</CardTitle>
+          <CardDescription className="text-lg text-gray-600 mt-2">
+            A chave da API do Gemini (<code>VITE_GEMINI_API_KEY</code>) não está configurada.
+            Por favor, adicione-a ao seu arquivo <code>.env</code> na raiz do projeto.
+          </CardDescription>
+          <p className="text-sm mt-2 text-gray-500">
+            Exemplo: <code>VITE_GEMINI_API_KEY=SUA_CHAVE_AQUI</code>
+          </p>
+          <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
+            Voltar ao Menu Principal
+          </Button>
+        </Card>
+        <MadeWithDyad />
+      </div>
+    );
+  }
 
   const fetchTasksForReview = useCallback(async () => {
     setLoading(true);
