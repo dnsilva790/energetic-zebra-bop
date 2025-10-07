@@ -114,9 +114,10 @@ const MainMenuPage = () => {
           <Brain size={20} />
           Configurações da IA de Sugestão
         </Button>
+        {/* Novo botão */}
         <Button
           variant="outline"
-          onClick={() => navigate("/seiton-ai-settings")} {/* Novo botão */}
+          onClick={() => navigate("/seiton-ai-settings")} 
           className="flex items-center gap-2 text-blue-700 hover:text-blue-900 border-blue-300 hover:border-blue-400 bg-white/70 backdrop-blur-sm"
         >
           <Brain size={20} />
