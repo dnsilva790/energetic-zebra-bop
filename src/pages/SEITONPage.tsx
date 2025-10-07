@@ -315,13 +315,7 @@ const SEITONPage = () => {
     setCurrentOpponentIndex(opponentIndex);
     setCurrentStep('tournamentComparison');
     console.log("SEITONPage - Starting comparison. Opponent Index:", opponentIndex, "Opponent:", rankedTasks[opponentIndex]?.content);
-
-    // Automatically trigger AI suggestion for the new comparison
-    // Ensure currentChallenger and rankedTasks[opponentIndex] are available before calling
-    if (nextChallenger && rankedTasks[opponentIndex]) {
-      handleAISuggestComparison(nextChallenger, rankedTasks[opponentIndex]);
-    }
-  }, [tournamentQueue, rankedTasks, updateTaskAndReturn, handleAISuggestComparison]);
+  }, [tournamentQueue, rankedTasks, updateTaskAndReturn]);
 
   useEffect(() => {
     console.log("SEITONPage - Flow management effect triggered. Current step:", currentStep, "Challenger:", currentChallenger?.content || "Nenhum", "Queue length:", tournamentQueue.length);
@@ -629,17 +623,22 @@ const SEITONPage = () => {
     }
   }, [taskToSetDeadline, currentChallenger]);
 
-  const handleAISuggestComparison = useCallback(async (challenger: TodoistTask, opponent: TodoistTask) => {
+  const handleAISuggestComparison = useCallback(async () => {
     if (!GEMINI_API_KEY) {
-      // This error is already handled at the top level, no need to show another toast here.
-      console.warn("GEMINI_API_KEY not configured. Cannot provide AI comparison suggestion.");
+      showError("A chave da API do Gemini (VITE_GEMINI_API_KEY) não está configurada.");
+      return;
+    }
+    if (!currentChallenger || currentOpponentIndex === null) {
+      showError("Nenhuma tarefa para comparar.");
       return;
     }
 
     setIsAISuggestingComparison(true);
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
-    setShowAiComparisonSuggestion(true); // Always show the suggestion section
+    setShowAiComparisonSuggestion(true);
+
+    const opponentTask = rankedTasks[currentOpponentIndex];
 
     const getTaskDetails = (task: TodoistTask, label: string) => {
       const priorityLabel = getPriorityLabel(task.priority);
@@ -650,8 +649,8 @@ const SEITONPage = () => {
       return `Tarefa ${label}: "${task.content}". Descrição: "${description}". Prioridade: ${priorityLabel} (${task.priority}). Vencimento: ${dueDate}. Data Limite: ${deadlineDate}. Recorrente: ${isRecurring}.`;
     };
 
-    const taskADetails = getTaskDetails(challenger, 'A');
-    const taskBDetails = getTaskDetails(opponent, 'B');
+    const taskADetails = getTaskDetails(currentChallenger, 'A');
+    const taskBDetails = getTaskDetails(opponentTask, 'B');
 
     const systemPrompt = localStorage.getItem(AI_COMPARISON_SYSTEM_PROMPT_KEY) || DEFAULT_AI_COMPARISON_PROMPT;
     const prompt = `${systemPrompt}\n${taskADetails}\n${taskBDetails}`;
@@ -689,7 +688,7 @@ const SEITONPage = () => {
     } finally {
       setIsAISuggestingComparison(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL]);
+  }, [GEMINI_API_KEY, GEMINI_API_URL, currentChallenger, currentOpponentIndex, rankedTasks]);
 
 
   useEffect(() => {
@@ -715,8 +714,10 @@ const SEITONPage = () => {
         } else if (event.key === 'z' || event.key === 'Z') { // 'Z' for Undo
           event.preventDefault();
           handleUndo();
+        } else if (event.key === 'i' || event.key === 'I') { // 'I' for AI Suggestion
+          event.preventDefault();
+          handleAISuggestComparison();
         }
-        // Removido o atalho 'I' para sugestão da IA, pois agora é automático
       }
     };
 
@@ -724,7 +725,7 @@ const SEITONPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask, handleUndo, showSetDeadlineDialog]);
+  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask, handleUndo, showSetDeadlineDialog, handleAISuggestComparison]);
 
   // Effect to save final ranking when currentStep becomes 'result'
   useEffect(() => {
@@ -799,8 +800,7 @@ const SEITONPage = () => {
     title: string,
     description: string,
     priorityOverride?: number,
-    onCardClick?: () => void,
-    isSuggestedByAI?: boolean // Nova prop para destaque da IA
+    onCardClick?: () => void // Adicionando a prop onCardClick
   ) => {
     if (!task) {
         console.log(`renderTaskCard: Task is null for title "${title}". This is why the card is not rendering.`);
@@ -812,8 +812,7 @@ const SEITONPage = () => {
       <Card
         className={cn(
           "w-full shadow-lg bg-white/80 backdrop-blur-sm p-4",
-          onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200", // Adiciona estilos para indicar clicável
-          isSuggestedByAI && "border-4 border-purple-500 ring-4 ring-purple-300" // Destaque da IA
+          onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200" // Adiciona estilos para indicar clicável
         )}
         onClick={onCardClick} // Torna o card clicável
         tabIndex={onCardClick ? 0 : -1} // Torna-o focável pelo teclado se for clicável
@@ -951,49 +950,40 @@ const SEITONPage = () => {
               Escolha a tarefa que você considera mais prioritária ou cancele uma delas.
             </CardDescription>
             <div className="grid grid-cols-1 gap-4">
-              {renderTaskCard(
-                currentChallenger,
-                "Tarefa A",
-                "Challenger",
-                currentChallenger.priority,
-                () => handleTournamentComparison(true),
-                aiComparisonSuggestion === 'A'
-              )}
+              {renderTaskCard(currentChallenger, "Tarefa A", "Challenger", currentChallenger.priority, () => handleTournamentComparison(true))}
               <p className="text-xl font-bold text-gray-700">VS</p>
-              {renderTaskCard(
-                currentOpponent,
-                "Tarefa B",
-                `Posição ${currentOpponentIndex + 1} no Ranking`,
-                currentOpponent.priority,
-                () => handleTournamentComparison(false),
-                aiComparisonSuggestion === 'B'
-              )}
+              {renderTaskCard(currentOpponent, "Tarefa B", `Posição ${currentOpponentIndex + 1} no Ranking`, currentOpponent.priority, () => handleTournamentComparison(false))}
             </div>
             
-            {/* AI Suggestion Section - Always visible when comparison is active */}
-            {showAiComparisonSuggestion && (
-              <div className="mt-6 space-y-2">
+            {/* AI Suggestion Section */}
+            <div className="mt-6 space-y-2">
+              <Button
+                onClick={handleAISuggestComparison}
+                disabled={isAISuggestingComparison}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 rounded-md transition-colors flex items-center justify-center"
+              >
                 {isAISuggestingComparison ? (
-                  <div className="flex items-center justify-center p-3 bg-gray-100 rounded-md text-sm text-gray-700">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    A IA está pensando...
-                  </div>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <div className="p-3 bg-gray-100 rounded-md text-sm text-gray-700 text-left">
-                    {aiComparisonSuggestion && (
-                      <p className="font-semibold mb-1">
-                        A IA sugere: <span className={cn(
-                          aiComparisonSuggestion === 'A' ? 'text-purple-600' : 'text-purple-600'
-                        )}>Tarefa {aiComparisonSuggestion}</span>
-                      </p>
-                    )}
-                    {aiComparisonExplanation && (
-                      <p>{aiComparisonExplanation}</p>
-                    )}
-                  </div>
+                  <Brain className="mr-2 h-5 w-5" />
                 )}
-              </div>
-            )}
+                Sugestão da IA (I)
+              </Button>
+              {showAiComparisonSuggestion && (
+                <div className="p-3 bg-gray-100 rounded-md text-sm text-gray-700 text-left">
+                  {aiComparisonSuggestion && (
+                    <p className="font-semibold mb-1">
+                      A IA sugere: <span className={cn(
+                        aiComparisonSuggestion === 'A' ? 'text-blue-600' : 'text-blue-600'
+                      )}>Tarefa {aiComparisonSuggestion}</span>
+                    </p>
+                  )}
+                  {aiComparisonExplanation && (
+                    <p>{aiComparisonExplanation}</p>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="flex justify-center space-x-4 mt-6">
               <Button onClick={() => handleTournamentComparison(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
