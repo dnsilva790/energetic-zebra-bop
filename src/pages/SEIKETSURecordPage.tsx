@@ -13,7 +13,7 @@ import {
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, handleApiCall, updateTaskDueDate, completeTask } from "@/lib/todoistApi"; 
-import { format, parseISO, setHours, setMinutes, isValid, addDays, parse, startOfDay, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday, getDay } from "date-fns";
+import { format, parseISO, setHours, setMinutes, isValid, addDays, parse, startOfDay, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday, getDay, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask, SequencerSettings } from "@/lib/types"; 
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
@@ -363,76 +363,71 @@ const SEIKETSURecordPage: React.FC = () => {
   }, [GEMINI_API_URL, currentTask, getPriorityLabel, sequencerSettings]);
 
   const applyAISuggestion = useCallback((suggestion: string) => {
-    let newDate: Date | undefined = undefined;
-    let newTime: string = "";
     const now = new Date();
     const startOfToday = startOfDay(now);
 
+    let parsedDate: Date | undefined = undefined;
+    let extractedTime: string = "";
+
     const lowerSuggestion = suggestion.toLowerCase();
 
-    // 1. Handle relative dates (these should inherently be in the future)
+    // 1. Tentar parsear datas relativas primeiro
     if (lowerSuggestion.includes("amanhã")) {
-        newDate = addDays(startOfToday, 1);
+        parsedDate = addDays(startOfToday, 1);
     } else if (lowerSuggestion.includes("próxima semana")) {
-        newDate = addDays(startOfToday, 7);
+        parsedDate = addDays(startOfToday, 7);
     } else if (lowerSuggestion.includes("próxima segunda-feira")) {
-        newDate = nextMonday(now);
+        parsedDate = nextMonday(now);
     } else if (lowerSuggestion.includes("próxima terça-feira")) {
-        newDate = nextTuesday(now);
+        parsedDate = nextTuesday(now);
     } else if (lowerSuggestion.includes("próxima quarta-feira")) {
-        newDate = nextWednesday(now);
+        parsedDate = nextWednesday(now);
     } else if (lowerSuggestion.includes("próxima quinta-feira")) {
-        newDate = nextThursday(now);
+        parsedDate = nextThursday(now);
     } else if (lowerSuggestion.includes("próxima sexta-feira")) {
-        newDate = nextFriday(now);
+        parsedDate = nextFriday(now);
     } else if (lowerSuggestion.includes("próximo sábado")) {
-        newDate = nextSaturday(now);
+        parsedDate = nextSaturday(now);
     } else if (lowerSuggestion.includes("próximo domingo")) {
-        newDate = nextSunday(now);
+        parsedDate = nextSunday(now);
     } else {
-        // 2. Try to parse specific date formats
-        try {
-            // Try "dd/MM/yyyy 'às' HH:mm"
-            let parsed = parse(suggestion, "dd/MM/yyyy 'às' HH:mm", now, { locale: ptBR });
-            if (isValid(parsed)) {
-                newDate = parsed;
-                newTime = format(parsed, "HH:mm");
-            } else {
-                // Try "dd/MM/yyyy"
-                parsed = parse(suggestion, "dd/MM/yyyy", now, { locale: ptBR });
-                if (isValid(parsed)) {
-                    newDate = startOfDay(parsed);
-                }
+        // 2. Se nenhuma data relativa, tentar parsear formatos específicos
+        // Priorizar formato com data e hora
+        let tempParsed = parse(suggestion, "dd/MM/yyyy 'às' HH:mm", now, { locale: ptBR });
+        if (isValid(tempParsed)) {
+            parsedDate = tempParsed;
+        } else {
+            // Fallback para formato apenas com data
+            tempParsed = parse(suggestion, "dd/MM/yyyy", now, { locale: ptBR });
+            if (isValid(tempParsed)) {
+                parsedDate = tempParsed;
             }
-        } catch (e) {
-            console.warn("Could not parse AI suggestion date:", suggestion, e);
         }
     }
 
-    // 3. Ensure newDate is not in the past
-    if (newDate && newDate < startOfToday) {
-        // If the parsed date is in the past, try to advance it by a year if it's a specific date without year context
-        // or simply set it to today if it's a general past date.
-        if (newDate.getFullYear() < now.getFullYear()) { // If it's a past year, assume next year
-            newDate = new Date(newDate.setFullYear(now.getFullYear() + 1));
-        } else if (newDate.getMonth() < now.getMonth() || (newDate.getMonth() === now.getMonth() && newDate.getDate() < now.getDate())) {
-            // If it's a past month/day in the current year, assume next year
-            newDate = new Date(newDate.setFullYear(now.getFullYear() + 1));
-        }
-        // After potential year adjustment, if it's still before startOfToday, set it to startOfToday
-        if (newDate < startOfToday) {
-            newDate = startOfToday;
-        }
-    }
-
-    // 4. Extract time if present in the suggestion string (e.g., "às 10:00", "10:00")
+    // 3. Extrair o horário da string de sugestão, independentemente de como a data foi parseada
     const timeMatch = suggestion.match(/(\d{1,2}:\d{2})/);
     if (timeMatch) {
-        newTime = timeMatch[1];
+        extractedTime = timeMatch[1];
     }
 
-    setSelectedDueDate(newDate);
-    setSelectedDueTime(newTime);
+    // 4. Validação final e ajuste para parsedDate
+    if (parsedDate) {
+        // Se a data parseada for anterior ao início do dia atual, ajustá-la
+        if (isBefore(startOfDay(parsedDate), startOfToday)) {
+            // Se for o mesmo dia, mas o horário já passou, manter a data.
+            // Se for um dia passado, default para amanhã.
+            if (startOfDay(parsedDate).getTime() !== startOfToday.getTime()) {
+                parsedDate = addDays(startOfToday, 1);
+            }
+        }
+    } else {
+        // Se nenhuma data pôde ser parseada, default para amanhã
+        parsedDate = addDays(startOfToday, 1);
+    }
+
+    setSelectedDueDate(parsedDate);
+    setSelectedDueTime(extractedTime);
     setShowPostponeDialog(true); // Abre o diálogo de postergar com a sugestão preenchida
     showSuccess(`Sugestão "${suggestion}" aplicada.`);
   }, []);

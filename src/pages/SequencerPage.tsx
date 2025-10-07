@@ -9,7 +9,7 @@ import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, handleApiCall, updateTask } from "@/lib/todoistApi";
 import { TodoistTask, SequencerSettings } from "@/lib/types";
-import { format, parseISO, isValid, getDay, setHours, setMinutes, isAfter, startOfDay } from "date-fns";
+import { format, parseISO, isValid, getDay, setHours, setMinutes, isAfter, startOfDay, isBefore, addMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Input } from "@/components/ui/input"; // Importar Input
 import { Label } from "@/components/ui/label"; // Importar Label
@@ -17,6 +17,17 @@ import { SEQUENCER_SETTINGS_KEY, SEQUENCER_TASK_LIMIT_KEY } from "@/lib/constant
 
 const AI_CONTEXT_PROMPT_KEY = 'ai_context_prompt';
 const DEFAULT_AI_CONTEXT_PROMPT = `Dada a seguinte tarefa, classifique-a como 'pessoal' ou 'profissional'. Responda apenas com 'pessoal' ou 'profissional'.`;
+
+// Função utilitária para arredondar para o próximo intervalo de 15 minutos
+const roundToNext15Minutes = (date: Date): Date => {
+  const minutes = date.getMinutes();
+  const remainder = minutes % 15;
+  if (remainder === 0) {
+    return date; // Já está em um múltiplo de 15 minutos
+  }
+  const minutesToAdd = 15 - remainder;
+  return addMinutes(date, minutesToAdd);
+};
 
 const SequencerPage: React.FC = () => {
   const navigate = useNavigate();
@@ -147,9 +158,6 @@ const SequencerPage: React.FC = () => {
       let start = setMinutes(setHours(today, parseInt(block.start.split(':')[0])), parseInt(block.start.split(':')[1]));
       let end = setMinutes(setHours(today, parseInt(block.end.split(':')[0])), parseInt(block.end.split(':')[1]));
       if (isAfter(end, now)) { // Apenas blocos no futuro
-        if (isAfter(now, start)) { // Se o bloco já começou, ajusta o início para agora
-          start = now;
-        }
         availableTimeBlocks.push({ start, end, type: 'profissional' });
       }
     });
@@ -159,9 +167,6 @@ const SequencerPage: React.FC = () => {
       let start = setMinutes(setHours(today, parseInt(block.start.split(':')[0])), parseInt(block.start.split(':')[1]));
       let end = setMinutes(setHours(today, parseInt(block.end.split(':')[0])), parseInt(block.end.split(':')[1]));
       if (isAfter(end, now)) { // Apenas blocos no futuro
-        if (isAfter(now, start)) { // Se o bloco já começou, ajusta o início para agora
-          start = now;
-        }
         availableTimeBlocks.push({ start, end, type: 'pessoal' });
       }
     });
@@ -208,8 +213,18 @@ const SequencerPage: React.FC = () => {
     const remainingTasks = new Set(tasksToSchedule.map(t => t.id));
 
     for (const block of availableTimeBlocks) {
-      let currentTime = block.start;
+      let currentTime = block.start; // Este é o início do bloco, pode estar no passado ou futuro
       const blockEndTime = block.end;
+
+      // Ajustar currentTime se for anterior ao 'agora', arredondando para o próximo 15 minutos
+      if (isBefore(currentTime, now)) {
+        currentTime = roundToNext15Minutes(now);
+      }
+
+      // Garantir que currentTime não exceda blockEndTime após o ajuste
+      if (isAfter(currentTime, blockEndTime)) {
+        continue; // Este bloco está efetivamente encerrado ou começa muito tarde
+      }
 
       for (const task of tasksToSchedule) {
         if (!remainingTasks.has(task.id)) continue; // Já agendada ou ignorada
