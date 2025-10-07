@@ -27,7 +27,7 @@ const convertUtcToBrasilia = (date: string, time: string): { data: string | null
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('=== suggest-task-time called ===');
-  console.log('Request body:', req.body);
+  // console.log('Request body:', req.body); // Removido para reduzir verbosidade
   console.log('Environment check:', {
     hasGeminiApiKey: !!process.env.GEMINI_API_KEY,
     // Do NOT log the actual key!
@@ -75,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       agenda_existente: processedAgendaExistente,
     };
 
-    console.log("SERVERLESS: User prompt content sent to Gemini:", JSON.stringify(userPromptContent, null, 2));
+    // console.log("SERVERLESS: User prompt content sent to Gemini:", JSON.stringify(userPromptContent, null, 2)); // Removido para reduzir verbosidade
 
     let geminiResponse;
     try {
@@ -91,31 +91,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           contents: [
             { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
           ],
-          // Removido generationConfig.responseMimeType para evitar problemas de desserialização
         }),
       });
 
       if (!geminiResponse.ok) {
-        let errorData;
+        let errorMessage = `Erro na API Gemini: Status ${geminiResponse.status}`;
+        let errorDetails = '';
         const contentType = geminiResponse.headers.get('content-type');
+        
         if (contentType && contentType.includes('application/json')) {
           try {
-            errorData = await geminiResponse.json();
+            const errorData = await geminiResponse.json();
+            errorDetails = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+            errorMessage += `. Detalhes: ${errorDetails}`;
           } catch (jsonError: any) {
-            console.error("SERVERLESS: Failed to parse Gemini API error response as JSON:", jsonError);
-            throw new Error(`Erro na API Gemini: ${geminiResponse.statusText}. Resposta não-JSON ou malformada.`);
+            console.warn("SERVERLESS: Failed to parse Gemini API error response as JSON:", jsonError);
+            errorMessage += `. Resposta JSON malformada. Erro de parsing: ${jsonError.message}`;
           }
         } else {
           const textError = await geminiResponse.text();
-          console.error("SERVERLESS: Gemini API Non-JSON Error Response:", textError);
-          throw new Error(`Erro na API Gemini: ${geminiResponse.statusText}. Resposta: ${textError.substring(0, 500)}`);
+          errorDetails = textError.substring(0, 500); // Limita o tamanho para logs
+          errorMessage += `. Resposta: ${errorDetails}`;
         }
-        console.error("SERVERLESS: Gemini API Error Response:", errorData);
-        throw new Error(errorData.error?.message || `Erro na API Gemini: ${geminiResponse.statusText}`);
+        
+        console.error("SERVERLESS: Gemini API Error Response - Status:", geminiResponse.status, "Status Text:", geminiResponse.statusText, "Details:", errorDetails);
+        throw new Error(errorMessage);
       }
 
       const rawGeminiData = await geminiResponse.text();
-      console.log("SERVERLESS: Raw Gemini response (full API response):", rawGeminiData);
+      // console.log("SERVERLESS: Raw Gemini response (full API response):", rawGeminiData); // Removido para reduzir verbosidade
+      console.log("SERVERLESS: Gemini API response received. Length:", rawGeminiData.length);
+
 
       // O Gemini agora retorna uma string, então sempre tentamos extrair de um bloco Markdown ou parsear diretamente
       const markdownMatch = rawGeminiData.match(/```json\n([\s\S]*?)\n```/);
@@ -131,10 +137,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // --- Validação Refinada ---
-      console.log("SERVERLESS: Final parsedSuggestions object:", JSON.stringify(parsedSuggestions, null, 2));
-      console.log("SERVERLESS: Type of parsedSuggestions:", typeof parsedSuggestions);
-      console.log("SERVERLESS: Is parsedSuggestions null?", parsedSuggestions === null);
-      console.log("SERVERLESS: Does parsedSuggestions have 'sugestoes' property?", Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes'));
+      // console.log("SERVERLESS: Final parsedSuggestions object:", JSON.stringify(parsedSuggestions, null, 2)); // Removido para reduzir verbosidade
+      // console.log("SERVERLESS: Type of parsedSuggestions:", typeof parsedSuggestions); // Removido para reduzir verbosidade
+      // console.log("SERVERLESS: Is parsedSuggestions null?", parsedSuggestions === null); // Removido para reduzir verbosidade
+      // console.log("SERVERLESS: Does parsedSuggestions have 'sugestoes' property?", Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes')); // Removido para reduzir verbosidade
       console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (Object.prototype.toString)?", Object.prototype.toString.call(parsedSuggestions.sugestoes) === '[object Array]');
 
       if (!parsedSuggestions || typeof parsedSuggestions !== 'object' || parsedSuggestions === null) {
