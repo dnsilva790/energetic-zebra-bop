@@ -85,8 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          contents: [
-            { role: 'user', parts: [{ text: systemPrompt }] },
+          system_instruction: { // Usando system_instruction para o prompt do sistema
+            parts: [{ text: systemPrompt }]
+          },
+          contents: [ // A array contents agora começa com a conversa real
             { role: 'model', parts: [{ text: "Ok, entendi. Por favor, forneça o contexto da tarefa e da agenda." }] },
             { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
           ],
