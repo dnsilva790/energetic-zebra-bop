@@ -54,6 +54,30 @@ const SEIKETSURecordPage: React.FC = () => {
   const currentTask = tasksToReview[currentTaskIndex];
   const totalTasks = tasksToReview.length;
 
+  // Early exit if API key is missing, similar to AITutorChat
+  if (!GEMINI_API_KEY) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-indigo-100 p-4">
+        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
+          <CardTitle className="text-3xl font-bold text-gray-800">Erro de Configuração</CardTitle>
+          <CardDescription className="text-lg text-red-600 mt-2">
+            A chave da API do Gemini (<code>VITE_GEMINI_API_KEY</code>) não está configurada.
+          </CardDescription>
+          <p className="text-sm text-gray-700">
+            Por favor, adicione-a ao seu arquivo <code>.env</code> na raiz do projeto.
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            Exemplo: <code>VITE_GEMINI_API_KEY=SUA_CHAVE_AQUI</code>
+          </p>
+          <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
+            Voltar ao Menu Principal
+          </Button>
+        </Card>
+        <MadeWithDyad />
+      </div>
+    );
+  }
+
   useEffect(() => {
     const savedSettings = localStorage.getItem(SEQUENCER_SETTINGS_KEY);
     if (savedSettings) {
@@ -245,10 +269,8 @@ const SEIKETSURecordPage: React.FC = () => {
   }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
 
   const handleAISuggestion = useCallback(async () => {
-    if (!GEMINI_API_KEY) {
-        setAiError("Chave da API do Gemini não configurada. Por favor, adicione VITE_GEMINI_API_KEY ao seu .env.");
-        return;
-    }
+    // A verificação da chave da API já é feita no nível superior do componente.
+    // Se chegamos aqui, a chave existe.
     if (!currentTask) return;
 
     setIsAISuggesting(true);
@@ -314,7 +336,7 @@ const SEIKETSURecordPage: React.FC = () => {
     } finally {
         setIsAISuggesting(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, currentTask, getPriorityLabel, sequencerSettings]);
+  }, [GEMINI_API_URL, currentTask, getPriorityLabel, sequencerSettings]);
 
   const applyAISuggestion = useCallback((suggestion: string) => {
     let newDate: Date | undefined = undefined;
@@ -514,7 +536,7 @@ const SEIKETSURecordPage: React.FC = () => {
             <div className="flex justify-center mt-4">
                 <Button
                     onClick={handleAISuggestion}
-                    disabled={isAISuggesting || !GEMINI_API_KEY}
+                    disabled={isAISuggesting} // A verificação da chave já é feita no nível superior
                     className="bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center px-6 py-2 rounded-md transition-colors"
                 >
                     {isAISuggesting ? (
@@ -525,12 +547,6 @@ const SEIKETSURecordPage: React.FC = () => {
                     Sugerir Horários com IA (A)
                 </Button>
             </div>
-            {!GEMINI_API_KEY && (
-                <p className="text-red-500 text-sm text-center flex items-center justify-center mt-2">
-                    <AlertCircle className="h-4 w-4 mr-1" />
-                    Chave Gemini não configurada. Adicione VITE_GEMINI_API_KEY ao seu .env.
-                </p>
-            )}
             {aiError && (
                 <p className="text-red-500 text-sm text-center mt-2">{aiError}</p>
             )}

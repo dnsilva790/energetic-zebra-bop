@@ -193,7 +193,7 @@ const SEISOPage = () => {
             try {
               const parsedInProgressRanking: SeitonProgress = JSON.parse(savedInProgressRanking);
               combinedSeitonTasksFromStorage = [...parsedInProgressRanking.rankedTasks, ...parsedInProgressRanking.p3Tasks];
-              if (combinedSeitonTasksFromStorage.length > 0) {
+              if (combinedInProgressRanking.length > 0) {
                 console.log("SEISOPage - Found tasks in SEITON_PROGRESS_KEY.");
               } else {
                 console.log("SEISOPage - SEITON_PROGRESS_KEY encontrado, mas não contém tarefas úteis.");
