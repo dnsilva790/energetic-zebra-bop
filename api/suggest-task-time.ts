@@ -92,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
           ],
           generationConfig: {
-            responseMimeType: "application/json",
+            responseMimeType: "application/json", // This makes Gemini return a parsed JSON object in 'text'
           },
         }),
       });
@@ -117,34 +117,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const rawGeminiData = await geminiResponse.text();
-      console.log("SERVERLESS: Raw Gemini response:", rawGeminiData);
+      console.log("SERVERLESS: Raw Gemini response (full API response):", rawGeminiData);
 
       const data = JSON.parse(rawGeminiData);
       let aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-      if (typeof aiResponseContent !== 'string') {
-        console.error("SERVERLESS: Unexpected type for aiResponseContent:", typeof aiResponseContent, "Value:", aiResponseContent);
-        throw new Error("O conteúdo da resposta da IA não é uma string. Não é possível processar as sugestões.");
-      }
-
-      // NEW: Attempt to extract JSON from markdown code block
-      console.log("SERVERLESS: Raw AI response content from Gemini (before cleaning):", aiResponseContent);
-      const jsonMatch = aiResponseContent.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch && jsonMatch[1]) {
-        aiResponseContent = jsonMatch[1].trim();
-        console.log("SERVERLESS: Extracted JSON from markdown block:", aiResponseContent);
-      } else {
-        // If not a markdown block, try to clean up common conversational intros/outros
-        aiResponseContent = aiResponseContent.replace(/^\s*```json\s*/, '').replace(/\s*```\s*$/, '').trim();
-        console.log("SERVERLESS: Cleaned AI response content (no markdown block detected):", aiResponseContent);
-      }
-
       let parsedSuggestions;
-      try {
-        parsedSuggestions = JSON.parse(aiResponseContent);
-      } catch (jsonParseError: any) {
-        console.error("SERVERLESS: Failed to parse AI response as JSON:", aiResponseContent, "Error:", jsonParseError);
-        throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
+      if (typeof aiResponseContent === 'object' && aiResponseContent !== null) {
+        // If Gemini already returned a parsed JSON object (due to responseMimeType)
+        parsedSuggestions = aiResponseContent;
+        console.log("SERVERLESS: AI response content was already a parsed object.");
+      } else if (typeof aiResponseContent === 'string') {
+        // Fallback: if it's a string, try to parse it (e.g., if responseMimeType is ignored or changed)
+        console.log("SERVERLESS: AI response content is a string, attempting JSON.parse.");
+        try {
+          parsedSuggestions = JSON.parse(aiResponseContent);
+        } catch (jsonParseError: any) {
+          console.error("SERVERLESS: Failed to parse AI response as JSON:", aiResponseContent, "Error:", jsonParseError);
+          throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
+        }
+      } else {
+        console.error("SERVERLESS: Unexpected type for aiResponseContent after processing:", typeof aiResponseContent, "Value:", aiResponseContent);
+        throw new Error("O conteúdo da resposta da IA não é uma string ou objeto JSON válido.");
       }
 
       if (!parsedSuggestions || !Array.isArray(parsedSuggestions.sugestoes)) {
