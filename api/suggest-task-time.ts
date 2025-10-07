@@ -91,9 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           contents: [
             { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
           ],
-          generationConfig: {
-            responseMimeType: "application/json", // This makes Gemini return a parsed JSON object in 'text'
-          },
+          // Removido generationConfig.responseMimeType para evitar problemas de desserialização
         }),
       });
 
@@ -119,73 +117,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const rawGeminiData = await geminiResponse.text();
       console.log("SERVERLESS: Raw Gemini response (full API response):", rawGeminiData);
 
-      const data = JSON.parse(rawGeminiData);
-      let aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      // O Gemini agora retorna uma string, então sempre tentamos extrair de um bloco Markdown ou parsear diretamente
+      const markdownMatch = rawGeminiData.match(/```json\n([\s\S]*?)\n```/);
+      let aiResponseContentString = markdownMatch && markdownMatch[1] ? markdownMatch[1] : rawGeminiData;
 
       let parsedSuggestions;
-      if (typeof aiResponseContent === 'object' && aiResponseContent !== null) {
-        // If Gemini already returned a parsed JSON object (due to responseMimeType)
-        parsedSuggestions = aiResponseContent;
-        console.log("SERVERLESS: AI response content was already a parsed object.");
-      } else if (typeof aiResponseContent === 'string') {
-        // If it's a string, first try to extract from a Markdown code block
-        const markdownMatch = aiResponseContent.match(/```json\n([\s\S]*?)\n```/);
-        if (markdownMatch && markdownMatch[1]) {
-          console.log("SERVERLESS: AI response content is a Markdown JSON string, attempting to extract and parse.");
-          try {
-            parsedSuggestions = JSON.parse(markdownMatch[1]);
-          } catch (jsonParseError: any) {
-            console.error("SERVERLESS: Failed to parse extracted Markdown JSON:", markdownMatch[1], "Error:", jsonParseError);
-            throw new Error(`Falha ao analisar o JSON extraído do Markdown: ${jsonParseError.message}`);
-          }
-        } else {
-          // Fallback: if it's a string but not a Markdown block, try to parse it directly
-          console.log("SERVERLESS: AI response content is a plain JSON string, attempting JSON.parse.");
-          try {
-            parsedSuggestions = JSON.parse(aiResponseContent);
-          } catch (jsonParseError: any) {
-            console.error("SERVERLESS: Failed to parse AI response as JSON:", aiResponseContent, "Error:", jsonParseError);
-            throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
-          }
-        }
-      } else {
-        console.error("SERVERLESS: Unexpected type for aiResponseContent after processing:", typeof aiResponseContent, "Value:", aiResponseContent);
-        throw new Error("O conteúdo da resposta da IA não é uma string ou objeto JSON válido.");
+      try {
+        parsedSuggestions = JSON.parse(aiResponseContentString);
+        console.log("SERVERLESS: Successfully parsed AI response as JSON.");
+      } catch (jsonParseError: any) {
+        console.error("SERVERLESS: Failed to parse AI response as JSON:", aiResponseContentString, "Error:", jsonParseError);
+        throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
       }
 
-      // --- START NEW DIAGNOSTIC LOGS AND REFINED VALIDATION ---
+      // --- Validação Refinada ---
       console.log("SERVERLESS: Final parsedSuggestions object:", JSON.stringify(parsedSuggestions, null, 2));
       console.log("SERVERLESS: Type of parsedSuggestions:", typeof parsedSuggestions);
       console.log("SERVERLESS: Is parsedSuggestions null?", parsedSuggestions === null);
       console.log("SERVERLESS: Does parsedSuggestions have 'sugestoes' property?", Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes'));
-      console.log("SERVERLESS: Type of parsedSuggestions.sugestoes:", typeof parsedSuggestions.sugestoes);
-      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (Array.isArray)?", Array.isArray(parsedSuggestions.sugestoes));
-      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (instanceof Array)?", parsedSuggestions.sugestoes instanceof Array);
-      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (Object.prototype.toString)?", Object.prototype.toString.call(parsedSuggestions.sugestoes) === '[object Array]'); // NOVO LOG
-      console.log("SERVERLESS: Value of parsedSuggestions.sugestoes:", parsedSuggestions.sugestoes);
+      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (Object.prototype.toString)?", Object.prototype.toString.call(parsedSuggestions.sugestoes) === '[object Array]');
 
-      if (!parsedSuggestions) {
-        console.error("SERVERLESS: parsedSuggestions é nulo ou indefinido.");
-        throw new Error("A resposta da IA não está no formato esperado (objeto principal ausente).");
-      }
-      if (typeof parsedSuggestions !== 'object') {
-        console.error("SERVERLESS: parsedSuggestions não é um objeto. Tipo real:", typeof parsedSuggestions);
-        throw new Error("A resposta da IA não está no formato esperado (objeto principal inválido).");
-      }
-      if (parsedSuggestions === null) {
-        console.error("SERVERLESS: parsedSuggestions é explicitamente null.");
-        throw new Error("A resposta da IA não está no formato esperado (objeto principal é null).");
+      if (!parsedSuggestions || typeof parsedSuggestions !== 'object' || parsedSuggestions === null) {
+        console.error("SERVERLESS: A resposta da IA não é um objeto JSON válido ou é nula.");
+        throw new Error("A resposta da IA não está no formato esperado (objeto principal ausente ou inválido).");
       }
       if (!Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes')) {
-        console.error("SERVERLESS: parsedSuggestions não possui a propriedade 'sugestoes'.");
+        console.error("SERVERLESS: A resposta da IA não possui a propriedade 'sugestoes'.");
         throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' ausente).");
       }
-      // AQUI ESTÁ A MUDANÇA: Usando Object.prototype.toString para validação de array
       if (Object.prototype.toString.call(parsedSuggestions.sugestoes) !== '[object Array]') {
-        console.error("SERVERLESS: parsedSuggestions.sugestoes não é um array. Tipo real:", typeof parsedSuggestions.sugestoes, "Valor:", parsedSuggestions.sugestoes);
+        console.error("SERVERLESS: A propriedade 'sugestoes' da resposta da IA não é um array. Tipo real:", typeof parsedSuggestions.sugestoes, "Valor:", parsedSuggestions.sugestoes);
         throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' não é um array).");
       }
-      // --- END NEW DIAGNOSTIC LOGS AND REFINED VALIDATION ---
+      // --- Fim da Validação Refinada ---
 
       return res.status(200).json({
         status: 'success',
