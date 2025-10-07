@@ -50,8 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Bad Request', message: 'Missing systemPrompt, hora_atual, nova_tarefa, or agenda_existente in request body.' });
     }
 
-    // Changed model from gemini-1.5-pro to gemini-pro for broader availability
-    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${geminiApiKey}`;
+    // Changed model to gemini-2.5-flash as requested by the user
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
 
     const processedAgendaExistente = agenda_existente.map((item: any) => {
       if (item.data && item.hora_utc) {
