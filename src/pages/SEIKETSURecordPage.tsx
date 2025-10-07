@@ -404,13 +404,18 @@ const SEIKETSURecordPage: React.FC = () => {
 
         const relevantBlocks = daySettings[contextType];
 
+        // Ensure relevantBlocks is an array before iterating
+        if (!Array.isArray(relevantBlocks) || relevantBlocks.length === 0) {
+          continue; // Skip to next day if no relevant blocks
+        }
+
         for (const block of relevantBlocks) {
           let blockStart = setMinutes(setHours(searchDay, parseInt(block.start.split(':')[0])), parseInt(block.start.split(':')[1]));
           let blockEnd = setMinutes(setHours(searchDay, parseInt(block.end.split(':')[0])), parseInt(block.end.split(':')[1]));
 
           // Ajustar o início do bloco se for no passado em relação ao currentSearchDate
           if (isBefore(blockStart, currentSearchDate)) {
-            blockStart = currentSearchDate;
+            blockStart = currentSearchDate; // Corrected from currentTime = currentSearchDate;
           }
 
           // Garantir que blockStart não exceda blockEnd após o ajuste
