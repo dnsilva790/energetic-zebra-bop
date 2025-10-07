@@ -14,7 +14,7 @@ import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SetDeadlineDialog from "@/components/SetDeadlineDialog";
-import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY, SEITON_MODE_KEY, SEITON_COMPARISON_HISTORY_PROFESSIONAL_KEY, SEITON_COMPARISON_HISTORY_PERSONAL_KEY } from "@/lib/constants";
+import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, SEITON_MODE_KEY, SEITON_COMPARISON_HISTORY_PROFESSIONAL_KEY, SEITON_COMPARISON_HISTORY_PERSONAL_KEY } from "@/lib/constants";
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
@@ -51,12 +51,6 @@ interface UndoState {
   cancelledTaskId?: string;
 }
 
-const DEFAULT_AI_COMPARISON_PROMPT = `Você é um assistente de produtividade. Dadas duas tarefas, A e B, determine qual delas é mais importante para ser feita primeiro. Considere a prioridade (4=mais alta, 1=mais baixa), data de vencimento, data limite, se é recorrente, e a descrição. Responda com 'A' se a Tarefa A for mais importante, ou 'B' se a Tarefa B for mais importante. Em uma nova linha, forneça uma explicação concisa (1-2 frases) do porquê.
-Exemplo:
-A
-A Tarefa A tem prioridade mais alta e um vencimento mais próximo.
-`;
-
 const SEITONPage = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<SeitonStep>('loading');
@@ -80,16 +74,11 @@ const SEITONPage = () => {
   const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
   const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
 
-  const [isAISuggestingComparison, setIsAISuggestingComparison] = useState(false);
-  const [aiComparisonSuggestion, setAiComparisonSuggestion] = useState<'A' | 'B' | null>(null);
-  const [aiComparisonExplanation, setAiComparisonExplanation] = useState<string | null>(null);
-  const [showAiComparisonSuggestion, setShowAiComparisonSuggestion] = useState(false);
-
   // Novo estado para armazenar o vencedor do último embate entre as tarefas atuais
   const [lastWinnerInCurrentComparison, setLastWinnerInCurrentComparison] = useState<'challenger' | 'opponent' | null>(null);
 
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  // GEMINI_API_KEY and GEMINI_API_URL are no longer used in SEITONPage for comparison suggestions.
+  // They are kept in the codebase for other pages/components.
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -147,6 +136,20 @@ const SEITONPage = () => {
       default: return "Sem Prioridade";
     }
   };
+
+  const updateTaskAndReturn = useCallback(async (task: TodoistTask, newPriority: number): Promise<TodoistTask> => {
+    if (task.priority === newPriority) {
+      return task; // No update needed
+    }
+    try {
+      const updatedTask = await updateTask(task.id, { priority: newPriority });
+      return { ...task, priority: updatedTask.priority };
+    } catch (error) {
+      console.error(`Failed to update priority for task ${task.id}:`, error);
+      showError(`Falha ao atualizar prioridade da tarefa "${task.content}".`);
+      return task; // Return original task on error
+    }
+  }, []);
 
   const fetchAndSetupTasks = useCallback(async (mode: 'professional' | 'personal') => {
     setLoading(true);
@@ -254,7 +257,7 @@ const SEITONPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, getComparisonHistoryKey]);
+  }, [navigate, getComparisonHistoryKey, updateTaskAndReturn]);
 
   useEffect(() => {
     // Initial load: check for saved mode or prompt for selection
@@ -304,9 +307,6 @@ const SEITONPage = () => {
 
   const startNextTournamentComparison = useCallback(async () => {
     console.log("SEITONPage - startNextTournamentComparison called.");
-    setAiComparisonSuggestion(null);
-    setAiComparisonExplanation(null);
-    setShowAiComparisonSuggestion(false);
     setLastWinnerInCurrentComparison(null); // Resetar o último vencedor
 
     if (tournamentQueue.length === 0) {
@@ -482,9 +482,6 @@ const SEITONPage = () => {
       localStorage.removeItem(SEITON_PROGRESS_KEY);
     }
 
-    setAiComparisonSuggestion(null);
-    setAiComparisonExplanation(null);
-    setShowAiComparisonSuggestion(false);
     setLastWinnerInCurrentComparison(null); // Resetar após a comparação
   }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn, setLastUndoableAction, setComparisonHistory]);
 
@@ -548,9 +545,6 @@ const SEITONPage = () => {
         setLastUndoableAction(null);
     }
 
-    setAiComparisonSuggestion(null);
-    setAiComparisonExplanation(null);
-    setShowAiComparisonSuggestion(false);
     setLastWinnerInCurrentComparison(null); // Resetar após a ação
 }, [currentChallenger, currentOpponentIndex, rankedTasks, completeTask, tournamentQueue, p3Tasks, setLastUndoableAction, setComparisonHistory]);
 
@@ -628,74 +622,6 @@ const SEITONPage = () => {
     }
   }, [taskToSetDeadline, currentChallenger]);
 
-  const handleAISuggestComparison = useCallback(async () => {
-    if (!GEMINI_API_KEY) {
-      showError("A chave da API do Gemini (VITE_GEMINI_API_KEY) não está configurada.");
-      return;
-    }
-    if (!currentChallenger || currentOpponentIndex === null) {
-      showError("Nenhuma tarefa para comparar.");
-      return;
-    }
-
-    setIsAISuggestingComparison(true);
-    setAiComparisonSuggestion(null);
-    setAiComparisonExplanation(null);
-    setShowAiComparisonSuggestion(true);
-
-    const opponentTask = rankedTasks[currentOpponentIndex];
-
-    const getTaskDetails = (task: TodoistTask, label: string) => {
-      const priorityLabel = getPriorityLabel(task.priority);
-      const dueDate = task.due?.date ? formatDateForDisplay(task.due) : 'Nenhum';
-      const deadlineDate = task.deadline?.date ? formatDateForDisplay(task.deadline) : 'Nenhum';
-      const isRecurring = task.due?.is_recurring ? 'Sim' : 'Não';
-      const description = task.description || 'Nenhuma descrição.';
-      return `Tarefa ${label}: "${task.content}". Descrição: "${description}". Prioridade: ${priorityLabel} (${task.priority}). Vencimento: ${dueDate}. Data Limite: ${deadlineDate}. Recorrente: ${isRecurring}.`;
-    };
-
-    const taskADetails = getTaskDetails(currentChallenger, 'A');
-    const taskBDetails = getTaskDetails(opponentTask, 'B');
-
-    const systemPrompt = localStorage.getItem(AI_COMPARISON_SYSTEM_PROMPT_KEY) || DEFAULT_AI_COMPARISON_PROMPT;
-    const prompt = `${systemPrompt}\n${taskADetails}\n${taskBDetails}`;
-
-    try {
-      const response = await fetch(GEMINI_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter uma sugestão da IA.";
-      
-      const lines = aiResponseContent.split('\n').map(line => line.trim()).filter(Boolean);
-      if (lines.length > 0) {
-        const suggestion = lines[0].toUpperCase() as 'A' | 'B';
-        const explanation = lines.slice(1).join(' ');
-        setAiComparisonSuggestion(suggestion);
-        setAiComparisonExplanation(explanation);
-      } else {
-        setAiComparisonExplanation("A IA não conseguiu gerar uma sugestão útil.");
-      }
-    } catch (error: any) {
-      console.error("Erro ao obter sugestão da IA para comparação:", error);
-      showError(`Erro ao obter sugestão da IA: ${error.message}`);
-      setAiComparisonExplanation(`Erro: ${error.message}`);
-    } finally {
-      setIsAISuggestingComparison(false);
-    }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, currentChallenger, currentOpponentIndex, rankedTasks, getPriorityLabel]);
-
-
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (loading || showSetDeadlineDialog || currentStep !== 'tournamentComparison') return;
@@ -717,9 +643,6 @@ const SEITONPage = () => {
         } else if (event.key === 'z' || event.key === 'Z') {
           event.preventDefault();
           handleUndo();
-        } else if (event.key === 'i' || event.key === 'I') {
-          event.preventDefault();
-          handleAISuggestComparison();
         }
       }
     };
@@ -728,7 +651,7 @@ const SEITONPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask, handleUndo, showSetDeadlineDialog, handleAISuggestComparison]);
+  }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask, handleUndo, showSetDeadlineDialog]);
 
   useEffect(() => {
     if (currentStep === 'result') {
@@ -770,9 +693,6 @@ const SEITONPage = () => {
     setCurrentOpponentIndex(null);
     setComparisonHistory([]); // Resetar o histórico no estado
     setLastUndoableAction(null);
-    setAiComparisonSuggestion(null);
-    setAiComparisonExplanation(null);
-    setShowAiComparisonSuggestion(false);
     setLastWinnerInCurrentComparison(null); // Resetar também
     await fetchAndSetupTasks(seitonMode);
   }, [fetchAndSetupTasks, seitonMode, getComparisonHistoryKey]);
@@ -793,14 +713,15 @@ const SEITONPage = () => {
       <Card
         className={cn(
           "w-full shadow-lg bg-white/80 backdrop-blur-sm p-4 relative", // Adicionado 'relative' para posicionamento do badge
-          onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200"
+          onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200",
+          isLastWinner && "border-4 border-purple-500 ring-4 ring-purple-200" // Destaque visual para o último vencedor
         )}
         onClick={onCardClick}
         tabIndex={onCardClick ? 0 : -1}
         role={onCardClick ? "button" : undefined}
       >
         {isLastWinner && (
-          <span className="absolute top-2 right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+          <span className="absolute top-2 right-2 bg-purple-500 text-white text-xs font-bold px-2 py-1 rounded-full">
             Último Vencedor!
           </span>
         )}
@@ -885,28 +806,8 @@ const SEITONPage = () => {
     );
   }
 
-  if (!GEMINI_API_KEY) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-blue-100 p-4">
-        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
-          <CardTitle className="text-3xl font-bold text-gray-800">Erro de Configuração</CardTitle>
-          <CardDescription className="text-lg text-red-600 mt-2">
-            A chave da API do Gemini (<code>VITE_GEMINI_API_KEY</code>) não está configurada.
-          </CardDescription>
-          <p className="text-sm text-gray-700">
-            Por favor, adicione-a ao seu arquivo <code>.env</code> na raiz do projeto para usar as funcionalidades de IA.
-          </p>
-          <p className="text-xs text-gray-500 mt-2">
-            Exemplo: <code>VITE_GEMINI_API_KEY=SUA_CHAVE_AQUI</code>
-          </p>
-          <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
-            Voltar ao Menu Principal
-          </Button>
-        </Card>
-        <MadeWithDyad />
-      </div>
-    );
-  }
+  // Removed GEMINI_API_KEY check here as AI comparison is removed.
+  // The check for VITE_GEMINI_API_KEY is still present in other components that use it.
 
   if (currentStep === 'modeSelection') {
     return (
@@ -985,34 +886,7 @@ const SEITONPage = () => {
               )}
             </div>
             
-            <div className="mt-6 space-y-2">
-              <Button
-                onClick={handleAISuggestComparison}
-                disabled={isAISuggestingComparison}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 rounded-md transition-colors flex items-center justify-center"
-              >
-                {isAISuggestingComparison ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Brain className="mr-2 h-5 w-5" />
-                )}
-                Sugestão da IA (I)
-              </Button>
-              {showAiComparisonSuggestion && (
-                <div className="p-3 bg-gray-100 rounded-md text-sm text-gray-700 text-left">
-                  {aiComparisonSuggestion && (
-                    <p className="font-semibold mb-1">
-                      A IA sugere: <span className={cn(
-                        aiComparisonSuggestion === 'A' ? 'text-blue-600' : 'text-blue-600'
-                      )}>Tarefa {aiComparisonSuggestion}</span>
-                    </p>
-                  )}
-                  {aiComparisonExplanation && (
-                    <p>{aiComparisonExplanation}</p>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Removed AI Suggestion Button and Display */}
 
             <div className="flex justify-center space-x-4 mt-6">
               <Button onClick={() => handleTournamentComparison(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
