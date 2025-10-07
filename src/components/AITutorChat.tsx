@@ -100,7 +100,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   const [parsedMicroSteps, setParsedMicroSteps] = useState<{ content: string; description: string }[]>([]);
   const [initialAiResponseReceived, setInitialAiResponseReceived] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const isMounted = useRef(false);
+  const initialMessageSentRef = useRef(false); // Novo ref para controlar a mensagem inicial
 
   const getSystemPrompt = useCallback(() => {
     return localStorage.getItem(AI_TUTOR_SYSTEM_PROMPT_KEY) || DEFAULT_SYSTEM_PROMPT;
@@ -177,6 +177,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
     setInitialAiResponseReceived(false);
     setParsedMicroSteps([]);
     setMessages([]); // Limpar mensagens ao mudar de tarefa
+    initialMessageSentRef.current = false; // Resetar o ref ao mudar de tarefa
 
     const systemPrompt = getSystemPrompt();
 
@@ -199,33 +200,23 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
 
     if (loadedMessages.length > 0) {
       setMessages(loadedMessages);
-    } else {
+      initialMessageSentRef.current = true; // Marcar como enviado se houver histórico
+    } else if (!initialMessageSentRef.current) { // Só envia se não houver histórico e não foi enviado ainda
       const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
       const newInitialMessages = [{ role: 'user', content: initialUserPrompt }];
       setMessages(newInitialMessages);
       sendMessageToGemini(newInitialMessages, systemPrompt); // Envia a mensagem inicial para o Gemini
+      initialMessageSentRef.current = true; // Marcar como enviado
     }
   }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini, getSystemPrompt]);
 
-  // Efeito para marcar que o componente foi montado
+  // Efeito para salvar mensagens no localStorage
   useEffect(() => {
-    isMounted.current = true;
-  }, []);
-
-  // Efeito para salvar mensagens no localStorage, ignorando a primeira montagem e a mensagem inicial
-  useEffect(() => {
-    if (!isMounted.current) {
-      return; // Ignora a primeira execução (montagem inicial)
-    }
-
-    if (messages.length <= 1) {
-      return; 
-    }
-
-    if (messages.length > 0) {
+    // Só salva se houver mensagens e a mensagem inicial já tiver sido processada
+    if (messages.length > 0 && initialMessageSentRef.current) {
       const historyToStore = JSON.stringify(messages);
       localStorage.setItem(localStorageKey, historyToStore);
-    } else {
+    } else if (messages.length === 0 && initialMessageSentRef.current) {
       localStorage.removeItem(localStorageKey); // Remove a chave se o chat estiver vazio
     }
   }, [messages, localStorageKey]);
