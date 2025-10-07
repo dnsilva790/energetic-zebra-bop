@@ -7,3 +7,4 @@ export const SEISO_FILTER_KEY = 'seiso_filter_input';
 export const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking';
 export const SEITON_PROGRESS_KEY = 'seiton_progress';
 export const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
+export const SEQUENCER_TASK_LIMIT_KEY = 'sequencer_task_limit'; // Nova constante

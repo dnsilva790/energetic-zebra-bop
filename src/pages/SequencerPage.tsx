@@ -11,8 +11,10 @@ import { getTasks, handleApiCall, updateTask } from "@/lib/todoistApi";
 import { TodoistTask, SequencerSettings } from "@/lib/types";
 import { format, parseISO, isValid, getDay, setHours, setMinutes, isAfter, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Input } from "@/components/ui/input"; // Importar Input
+import { Label } from "@/components/ui/label"; // Importar Label
+import { SEQUENCER_SETTINGS_KEY, SEQUENCER_TASK_LIMIT_KEY } from "@/lib/constants"; // Importar a nova constante
 
-const SEQUENCER_SETTINGS_KEY = 'sequencer_settings';
 const AI_CONTEXT_PROMPT_KEY = 'ai_context_prompt';
 const DEFAULT_AI_CONTEXT_PROMPT = `Dada a seguinte tarefa, classifique-a como 'pessoal' ou 'profissional'. Responda apenas com 'pessoal' ou 'profissional'.`;
 
@@ -23,6 +25,10 @@ const SequencerPage: React.FC = () => {
   const [sequencerSettings, setSequencerSettings] = useState<SequencerSettings | null>(null);
   const [scheduledTasks, setScheduledTasks] = useState<TodoistTask[]>([]);
   const [isGeneratingSchedule, setIsGeneratingSchedule] = useState(false);
+  const [taskLimit, setTaskLimit] = useState<number | null>(() => {
+    const savedLimit = localStorage.getItem(SEQUENCER_TASK_LIMIT_KEY);
+    return savedLimit ? parseInt(savedLimit) : null; // Padrão para null (sem limite)
+  });
 
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -42,6 +48,14 @@ const SequencerPage: React.FC = () => {
 
     fetchTasks();
   }, []);
+
+  useEffect(() => {
+    if (taskLimit !== null) {
+      localStorage.setItem(SEQUENCER_TASK_LIMIT_KEY, taskLimit.toString());
+    } else {
+      localStorage.removeItem(SEQUENCER_TASK_LIMIT_KEY);
+    }
+  }, [taskLimit]);
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
@@ -116,7 +130,7 @@ const SequencerPage: React.FC = () => {
 
     const today = new Date();
     const dayIndex = getDay(today); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    const dayName = ['sunday', 'monday', 'reca', 'wednesday', 'thursday', 'friday', 'saturday'][dayIndex];
+    const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayIndex];
     const currentDaySettings = sequencerSettings.dailyContexts[dayName];
 
     if (!currentDaySettings) {
@@ -187,14 +201,17 @@ const SequencerPage: React.FC = () => {
       return durationA - durationB;
     });
 
+    // Aplicar o limite de tarefas aqui
+    const tasksToSchedule = taskLimit !== null && taskLimit > 0 ? sortedTasks.slice(0, taskLimit) : sortedTasks;
+
     const newScheduledTasks: TodoistTask[] = [];
-    const remainingTasks = new Set(sortedTasks.map(t => t.id));
+    const remainingTasks = new Set(tasksToSchedule.map(t => t.id));
 
     for (const block of availableTimeBlocks) {
       let currentTime = block.start;
       const blockEndTime = block.end;
 
-      for (const task of sortedTasks) {
+      for (const task of tasksToSchedule) {
         if (!remainingTasks.has(task.id)) continue; // Já agendada ou ignorada
 
         const taskDurationMinutes = task.duration?.unit === 'day' ? task.duration.amount * 24 * 60 : task.duration?.amount || 30; // Default 30 min if no duration
@@ -216,7 +233,7 @@ const SequencerPage: React.FC = () => {
     setScheduledTasks(newScheduledTasks);
     setIsGeneratingSchedule(false);
     showSuccess("Cronograma gerado com sucesso!");
-  }, [sequencerSettings, tasks, classifyTaskContext]);
+  }, [sequencerSettings, tasks, classifyTaskContext, taskLimit]);
 
   const applyScheduleToTodoist = useCallback(async () => {
     if (scheduledTasks.length === 0) {
@@ -293,6 +310,27 @@ const SequencerPage: React.FC = () => {
             </div>
           ) : (
             <>
+              <div className="space-y-2">
+                <Label htmlFor="task-limit" className="text-lg font-semibold">
+                  Limite de Tarefas para Agendar (opcional)
+                </Label>
+                <Input
+                  id="task-limit"
+                  type="number"
+                  placeholder="Ex: 10 (deixe vazio para sem limite)"
+                  value={taskLimit !== null ? taskLimit : ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setTaskLimit(value === '' ? null : parseInt(value));
+                  }}
+                  min="1"
+                  className="w-full"
+                />
+                <p className="text-sm text-gray-500">
+                  Defina o número máximo de tarefas que a IA deve tentar agendar.
+                </p>
+              </div>
+
               <p className="text-center text-gray-700">
                 Tarefas disponíveis para sequenciamento: <span className="font-bold">{tasks.length}</span>
               </p>
