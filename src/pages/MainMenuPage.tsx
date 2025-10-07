@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Play, Brain, Clock, ListOrdered } from "lucide-react"; 
+import { Settings, Brush, LayoutDashboard, Play, Brain, Clock, ListOrdered, CalendarCheck } from "lucide-react"; 
 import {
   Card,
   CardContent,
@@ -28,6 +28,8 @@ const MainMenuPage = () => {
       navigate("/5s/seiso");
     } else if (sName === "SEIKETSU") { 
       navigate("/5s/seiketsu");
+    } else if (sName === "SEQUENCER") {
+      navigate("/sequencer");
     }
     else {
       showSuccess(`Tela em construção - ${sName}`);
@@ -75,6 +77,13 @@ const MainMenuPage = () => {
               description="Decida o que fazer hoje e o que postergar"
               colorClass="bg-indigo-600 hover:bg-indigo-700" 
               onClick={() => handleButtonClick("SEIKETSU")}
+            />
+            <FiveSButton
+              icon={CalendarCheck} 
+              title="SEQUENCIADOR IA"
+              description="Deixe a IA organizar seu dia"
+              colorClass="bg-teal-600 hover:bg-teal-700" 
+              onClick={() => handleButtonClick("SEQUENCER")}
             />
           </div>
         </CardContent>

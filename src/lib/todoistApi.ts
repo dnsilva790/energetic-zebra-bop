@@ -47,7 +47,8 @@ export async function handleApiCall<T>(apiFunction: () => Promise<T>, loadingMes
 
 /**
  * Cria uma ou mais tarefas no Todoist através do endpoint Serverless.
- * @param tasks Um array de objetos de tarefa a serem criados.
+ * Aceita um array de objetos de tarefa via POST e as envia para a API do Todoist.
+ * @param tasks Um array de objetos de tarefa a serem criados. Pode incluir `duration` e `duration_unit`.
  * @returns Um array das tarefas criadas ou undefined em caso de erro.
  */
 export async function createTasks(tasks: any[]): Promise<TodoistTask[] | undefined> {
@@ -69,7 +70,28 @@ export async function createTasks(tasks: any[]): Promise<TodoistTask[] | undefin
     if (result.status === 'error') {
       throw new Error(result.message || 'Erro ao criar algumas tarefas.');
     }
-    return result.tasks;
+    
+    // Mapear as tarefas criadas para o formato TodoistTask
+    const processedTasks: TodoistTask[] = result.tasks.map((task: any) => ({
+      id: task.id,
+      content: task.content,
+      description: task.description,
+      due: task.due ? {
+        date: task.due.datetime || task.due.date,
+        string: task.due.string,
+        lang: task.due.lang,
+        is_recurring: task.due.is_recurring,
+      } : null,
+      priority: task.priority,
+      is_completed: task.is_completed,
+      project_id: task.project_id,
+      parent_id: task.parent_id,
+      deadline: task.deadline && task.deadline.date ? { date: task.deadline.date } : null,
+      labels: task.labels || [],
+      duration: task.duration || null, // Incluir o campo duration nativo
+    }));
+
+    return processedTasks;
   } catch (error: any) {
     console.error("Client-side error calling /api/todoist:", error);
     throw error; // Re-throw para ser capturado por handleApiCall
@@ -103,60 +125,24 @@ export async function updateTaskDescription(taskId: string, contentToAppend: str
     }
     // A função serverless retorna a tarefa atualizada, mas precisamos mapeá-la para o tipo TodoistTask
     const rawUpdatedTask = result.task;
-    let processedDue = null;
-    if (rawUpdatedTask.due) {
-      const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
-      processedDue = {
-        date: dateValue,
-        string: rawUpdatedTask.due.string,
-        lang: rawUpdatedTask.due.lang,
-        is_recurring: rawUpdatedTask.due.is_recurring,
-      };
-    }
-
-    // Mapear o campo deadline nativo do Todoist
-    let processedDeadline = null;
-    if (rawUpdatedTask.deadline && rawUpdatedTask.deadline.date) {
-      processedDeadline = {
-        date: rawUpdatedTask.deadline.date,
-      };
-    }
-
-    // Extrair labels, durationMinutes e contextType
-    const labels: string[] = rawUpdatedTask.labels || [];
-    let durationMinutes: number | undefined;
-    let contextType: 'pessoal' | 'profissional' | undefined;
-
-    labels.forEach(label => {
-      if (label.startsWith('duracao:')) {
-        const durationStr = label.substring('duracao:'.length);
-        const matchMinutes = durationStr.match(/(\d+)m/);
-        const matchHours = durationStr.match(/(\d+)h/);
-        if (matchMinutes) {
-          durationMinutes = parseInt(matchMinutes[1]);
-        } else if (matchHours) {
-          durationMinutes = parseInt(matchHours[1]) * 60;
-        }
-      } else if (label === 'contexto:pessoal') {
-        contextType = 'pessoal';
-      } else if (label === 'contexto:profissional') {
-        contextType = 'profissional';
-      }
-    });
-
+    
     return {
       id: rawUpdatedTask.id,
       content: rawUpdatedTask.content,
       description: rawUpdatedTask.description,
-      due: processedDue,
+      due: rawUpdatedTask.due ? {
+        date: rawUpdatedTask.due.datetime || rawUpdatedTask.due.date,
+        string: rawUpdatedTask.due.string,
+        lang: rawUpdatedTask.due.lang,
+        is_recurring: rawUpdatedTask.due.is_recurring,
+      } : null,
       priority: rawUpdatedTask.priority,
       is_completed: rawUpdatedTask.is_completed,
       project_id: rawUpdatedTask.project_id,
       parent_id: rawUpdatedTask.parent_id,
-      deadline: processedDeadline, // Incluir o campo deadline nativo
-      labels: labels,
-      durationMinutes: durationMinutes,
-      contextType: contextType,
+      deadline: rawUpdatedTask.deadline && rawUpdatedTask.deadline.date ? { date: rawUpdatedTask.deadline.date } : null,
+      labels: rawUpdatedTask.labels || [],
+      duration: rawUpdatedTask.duration || null, // Incluir o campo duration nativo
     };
   } catch (error: any) {
     console.error("Client-side error calling /api/update-task-description:", error);
@@ -182,63 +168,25 @@ export async function getTasks(filter?: string): Promise<TodoistTask[]> {
   
   const rawTasks = await response.json();
 
-  // Mapear as tarefas para o formato TodoistTask, ajustando o campo 'due' e 'deadline'
+  // Mapear as tarefas para o formato TodoistTask, ajustando o campo 'due', 'deadline' e 'duration'
   const processedTasks: TodoistTask[] = rawTasks.map((task: any) => {
-    let processedDue = null;
-    if (task.due) {
-      // Prioriza 'datetime' se existir, caso contrário usa 'date'
-      const dateValue = task.due.datetime || task.due.date;
-      processedDue = {
-        date: dateValue, // Armazena o datetime ou date aqui
-        string: task.due.string, // Mantém a string humanizada original
-        lang: task.due.lang,
-        is_recurring: task.due.is_recurring,
-      };
-    }
-
-    // Mapear o campo deadline nativo do Todoist
-    let processedDeadline = null;
-    if (task.deadline && task.deadline.date) {
-      processedDeadline = {
-        date: task.deadline.date,
-      };
-    }
-
-    // Extrair labels, durationMinutes e contextType
-    const labels: string[] = task.labels || [];
-    let durationMinutes: number | undefined;
-    let contextType: 'pessoal' | 'profissional' | undefined;
-
-    labels.forEach(label => {
-      if (label.startsWith('duracao:')) {
-        const durationStr = label.substring('duracao:'.length);
-        const matchMinutes = durationStr.match(/(\d+)m/);
-        const matchHours = durationStr.match(/(\d+)h/);
-        if (matchMinutes) {
-          durationMinutes = parseInt(matchMinutes[1]);
-        } else if (matchHours) {
-          durationMinutes = parseInt(matchHours[1]) * 60;
-        }
-      } else if (label === 'contexto:pessoal') {
-        contextType = 'pessoal';
-      } else if (label === 'contexto:profissional') {
-        contextType = 'profissional';
-      }
-    });
-
     return {
       id: task.id,
       content: task.content,
       description: task.description,
-      due: processedDue,
+      due: task.due ? {
+        date: task.due.datetime || task.due.date,
+        string: task.due.string,
+        lang: task.due.lang,
+        is_recurring: task.due.is_recurring,
+      } : null,
       priority: task.priority,
       is_completed: task.is_completed,
       project_id: task.project_id,
       parent_id: task.parent_id,
-      deadline: processedDeadline, // Incluir o campo deadline nativo
-      labels: labels,
-      durationMinutes: durationMinutes,
-      contextType: contextType,
+      deadline: task.deadline && task.deadline.date ? { date: task.deadline.date } : null,
+      labels: task.labels || [],
+      duration: task.duration || null, // Incluir o campo duration nativo
     };
   });
 
@@ -256,74 +204,54 @@ export async function getProjects(): Promise<TodoistProject[]> {
   return response.json();
 }
 
+/**
+ * Atualiza uma tarefa no Todoist.
+ * @param taskId O ID da tarefa a ser atualizada.
+ * @param data Um objeto com os campos a serem atualizados. Pode incluir `duration` e `duration_unit`.
+ * @returns O objeto TodoistTask atualizado.
+ */
 export async function updateTask(taskId: string, data: any): Promise<TodoistTask> {
   const headers = getApiHeaders();
   if (!headers.Authorization) return Promise.reject(new Error("Token de autorização ausente."));
+  
+  // A API do Todoist espera 'duration' e 'duration_unit' como campos separados no payload
+  const payload: any = { ...data };
+  if (data.duration && typeof data.duration.amount === 'number' && data.duration.unit) {
+    payload.duration = data.duration.amount;
+    payload.duration_unit = data.duration.unit;
+  }
+  // Remover o objeto duration original para evitar conflitos
+  delete payload.duration;
+
   const response = await fetch(`${TODOIST_CONFIG.baseURL}/tasks/${taskId}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(data)
+    body: JSON.stringify(payload)
   });
   if (!response.ok) {
     const errorData = await response.json();
     throw new Error(errorData.error || `Erro ao atualizar tarefa: ${response.statusText}`);
   }
-  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due' e 'deadline' novamente
+  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due', 'deadline' e 'duration' novamente
   const rawUpdatedTask = await response.json();
-  let processedDue = null;
-  if (rawUpdatedTask.due) {
-    const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
-    processedDue = {
-      date: dateValue,
-      string: rawUpdatedTask.due.string,
-      lang: rawUpdatedTask.due.lang,
-      is_recurring: rawUpdatedTask.due.is_recurring,
-    };
-  }
-
-  // Mapear o campo deadline nativo do Todoist
-  let processedDeadline = null;
-  if (rawUpdatedTask.deadline && rawUpdatedTask.deadline.date) {
-    processedDeadline = {
-      date: rawUpdatedTask.deadline.date,
-    };
-  }
-
-  // Extrair labels, durationMinutes e contextType
-  const labels: string[] = rawUpdatedTask.labels || [];
-  let durationMinutes: number | undefined;
-  let contextType: 'pessoal' | 'profissional' | undefined;
-
-  labels.forEach(label => {
-    if (label.startsWith('duracao:')) {
-      const durationStr = label.substring('duracao:'.length);
-      const matchMinutes = durationStr.match(/(\d+)m/);
-      const matchHours = durationStr.match(/(\d+)h/);
-      if (matchMinutes) {
-        durationMinutes = parseInt(matchMinutes[1]);
-      } else if (matchHours) {
-        durationMinutes = parseInt(matchHours[1]) * 60;
-      }
-    } else if (label === 'contexto:pessoal') {
-      contextType = 'pessoal';
-    } else if (label === 'contexto:profissional') {
-      contextType = 'profissional';
-    }
-  });
-
+  
   return {
     id: rawUpdatedTask.id,
     content: rawUpdatedTask.content,
     description: rawUpdatedTask.description,
-    due: processedDue,
+    due: rawUpdatedTask.due ? {
+      date: rawUpdatedTask.due.datetime || rawUpdatedTask.due.date,
+      string: rawUpdatedTask.due.string,
+      lang: rawUpdatedTask.due.lang,
+      is_recurring: rawUpdatedTask.due.is_recurring,
+    } : null,
     priority: rawUpdatedTask.priority,
     is_completed: rawUpdatedTask.is_completed,
     project_id: rawUpdatedTask.project_id,
     parent_id: rawUpdatedTask.parent_id,
-    deadline: processedDeadline, // Incluir o campo deadline nativo
-    labels: labels,
-    durationMinutes: durationMinutes,
-    contextType: contextType,
+    deadline: rawUpdatedTask.deadline && rawUpdatedTask.deadline.date ? { date: rawUpdatedTask.deadline.date } : null,
+    labels: rawUpdatedTask.labels || [],
+    duration: rawUpdatedTask.duration || null, // Incluir o campo duration nativo
   };
 }
 
@@ -415,62 +343,26 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
     const errorData = await response.json();
     throw new Error(errorData.error || `Erro ao atualizar data de vencimento da tarefa: ${response.statusText}`);
   }
-  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due' e 'deadline' novamente
+  // A API do Todoist retorna a tarefa atualizada, mas precisamos processar o 'due', 'deadline' e 'duration' novamente
   const rawUpdatedTask = await response.json();
-  let processedDue = null;
-  if (rawUpdatedTask.due) {
-    const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
-    processedDue = {
-      date: dateValue,
-      string: rawUpdatedTask.due.string,
-      lang: rawUpdatedTask.due.lang,
-      is_recurring: rawUpdatedTask.due.is_recurring,
-    };
-  }
-
-  // Mapear o campo deadline nativo do Todoist
-  let processedDeadline = null;
-  if (rawUpdatedTask.deadline && rawUpdatedTask.deadline.date) {
-    processedDeadline = {
-      date: rawUpdatedTask.deadline.date,
-    };
-  }
-
-  // Extrair labels, durationMinutes e contextType
-  const labels: string[] = rawUpdatedTask.labels || [];
-  let durationMinutes: number | undefined;
-  let contextType: 'pessoal' | 'profissional' | undefined;
-
-  labels.forEach(label => {
-    if (label.startsWith('duracao:')) {
-      const durationStr = label.substring('duracao:'.length);
-      const matchMinutes = durationStr.match(/(\d+)m/);
-      const matchHours = durationStr.match(/(\d+)h/);
-      if (matchMinutes) {
-        durationMinutes = parseInt(matchMinutes[1]);
-      } else if (matchHours) {
-        durationMinutes = parseInt(matchHours[1]) * 60;
-      }
-    } else if (label === 'contexto:pessoal') {
-      contextType = 'pessoal';
-    } else if (label === 'contexto:profissional') {
-      contextType = 'profissional';
-    }
-  });
-
+  
   return {
     id: rawUpdatedTask.id,
     content: rawUpdatedTask.content,
     description: rawUpdatedTask.description,
-    due: processedDue,
+    due: rawUpdatedTask.due ? {
+      date: rawUpdatedTask.due.datetime || rawUpdatedTask.due.date,
+      string: rawUpdatedTask.due.string,
+      lang: rawUpdatedTask.due.lang,
+      is_recurring: rawUpdatedTask.due.is_recurring,
+    } : null,
     priority: rawUpdatedTask.priority,
     is_completed: rawUpdatedTask.is_completed,
     project_id: rawUpdatedTask.project_id,
     parent_id: rawUpdatedTask.parent_id,
-    deadline: processedDeadline, // Incluir o campo deadline nativo
-    labels: labels,
-    durationMinutes: durationMinutes,
-    contextType: contextType,
+    deadline: rawUpdatedTask.deadline && rawUpdatedTask.deadline.date ? { date: rawUpdatedTask.deadline.date } : null,
+    labels: rawUpdatedTask.labels || [],
+    duration: rawUpdatedTask.duration || null, // Incluir o campo duration nativo
   };
 }
 
@@ -505,61 +397,23 @@ export async function updateTaskDeadline(taskId: string, newDeadlineDate: string
 
     const rawUpdatedTask = await response.json();
     
-    // Processar o campo 'due'
-    let processedDue = null;
-    if (rawUpdatedTask.due) {
-      const dateValue = rawUpdatedTask.due.datetime || rawUpdatedTask.due.date;
-      processedDue = {
-        date: dateValue,
-        string: rawUpdatedTask.due.string,
-        lang: rawUpdatedTask.due.lang,
-        is_recurring: rawUpdatedTask.due.is_recurring,
-      };
-    }
-
-    // Processar o campo 'deadline' nativo
-    let processedDeadline = null;
-    if (rawUpdatedTask.deadline && rawUpdatedTask.deadline.date) {
-      processedDeadline = {
-        date: rawUpdatedTask.deadline.date,
-      };
-    }
-
-    // Extrair labels, durationMinutes e contextType
-    const labels: string[] = rawUpdatedTask.labels || [];
-    let durationMinutes: number | undefined;
-    let contextType: 'pessoal' | 'profissional' | undefined;
-
-    labels.forEach(label => {
-      if (label.startsWith('duracao:')) {
-        const durationStr = label.substring('duracao:'.length);
-        const matchMinutes = durationStr.match(/(\d+)m/);
-        const matchHours = durationStr.match(/(\d+)h/);
-        if (matchMinutes) {
-          durationMinutes = parseInt(matchMinutes[1]);
-        } else if (matchHours) {
-          durationMinutes = parseInt(matchHours[1]) * 60;
-        }
-      } else if (label === 'contexto:pessoal') {
-        contextType = 'pessoal';
-      } else if (label === 'contexto:profissional') {
-        contextType = 'profissional';
-      }
-    });
-
     return {
       id: rawUpdatedTask.id,
       content: rawUpdatedTask.content,
       description: rawUpdatedTask.description,
-      due: processedDue,
+      due: rawUpdatedTask.due ? {
+        date: rawUpdatedTask.due.datetime || rawUpdatedTask.due.date,
+        string: rawUpdatedTask.due.string,
+        lang: rawUpdatedTask.due.lang,
+        is_recurring: rawUpdatedTask.due.is_recurring,
+      } : null,
       priority: rawUpdatedTask.priority,
       is_completed: rawUpdatedTask.is_completed,
       project_id: rawUpdatedTask.project_id,
       parent_id: rawUpdatedTask.parent_id,
-      deadline: processedDeadline,
-      labels: labels,
-      durationMinutes: durationMinutes,
-      contextType: contextType,
+      deadline: rawUpdatedTask.deadline && rawUpdatedTask.deadline.date ? { date: rawUpdatedTask.deadline.date } : null,
+      labels: rawUpdatedTask.labels || [],
+      duration: rawUpdatedTask.duration || null, // Incluir o campo duration nativo
     };
 
   } catch (error: any) {

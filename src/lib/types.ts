@@ -18,8 +18,10 @@ export interface TodoistTask {
   } | null;
   parent_id?: string | null; // Adicionado para identificar subtarefas
   labels?: string[]; // Adicionado para armazenar as labels brutas
-  durationMinutes?: number; // Duração estimada em minutos, extraída das labels
-  contextType?: 'pessoal' | 'profissional'; // Tipo de contexto, extraído das labels
+  duration?: { // Campo duration nativo do Todoist
+    amount: number;
+    unit: 'minute' | 'day';
+  } | null;
 }
 
 export interface TodoistProject {
