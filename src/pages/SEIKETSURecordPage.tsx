@@ -13,17 +13,22 @@ import {
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, handleApiCall, updateTaskDueDate, completeTask } from "@/lib/todoistApi"; 
-import { format, parseISO, setHours, setMinutes, isValid, addDays, parse, startOfDay, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday, getDay, isBefore } from "date-fns";
+import { format, parseISO, setHours, setMinutes, isValid, addDays, parse, startOfDay, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday, getDay, isBefore, addDays as addDaysDateFns } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask, SequencerSettings } from "@/lib/types"; 
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn, formatDateForDisplay } from "@/lib/utils";
-import { AI_SUGGESTION_SYSTEM_PROMPT_KEY, SEQUENCER_SETTINGS_KEY } from "@/lib/constants";
+import { cn, formatDateForDisplay, roundToNext15Minutes } from "@/lib/utils";
+import { AI_SUGGESTION_SYSTEM_PROMPT_KEY, SEQUENCER_SETTINGS_KEY, SEITON_LAST_RANKING_KEY, AI_CONTEXT_PROMPT_KEY } from "@/lib/constants";
 
-const DEFAULT_SUGGESTION_PROMPT = `Você é um assistente de produtividade. Dada a seguinte tarefa, sugira 3 a 5 opções de reagendamento (data e hora, se aplicável) que sejam razoáveis, considerando a prioridade e o vencimento atual. Formate cada sugestão como uma linha separada, começando com um asterisco, por exemplo: "* Amanhã às 10:00", "* Próxima segunda-feira". Evite sugerir datas passadas.`;
+const DEFAULT_AI_CONTEXT_PROMPT = `Dada a seguinte tarefa, classifique-a como 'pessoal' ou 'profissional'. Responda apenas com 'pessoal' ou 'profissional'.`;
+
+interface SeitonRankingData {
+  rankedTasks: TodoistTask[];
+  p3Tasks: TodoistTask[];
+}
 
 const SEIKETSURecordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -47,6 +52,7 @@ const SEIKETSURecordPage: React.FC = () => {
   const [showAISuggestionsOnCard, setShowAISuggestionsOnCard] = useState(false); // Controla a visibilidade das sugestões no card
 
   const [sequencerSettings, setSequencerSettings] = useState<SequencerSettings | null>(null);
+  const [seitonRanking, setSeitonRanking] = useState<SeitonRankingData | null>(null);
 
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -79,13 +85,23 @@ const SEIKETSURecordPage: React.FC = () => {
   }
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem(SEQUENCER_SETTINGS_KEY);
-    if (savedSettings) {
+    const savedSequencerSettings = localStorage.getItem(SEQUENCER_SETTINGS_KEY);
+    if (savedSequencerSettings) {
       try {
-        setSequencerSettings(JSON.parse(savedSettings));
+        setSequencerSettings(JSON.parse(savedSequencerSettings));
       } catch (e) {
         console.error("Error parsing sequencer settings from localStorage:", e);
         showError("Erro ao carregar configurações do sequenciador.");
+      }
+    }
+
+    const savedSeitonRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
+    if (savedSeitonRanking) {
+      try {
+        setSeitonRanking(JSON.parse(savedSeitonRanking));
+      } catch (e) {
+        console.error("Error parsing Seiton ranking from localStorage:", e);
+        showError("Erro ao carregar o último ranking SEITON.");
       }
     }
   }, []);
@@ -155,7 +171,7 @@ const SEIKETSURecordPage: React.FC = () => {
 
             // Tertiary sort: due date (ascending)
             const dateA = parseAndValidateDate(a.due?.date);
-            const dateB = parseAndValidateDate(b.due?.date);
+            const dateB = b.due?.date ? parseAndValidateDate(b.due.date) : null;
 
             if (dateA && dateB) {
               return dateA.getTime() - dateB.getTime();
@@ -227,14 +243,6 @@ const SEIKETSURecordPage: React.FC = () => {
     }
   }, [currentTask, moveToNextTask]);
 
-  const handlePostponeClick = useCallback(() => {
-    if (currentTask) {
-      // Não limpa selectedDueDate/Time aqui, pois applyAISuggestion pode ter preenchido
-      // Apenas abre o diálogo.
-      setShowPostponeDialog(true);
-    }
-  }, [currentTask]);
-
   const handleOpenRescheduleDialog = useCallback(() => {
     if (currentTask?.due?.date) {
       const parsedDate = parseISO(currentTask.due.date);
@@ -292,75 +300,156 @@ const SEIKETSURecordPage: React.FC = () => {
     }
   }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
 
+  const getTaskRank = useCallback((taskId: string, ranking: SeitonRankingData | null): number | null => {
+    if (!ranking) return null;
+
+    const allRanked = [...ranking.rankedTasks, ...ranking.p3Tasks];
+    const index = allRanked.findIndex(task => task.id === taskId);
+    return index !== -1 ? index : null; // Lower index means higher rank
+  }, []);
+
+  const getAIContextPrompt = useCallback(() => {
+    return localStorage.getItem(AI_CONTEXT_PROMPT_KEY) || DEFAULT_AI_CONTEXT_PROMPT;
+  }, []);
+
+  const classifyTaskContext = useCallback(async (task: TodoistTask): Promise<'pessoal' | 'profissional' | 'indefinido'> => {
+    if (!GEMINI_API_KEY) {
+      console.warn("GEMINI_API_KEY not configured. Cannot classify task context.");
+      return 'indefinido';
+    }
+
+    const systemPrompt = getAIContextPrompt();
+    const taskDetails = `Tarefa: "${task.content}". Descrição: "${task.description || 'Nenhuma descrição.'}".`;
+    const prompt = `${systemPrompt}\n${taskDetails}`;
+
+    try {
+      const response = await fetch(GEMINI_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "indefinido";
+      const classification = aiResponseContent.toLowerCase().trim();
+
+      if (classification === 'pessoal' || classification === 'profissional') {
+        return classification;
+      }
+      return 'indefinido';
+
+    } catch (error: any) {
+      console.error(`Error classifying task context for "${task.content}":`, error);
+      return 'indefinido';
+    }
+  }, [GEMINI_API_KEY, GEMINI_API_URL, getAIContextPrompt]);
+
   const handleAISuggestion = useCallback(async () => {
-    // A verificação da chave da API já é feita no nível superior do componente.
-    // Se chegamos aqui, a chave existe.
     if (!currentTask) return;
+    if (!sequencerSettings) {
+      showError("Configurações do Sequenciador não carregadas. Por favor, configure-as.");
+      navigate("/sequencer-settings");
+      return;
+    }
+    if (!seitonRanking) {
+      showError("Último ranking SEITON não encontrado. Por favor, execute o SEITON primeiro.");
+      navigate("/5s/seiton");
+      return;
+    }
 
     setIsAISuggesting(true);
     setAiSuggestions([]);
     setAiError(null);
-    setShowAISuggestionsOnCard(true); // Mostra a seção de sugestões no card
-
-    const systemPrompt = localStorage.getItem(AI_SUGGESTION_SYSTEM_PROMPT_KEY) || DEFAULT_SUGGESTION_PROMPT;
-    const now = new Date();
-    const formattedNow = format(now, "dd/MM/yyyy HH:mm", { locale: ptBR });
-
-    let timeBlocksInfo = "";
-    if (sequencerSettings) {
-      const dayIndex = getDay(now); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const currentDayName = dayNames[dayIndex];
-      const currentDaySettings = sequencerSettings.dailyContexts[currentDayName];
-
-      if (currentDaySettings) {
-        const professionalBlocks = currentDaySettings.professional.map(b => `${b.start}-${b.end}`).join(', ');
-        const personalBlocks = currentDaySettings.personal.map(b => `${b.start}-${b.end}`).join(', ');
-        timeBlocksInfo = `Meus blocos de tempo para hoje (${currentDayName}) são: Profissional [${professionalBlocks || 'Nenhum'}], Pessoal [${personalBlocks || 'Nenhum'}].`;
-      }
-    }
-
-    const taskDurationInfo = currentTask.duration 
-      ? `A tarefa tem uma duração estimada de ${currentTask.duration.amount} ${currentTask.duration.unit === 'minute' ? 'minutos' : 'dias'}.`
-      : "A duração da tarefa não foi especificada.";
-
-    const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}. Data Limite: ${currentTask.deadline?.date ? formatDateForDisplay(currentTask.deadline) : 'Nenhum'}. ${taskDurationInfo} Data e hora atuais: ${formattedNow}. ${timeBlocksInfo}`;
-    const prompt = `${systemPrompt}\n${taskDetails}\nSugestões:`;
+    setShowAISuggestionsOnCard(true);
 
     try {
-        const response = await fetch(GEMINI_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            }),
-        });
+      // 1. Classificar a tarefa (pessoal/profissional)
+      const contextType = await classifyTaskContext(currentTask);
+      if (contextType === 'indefinido') {
+        throw new Error("Não foi possível classificar a tarefa como pessoal ou profissional.");
+      }
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
+      // 2. Preparar mapa de tarefas já agendadas para lookup rápido
+      const scheduledTasksMap = new Map<string, TodoistTask>();
+      allActiveTasks.forEach(task => {
+        if (task.due?.date) {
+          // Usar o formato completo para a chave do mapa
+          const formattedDate = format(parseISO(task.due.date), "yyyy-MM-dd'T'HH:mm:ss");
+          scheduledTasksMap.set(formattedDate, task);
         }
+      });
 
-        const data = await response.json();
-        const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter sugestões do Tutor de IA.";
-        
-        const parsedSuggestions = aiResponseContent.split('\n')
-            .map(line => line.trim())
-            .filter(line => line.startsWith('* '))
-            .map(line => line.substring(2).trim()); // Remove "* " prefix
+      const suggestions: string[] = [];
+      let currentSearchDate = roundToNext15Minutes(new Date());
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const currentTaskRank = getTaskRank(currentTask.id, seitonRanking);
 
-        setAiSuggestions(parsedSuggestions);
-        if (parsedSuggestions.length === 0) {
-            setAiError("O Tutor de IA não conseguiu gerar sugestões úteis. Tente novamente ou insira manualmente.");
+      // Loop por um número de dias (ex: 7 dias)
+      for (let i = 0; i < 7; i++) {
+        const searchDay = addDaysDateFns(startOfDay(new Date()), i);
+        const dayName = dayNames[getDay(searchDay)];
+        const daySettings = sequencerSettings.dailyContexts[dayName];
+
+        if (!daySettings) continue;
+
+        const relevantBlocks = daySettings[contextType];
+
+        for (const block of relevantBlocks) {
+          let blockStart = setMinutes(setHours(searchDay, parseInt(block.start.split(':')[0])), parseInt(block.start.split(':')[1]));
+          let blockEnd = setMinutes(setHours(searchDay, parseInt(block.end.split(':')[0])), parseInt(block.end.split(':')[1]));
+
+          // Ajustar o início do bloco se for no passado em relação ao currentSearchDate
+          if (isBefore(blockStart, currentSearchDate)) {
+            blockStart = currentSearchDate;
+          }
+
+          // Gerar slots de 15 minutos dentro do bloco
+          let slotTime = blockStart;
+          while (isBefore(slotTime, blockEnd) || slotTime.getTime() === blockEnd.getTime()) {
+            const formattedSlotTime = format(slotTime, "yyyy-MM-dd'T'HH:mm:ss");
+            const displaySuggestion = format(slotTime, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+
+            if (scheduledTasksMap.has(formattedSlotTime)) {
+              const existingTask = scheduledTasksMap.get(formattedSlotTime);
+              if (existingTask) {
+                const existingTaskRank = getTaskRank(existingTask.id, seitonRanking);
+                // Se a tarefa atual for mais prioritária (rank menor) ou a tarefa existente não tiver rank
+                if (currentTaskRank !== null && (existingTaskRank === null || currentTaskRank < existingTaskRank)) {
+                  suggestions.push(`* ${displaySuggestion} (Substituir ${existingTask.content})`);
+                }
+              }
+            } else {
+              suggestions.push(`* ${displaySuggestion}`);
+            }
+
+            if (suggestions.length >= 5) break; // Limitar a 5 sugestões
+            slotTime = addMinutes(slotTime, 15);
+          }
+          if (suggestions.length >= 5) break;
         }
+        if (suggestions.length >= 5) break;
+      }
+
+      setAiSuggestions(suggestions);
+      if (suggestions.length === 0) {
+        setAiError("Não foi possível encontrar slots de tempo adequados. Tente ajustar suas configurações do Sequenciador ou o ranking SEITON.");
+      }
+
     } catch (error: any) {
-        console.error("Erro ao obter sugestões de reagendamento do Gemini:", error);
-        setAiError(`Erro ao obter sugestões: ${error.message}.`);
-        showError(`Erro ao obter sugestões de reagendamento: ${error.message}`);
+      console.error("Erro ao obter sugestões de reagendamento do Gemini:", error);
+      setAiError(`Erro ao obter sugestões: ${error.message}.`);
+      showError(`Erro ao obter sugestões de reagendamento: ${error.message}`);
     } finally {
-        setIsAISuggesting(false);
+      setIsAISuggesting(false);
     }
-  }, [GEMINI_API_URL, currentTask, getPriorityLabel, sequencerSettings]);
+  }, [GEMINI_API_KEY, GEMINI_API_URL, currentTask, sequencerSettings, seitonRanking, allActiveTasks, classifyTaskContext, getTaskRank, getAIContextPrompt, navigate]);
 
   const applyAISuggestion = useCallback((suggestion: string) => {
     const now = new Date();
@@ -371,34 +460,41 @@ const SEIKETSURecordPage: React.FC = () => {
 
     const lowerSuggestion = suggestion.toLowerCase();
 
+    // Remove o prefixo "* " e o sufixo "(Substituir...)" para parsear
+    let cleanSuggestion = lowerSuggestion.replace(/^\*\s*/, '');
+    const replaceMatch = cleanSuggestion.match(/\s*\(substituir.*\)$/);
+    if (replaceMatch) {
+      cleanSuggestion = cleanSuggestion.substring(0, replaceMatch.index).trim();
+    }
+
     // 1. Tentar parsear datas relativas primeiro
-    if (lowerSuggestion.includes("amanhã")) {
+    if (cleanSuggestion.includes("amanhã")) {
         parsedDate = addDays(startOfToday, 1);
-    } else if (lowerSuggestion.includes("próxima semana")) {
+    } else if (cleanSuggestion.includes("próxima semana")) {
         parsedDate = addDays(startOfToday, 7);
-    } else if (lowerSuggestion.includes("próxima segunda-feira")) {
+    } else if (cleanSuggestion.includes("próxima segunda-feira")) {
         parsedDate = nextMonday(now);
-    } else if (lowerSuggestion.includes("próxima terça-feira")) {
+    } else if (cleanSuggestion.includes("próxima terça-feira")) {
         parsedDate = nextTuesday(now);
-    } else if (lowerSuggestion.includes("próxima quarta-feira")) {
+    } else if (cleanSuggestion.includes("próxima quarta-feira")) {
         parsedDate = nextWednesday(now);
-    } else if (lowerSuggestion.includes("próxima quinta-feira")) {
+    } else if (cleanSuggestion.includes("próxima quinta-feira")) {
         parsedDate = nextThursday(now);
-    } else if (lowerSuggestion.includes("próxima sexta-feira")) {
+    } else if (cleanSuggestion.includes("próxima sexta-feira")) {
         parsedDate = nextFriday(now);
-    } else if (lowerSuggestion.includes("próximo sábado")) {
+    } else if (cleanSuggestion.includes("próximo sábado")) {
         parsedDate = nextSaturday(now);
-    } else if (lowerSuggestion.includes("próximo domingo")) {
+    } else if (cleanSuggestion.includes("próximo domingo")) {
         parsedDate = nextSunday(now);
     } else {
         // 2. Se nenhuma data relativa, tentar parsear formatos específicos
         // Priorizar formato com data e hora
-        let tempParsed = parse(suggestion, "dd/MM/yyyy 'às' HH:mm", now, { locale: ptBR });
+        let tempParsed = parse(cleanSuggestion, "dd/MM/yyyy 'às' HH:mm", now, { locale: ptBR });
         if (isValid(tempParsed)) {
             parsedDate = tempParsed;
         } else {
             // Fallback para formato apenas com data
-            tempParsed = parse(suggestion, "dd/MM/yyyy", now, { locale: ptBR });
+            tempParsed = parse(cleanSuggestion, "dd/MM/yyyy", now, { locale: ptBR });
             if (isValid(tempParsed)) {
                 parsedDate = tempParsed;
             }
@@ -406,7 +502,7 @@ const SEIKETSURecordPage: React.FC = () => {
     }
 
     // 3. Extrair o horário da string de sugestão, independentemente de como a data foi parseada
-    const timeMatch = suggestion.match(/(\d{1,2}:\d{2})/);
+    const timeMatch = cleanSuggestion.match(/(\d{1,2}:\d{2})/);
     if (timeMatch) {
         extractedTime = timeMatch[1];
     }

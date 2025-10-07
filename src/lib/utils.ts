@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { format, parseISO, isValid } from "date-fns";
+import { format, parseISO, isValid, addMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types";
 
@@ -50,3 +50,20 @@ export function formatDateForDisplay(dateInput: string | TodoistTask['due'] | To
     return "Erro de data";
   }
 }
+
+/**
+ * Rounds a given date to the next 15-minute interval.
+ * For example, if the date is 19:40, it returns 19:45.
+ * If the date is 19:45, it returns 19:45.
+ * @param date The date to round.
+ * @returns A new Date object rounded to the next 15-minute interval.
+ */
+export const roundToNext15Minutes = (date: Date): Date => {
+  const minutes = date.getMinutes();
+  const remainder = minutes % 15;
+  if (remainder === 0) {
+    return date; // Already on a 15-minute mark
+  }
+  const minutesToAdd = 15 - remainder;
+  return addMinutes(date, minutesToAdd);
+};
