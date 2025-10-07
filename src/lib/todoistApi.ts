@@ -476,6 +476,7 @@ export async function getAISuggestedTimes(
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.error("Client-side: Error response from /api/suggest-task-time:", errorData); // Added for better debugging
       throw new Error(errorData.message || `Erro ao obter sugestões da IA: ${response.statusText}`);
     }
 
