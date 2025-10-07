@@ -88,8 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           system_instruction: { // Usando system_instruction para o prompt do sistema
             parts: [{ text: systemPrompt }]
           },
-          contents: [ // A array contents agora começa com a conversa real
-            { role: 'model', parts: [{ text: "Ok, entendi. Por favor, forneça o contexto da tarefa e da agenda." }] },
+          contents: [ // A array contents agora começa diretamente com a mensagem do usuário
             { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
           ],
           generationConfig: {
