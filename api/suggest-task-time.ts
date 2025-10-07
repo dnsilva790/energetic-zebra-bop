@@ -71,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const userPromptContent = {
       hora_atual: hora_atual,
-      nova_tarefa: nova_tareva,
+      nova_tarefa: nova_tarefa,
       agenda_existente: processedAgendaExistente,
     };
 
@@ -159,9 +159,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log("SERVERLESS: Is parsedSuggestions null?", parsedSuggestions === null);
       console.log("SERVERLESS: Does parsedSuggestions have 'sugestoes' property?", Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes'));
       console.log("SERVERLESS: Type of parsedSuggestions.sugestoes:", typeof parsedSuggestions.sugestoes);
-      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array?", Array.isArray(parsedSuggestions.sugestoes));
-      console.log("SERVERLESS: Is parsedSuggestions.sugestoes instanceof Array?", parsedSuggestions.sugestoes instanceof Array); // NOVO LOG
-      console.log("SERVERLESS: Value of parsedSuggestions.sugestoes:", parsedSuggestions.sugestoes); // NOVO LOG
+      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (Array.isArray)?", Array.isArray(parsedSuggestions.sugestoes));
+      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (instanceof Array)?", parsedSuggestions.sugestoes instanceof Array);
+      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (Object.prototype.toString)?", Object.prototype.toString.call(parsedSuggestions.sugestoes) === '[object Array]'); // NOVO LOG
+      console.log("SERVERLESS: Value of parsedSuggestions.sugestoes:", parsedSuggestions.sugestoes);
 
       if (!parsedSuggestions) {
         console.error("SERVERLESS: parsedSuggestions é nulo ou indefinido.");
@@ -179,7 +180,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error("SERVERLESS: parsedSuggestions não possui a propriedade 'sugestoes'.");
         throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' ausente).");
       }
-      if (!Array.isArray(parsedSuggestions.sugestoes)) {
+      // AQUI ESTÁ A MUDANÇA: Usando Object.prototype.toString para validação de array
+      if (Object.prototype.toString.call(parsedSuggestions.sugestoes) !== '[object Array]') {
         console.error("SERVERLESS: parsedSuggestions.sugestoes não é um array. Tipo real:", typeof parsedSuggestions.sugestoes, "Valor:", parsedSuggestions.sugestoes);
         throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' não é um array).");
       }
