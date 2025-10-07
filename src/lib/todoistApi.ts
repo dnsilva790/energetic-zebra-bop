@@ -540,7 +540,7 @@ export async function getAISuggestedTimes(
           errorMessage += `. Detalhes: ${errorDetails}`;
         } catch (jsonError: any) {
           console.warn("CLIENT: Failed to parse Gemini API error response as JSON:", jsonError);
-          errorMessage += `. Resposta JSON malformada. Erro de parsing: ${jsonError.message}`;
+          errorMessage = `Erro ao obter sugestões da IA: Resposta JSON malformada. Erro de parsing: ${jsonError.message}`;
         }
       } else {
         const textError = await geminiResponse.text();
@@ -554,14 +554,17 @@ export async function getAISuggestedTimes(
 
     const rawGeminiData = await geminiResponse.text();
     console.log("CLIENT: Gemini API response received. Length:", rawGeminiData.length);
+    console.log("CLIENT: Raw Gemini API response:", rawGeminiData); // Log the raw response
 
     const markdownMatch = rawGeminiData.match(/```json\n([\s\S]*?)\n```/);
     let aiResponseContentString = markdownMatch && markdownMatch[1] ? markdownMatch[1] : rawGeminiData;
+    console.log("CLIENT: Extracted AI response content string (after markdown match):", aiResponseContentString); // Log extracted string
 
     let parsedSuggestions;
     try {
       parsedSuggestions = JSON.parse(aiResponseContentString);
       console.log("CLIENT: Successfully parsed AI response as JSON.");
+      console.log("CLIENT: Parsed AI response object:", parsedSuggestions); // Log the parsed object
     } catch (jsonParseError: any) {
       console.error("CLIENT: Failed to parse AI response as JSON:", aiResponseContentString, "Error:", jsonParseError);
       throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
@@ -571,6 +574,7 @@ export async function getAISuggestedTimes(
       console.error("CLIENT: A resposta da IA não é um objeto JSON válido ou é nula.");
       throw new Error("A resposta da IA não está no formato esperado (objeto principal ausente ou inválido).");
     }
+    console.log("CLIENT: Checking for 'sugestoes' property in parsed object."); // New log
     if (!Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes')) {
       console.error("CLIENT: A resposta da IA não possui a propriedade 'sugestoes'.");
       throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' ausente).");
