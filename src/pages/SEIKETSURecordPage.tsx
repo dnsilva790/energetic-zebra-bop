@@ -192,7 +192,7 @@ Retorne um JSON válido com 3 a 5 sugestões:
       "badge": "🟢 HOJE",
       "titulo": "Ainda hoje - tarde adequada",
       "justificativa": "Lacuna disponível após reunião. Período de declínio ideal para demanda baixa.",
-      "janela": "declinio",
+      "janela": "intermediaria",
       "reasoning": "Tarefa de baixa demanda, 45min de duração. Há lacuna das 15:00-18:00 (reunião P4 pode ser movida se necessário). Cliente pediu para postergar, mas ainda dá tempo hoje."
     },
     {
