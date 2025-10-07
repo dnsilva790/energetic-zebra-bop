@@ -11,20 +11,19 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarDays, XCircle } from "lucide-react";
-import { format, parseISO, setHours, setMinutes, isValid } from "date-fns";
+import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
 interface SetDeadlineDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  currentDeadline: string | null | undefined;
-  onSave: (newDeadline: string | null) => void;
+  currentDeadline: { date: string } | null | undefined; // Atualizado para o formato nativo do Todoist
+  onSave: (newDeadlineDate: string | null) => void; // onSave agora espera YYYY-MM-DD string ou null
   loading: boolean;
 }
 
@@ -36,45 +35,27 @@ const SetDeadlineDialog: React.FC<SetDeadlineDialogProps> = ({
   loading,
 }) => {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [selectedTime, setSelectedTime] = useState<string>("");
 
   useEffect(() => {
     if (isOpen) {
-      if (currentDeadline) {
-        const parsedDate = parseISO(currentDeadline);
-        if (isValid(parsedDate)) {
-          setSelectedDate(parsedDate);
-          // Check if the deadline string contains a time component
-          const timeMatch = currentDeadline.match(/T(\d{2}:\d{2})/);
-          setSelectedTime(timeMatch ? timeMatch[1] : "");
-        } else {
-          setSelectedDate(undefined);
-          setSelectedTime("");
-        }
+      if (currentDeadline?.date) { // Acessa a propriedade .date
+        const parsedDate = parseISO(currentDeadline.date);
+        setSelectedDate(isValid(parsedDate) ? parsedDate : undefined);
       } else {
         setSelectedDate(undefined);
-        setSelectedTime("");
       }
     }
   }, [isOpen, currentDeadline]);
 
   const handleSave = useCallback(() => {
     if (!selectedDate) {
-      onSave(null); // Remove deadline if no date is selected
+      onSave(null); // Remove deadline se nenhuma data for selecionada
       return;
     }
-
-    let newDeadlineString = format(selectedDate, "yyyy-MM-dd");
-    if (selectedTime) {
-      const [hours, minutes] = selectedTime.split(':').map(Number);
-      if (!isNaN(hours) && !isNaN(minutes)) {
-        let dateWithTime = setHours(selectedDate, hours);
-        dateWithTime = setMinutes(dateWithTime, minutes);
-        newDeadlineString = format(dateWithTime, "yyyy-MM-dd'T'HH:mm:ss");
-      }
-    }
+    // O campo deadline nativo do Todoist é apenas YYYY-MM-DD
+    const newDeadlineString = format(selectedDate, "yyyy-MM-dd");
     onSave(newDeadlineString);
-  }, [selectedDate, selectedTime, onSave]);
+  }, [selectedDate, onSave]);
 
   const handleRemoveDeadline = useCallback(() => {
     onSave(null);
@@ -86,7 +67,7 @@ const SetDeadlineDialog: React.FC<SetDeadlineDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Definir Data Limite</DialogTitle>
           <DialogDescription>
-            Selecione uma data e, opcionalmente, um horário para o prazo final da tarefa.
+            Selecione uma data para o prazo final da tarefa.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -118,22 +99,11 @@ const SetDeadlineDialog: React.FC<SetDeadlineDialogProps> = ({
               </PopoverContent>
             </Popover>
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="time" className="text-right">
-              Horário (HH:MM)
-            </Label>
-            <Input
-              id="time"
-              type="time"
-              value={selectedTime}
-              onChange={(e) => setSelectedTime(e.target.value)}
-              className="col-span-3"
-            />
-          </div>
+          {/* O input de horário foi removido, pois o campo deadline nativo do Todoist é apenas data */}
         </div>
         <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2">
           <div className="flex justify-start w-full sm:w-auto mb-2 sm:mb-0">
-            {currentDeadline && (
+            {currentDeadline && ( // Verifica se currentDeadline existe para mostrar o botão de remover
               <Button
                 variant="destructive"
                 onClick={handleRemoveDeadline}

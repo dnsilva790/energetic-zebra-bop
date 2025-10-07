@@ -441,15 +441,15 @@ const SEISOPage = () => {
     setShowSetDeadlineDialog(true);
   }, [currentTask]);
 
-  const handleSaveDeadline = useCallback(async (newDeadline: string | null) => {
+  const handleSaveDeadline = useCallback(async (newDeadlineDate: string | null) => { // Parâmetro agora é string | null
     if (!taskToSetDeadline) return;
 
     setLoading(true);
     try {
       const updatedTask = await handleApiCall(
-        () => updateTaskDeadline(taskToSetDeadline.id, newDeadline),
+        () => updateTaskDeadline(taskToSetDeadline.id, newDeadlineDate), // Passa a string da data ou null
         "Atualizando data limite...",
-        newDeadline ? "Data limite definida com sucesso!" : "Data limite removida com sucesso!"
+        newDeadlineDate ? "Data limite definida com sucesso!" : "Data limite removida com sucesso!"
       );
 
       if (updatedTask) {
@@ -830,7 +830,7 @@ const SEISOPage = () => {
         <SetDeadlineDialog
           isOpen={showSetDeadlineDialog}
           onClose={() => setShowSetDeadlineDialog(false)}
-          currentDeadline={taskToSetDeadline.deadline}
+          currentDeadline={taskToSetDeadline.deadline} // Passa o objeto deadline nativo
           onSave={handleSaveDeadline}
           loading={loading}
         />

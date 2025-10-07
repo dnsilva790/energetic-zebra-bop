@@ -9,12 +9,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Formats a date string or a Todoist 'due' object for display.
+ * Formats a date string or a Todoist 'due' or 'deadline' object for display.
  * It detects if a time component is present in the date string and formats accordingly.
- * @param dateInput The date string (e.g., 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS') or TodoistTask['due'] object.
+ * @param dateInput The date string (e.g., 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SS') or TodoistTask['due'] / TodoistTask['deadline'] object.
  * @returns Formatted date string (e.g., "dd/MM/yyyy HH:mm") or "Sem vencimento" / "Data inválida" / "Erro de data".
  */
-export function formatDateForDisplay(dateInput: string | TodoistTask['due'] | null | undefined): string {
+export function formatDateForDisplay(dateInput: string | TodoistTask['due'] | TodoistTask['deadline'] | null | undefined): string {
   if (!dateInput) return "Sem vencimento";
 
   let dateString: string;
@@ -39,6 +39,8 @@ export function formatDateForDisplay(dateInput: string | TodoistTask['due'] | nu
     }
 
     // Check if the original date string contains a time component (e.g., 'T' followed by digits)
+    // The native Todoist 'deadline' is date-only, so it won't have a time component.
+    // The 'due' field might have 'datetime'.
     const hasTime = dateString.includes('T') && /\d{2}:\d{2}/.test(dateString);
     const formatString = hasTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy";
 

@@ -119,26 +119,42 @@ const SEITONPage = () => {
             return b.priority - a.priority;
           }
 
-          // Secondary sort: due date (ascending)
+          // Secondary sort: deadline (ascending)
+          const deadlineA = a.deadline?.date ? parseISO(a.deadline.date) : null;
+          const deadlineB = b.deadline?.date ? parseISO(b.deadline.date) : null;
+
+          const isValidDeadlineA = deadlineA && isValid(deadlineA);
+          const isValidDeadlineB = deadlineB && isValid(deadlineB);
+
+          if (isValidDeadlineA && isValidDeadlineB) {
+            return deadlineA!.getTime() - deadlineB!.getTime();
+          }
+          if (isValidDeadlineA) {
+            return -1;
+          }
+          if (isValidDeadlineB) {
+            return 1;
+          }
+
+          // Tertiary sort: due date (ascending)
           const dateA = a.due?.date ? parseISO(a.due.date) : null;
           const dateB = b.due?.date ? parseISO(b.due.date) : null;
 
-          // Handle invalid dates or nulls
           const isValidDateA = dateA && isValid(dateA);
           const isValidDateB = dateB && isValid(dateB);
 
           if (isValidDateA && isValidDateB) {
             return dateA!.getTime() - dateB!.getTime();
           }
-          if (isValidDateA) { // A has a valid date, B does not
+          if (isValidDateA) {
             return -1;
           }
-          if (isValidDateB) { // B has a valid date, A does not
+          if (isValidDateB) {
             return 1;
           }
-          return 0; // Both have no valid date
+          return 0; // Both have no valid date or deadline
         });
-      console.log("SEITONPage - Active tasks from API (sorted by priority and due date):", activeTasks.map(t => `${t.content} (Prio: ${t.priority}, Due: ${t.due?.date || 'N/A'})`));
+      console.log("SEITONPage - Active tasks from API (sorted by priority, deadline and due date):", activeTasks.map(t => `${t.content} (Prio: ${t.priority}, Deadline: ${t.deadline?.date || 'N/A'}, Due: ${t.due?.date || 'N/A'})`));
 
       setAllFetchedTasks(activeTasks);
 
@@ -541,15 +557,15 @@ const SEITONPage = () => {
     setShowSetDeadlineDialog(true);
   }, []);
 
-  const handleSaveDeadline = useCallback(async (newDeadline: string | null) => {
+  const handleSaveDeadline = useCallback(async (newDeadlineDate: string | null) => { // Parâmetro agora é string | null
     if (!taskToSetDeadline) return;
 
     setLoading(true);
     try {
       const updatedTask = await handleApiCall(
-        () => updateTaskDeadline(taskToSetDeadline.id, newDeadline),
+        () => updateTaskDeadline(taskToSetDeadline.id, newDeadlineDate), // Passa a string da data ou null
         "Atualizando data limite...",
-        newDeadline ? "Data limite definida com sucesso!" : "Data limite removida com sucesso!"
+        newDeadlineDate ? "Data limite definida com sucesso!" : "Data limite removida com sucesso!"
       );
 
       if (updatedTask) {
@@ -974,7 +990,7 @@ const SEITONPage = () => {
         <SetDeadlineDialog
           isOpen={showSetDeadlineDialog}
           onClose={() => setShowSetDeadlineDialog(false)}
-          currentDeadline={taskToSetDeadline.deadline}
+          currentDeadline={taskToSetDeadline.deadline} // Passa o objeto deadline nativo
           onSave={handleSaveDeadline}
           loading={loading}
         />

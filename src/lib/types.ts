@@ -13,7 +13,10 @@ export interface TodoistTask {
   project_id: string;
   project_name?: string; // Adicionado para facilitar a exibição
   classificacao?: 'essencial' | 'descartavel'; // Classificação interna do app
-  deadline?: string | null; // Adicionado o campo deadline
+  // Atualizado: Campo deadline nativo do Todoist
+  deadline?: {
+    date: string; // Formato YYYY-MM-DD
+  } | null;
   parent_id?: string | null; // Adicionado para identificar subtarefas
 }
 

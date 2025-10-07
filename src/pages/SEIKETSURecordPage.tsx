@@ -99,8 +99,9 @@ const SEIKETSURecordPage: React.FC = () => {
               return null;
             };
 
-            const deadlineA = parseAndValidateDate(a.deadline);
-            const deadlineB = parseAndValidateDate(b.deadline);
+            // Prioriza o campo deadline nativo do Todoist
+            const deadlineA = a.deadline?.date ? parseAndValidateDate(a.deadline.date) : null;
+            const deadlineB = b.deadline?.date ? parseAndValidateDate(b.deadline.date) : null;
 
             if (deadlineA && deadlineB) {
               const deadlineComparison = deadlineA.getTime() - deadlineB.getTime();
@@ -241,7 +242,7 @@ const SEIKETSURecordPage: React.FC = () => {
     const now = new Date();
     const formattedNow = format(now, "dd/MM/yyyy HH:mm", { locale: ptBR });
 
-    const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}. Data e hora atuais: ${formattedNow}.`;
+    const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}. Data Limite: ${currentTask.deadline?.date ? formatDateForDisplay(currentTask.deadline) : 'Nenhum'}. Data e hora atuais: ${formattedNow}.`;
     const prompt = `${systemPrompt}\n${taskDetails}\nSugestões:`;
 
     try {
