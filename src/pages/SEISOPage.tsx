@@ -156,21 +156,19 @@ const SEISOPage = () => {
       if (useSeitonRanking) {
         console.log("SEISOPage - Filtro vazio e 'Usar Ranking SEITON' ativado. Tentando carregar tarefas do ranking SEITON...");
         
+        let combinedSeitonTasksFromStorage: TodoistTask[] = [];
+
         // Tentar carregar do SEITON_LAST_RANKING_KEY (sessão finalizada)
         const savedLastRanking = localStorage.getItem(SEITON_LAST_RANKING_KEY);
         console.log("SEISOPage - SEITON_LAST_RANKING_KEY raw:", savedLastRanking);
         if (savedLastRanking) {
           try {
             const parsedLastRanking: SeitonRankingData = JSON.parse(savedLastRanking);
-            const combinedSeitonTasks = [...parsedLastRanking.rankedTasks, ...parsedLastRanking.p3Tasks];
-            const seitonTopTasks = combinedSeitonTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
-            if (seitonTopTasks.length > 0) {
-              tasksToProcess = seitonTopTasks;
-              usingSeitonSource = true;
-              showSuccess(`Sessão iniciada com ${seitonTopTasks.length} tarefas do último ranking SEITON (finalizado).`);
-              console.log("SEISOPage - Loaded tasks from SEITON_LAST_RANKING_KEY:", seitonTopTasks.map(t => t.content));
+            combinedSeitonTasksFromStorage = [...parsedLastRanking.rankedTasks, ...parsedLastRanking.p3Tasks];
+            if (combinedSeitonTasksFromStorage.length > 0) {
+              console.log("SEISOPage - Found tasks in SEITON_LAST_RANKING_KEY.");
             } else {
-              console.log("SEISOPage - SEITON_LAST_RANKING_KEY encontrado, mas não contém tarefas úteis após combinação/limite.");
+              console.log("SEISOPage - SEITON_LAST_RANKING_KEY encontrado, mas não contém tarefas úteis.");
             }
           } catch (e) {
             console.error("Erro ao analisar SEITON_LAST_RANKING_KEY:", e);
@@ -180,23 +178,19 @@ const SEISOPage = () => {
           console.log("SEISOPage - Nenhum SEITON_LAST_RANKING_KEY encontrado.");
         }
 
-        // Se ainda não houver tarefas, tentar SEITON_PROGRESS_KEY (sessão em progresso)
-        if (tasksToProcess.length === 0) {
+        // Se ainda não houver tarefas do ranking finalizado, tentar SEITON_PROGRESS_KEY (sessão em progresso)
+        if (combinedSeitonTasksFromStorage.length === 0) {
           console.log("SEISOPage - Nenhuma tarefa do ranking finalizado. Tentando ranking em progresso...");
           const savedInProgressRanking = localStorage.getItem(SEITON_PROGRESS_KEY);
           console.log("SEISOPage - SEITON_PROGRESS_KEY raw:", savedInProgressRanking);
           if (savedInProgressRanking) {
             try {
               const parsedInProgressRanking: SeitonProgress = JSON.parse(savedInProgressRanking);
-              const combinedInProgressTasks = [...parsedInProgressRanking.rankedTasks, ...parsedInProgressRanking.p3Tasks];
-              const seitonInProgressTasks = combinedInProgressTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
-              if (seitonInProgressTasks.length > 0) {
-                tasksToProcess = seitonInProgressTasks;
-                usingSeitonSource = true;
-                showSuccess(`Sessão iniciada com ${seitonInProgressTasks.length} tarefas do ranking SEITON (em progresso).`);
-                console.log("SEISOPage - Loaded tasks from SEITON_PROGRESS_KEY:", seitonInProgressTasks.map(t => t.content));
+              combinedSeitonTasksFromStorage = [...parsedInProgressRanking.rankedTasks, ...parsedInProgressRanking.p3Tasks];
+              if (combinedSeitonTasksFromStorage.length > 0) {
+                console.log("SEISOPage - Found tasks in SEITON_PROGRESS_KEY.");
               } else {
-                console.log("SEISOPage - SEITON_PROGRESS_KEY encontrado, mas não contém tarefas úteis após combinação/limite.");
+                console.log("SEISOPage - SEITON_PROGRESS_KEY encontrado, mas não contém tarefas úteis.");
               }
             } catch (e) {
               console.error("Erro ao analisar SEITON_PROGRESS_KEY:", e);
@@ -205,6 +199,35 @@ const SEISOPage = () => {
           } else {
             console.log("SEISOPage - Nenhum SEITON_PROGRESS_KEY encontrado.");
           }
+        }
+
+        // Se tarefas do ranking SEITON foram encontradas no localStorage, buscar dados atualizados
+        if (combinedSeitonTasksFromStorage.length > 0) {
+            const taskIds = combinedSeitonTasksFromStorage.map(task => task.id);
+            const idFilter = taskIds.map(id => `id:${id}`).join(' | ');
+            
+            console.log("SEISOPage - Fetching fresh data for Seiton tasks with filter:", idFilter);
+            const freshSeitonTasks = await handleApiCall(() => getTasks(idFilter), "Atualizando tarefas do ranking SEITON...");
+            
+            if (freshSeitonTasks && freshSeitonTasks.length > 0) {
+                // Sort fresh tasks according to the original Seiton ranking order
+                const orderedFreshSeitonTasks = taskIds
+                    .map(id => freshSeitonTasks.find(task => task.id === id))
+                    .filter(Boolean) as TodoistTask[]; // Filter out any tasks not found (e.g., deleted)
+                
+                tasksToProcess = orderedFreshSeitonTasks.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+                usingSeitonSource = true;
+                showSuccess(`Sessão iniciada com ${tasksToProcess.length} tarefas atualizadas do ranking SEITON.`);
+                console.log("SEISOPage - Loaded fresh tasks from SEITON ranking:", tasksToProcess.map(t => t.content));
+            } else {
+                console.log("SEISOPage - Fresh fetch for Seiton tasks returned no results or failed.");
+                showError("Não foi possível atualizar as tarefas do ranking SEITON. Tentando com dados antigos ou sem tarefas.");
+                // Fallback to using the potentially outdated combinedSeitonTasksFromStorage if fresh fetch fails
+                tasksToProcess = combinedSeitonTasksFromStorage.slice(0, SEITON_FALLBACK_TASK_LIMIT);
+                usingSeitonSource = true;
+            }
+        } else {
+          console.log("SEISOPage - Nenhuma tarefa útil encontrada no ranking SEITON (finalizado ou em progresso).");
         }
       } else {
         console.log("SEISOPage - Filtro vazio e 'Usar Ranking SEITON' desativado. Não tentando carregar do SEITON.");
