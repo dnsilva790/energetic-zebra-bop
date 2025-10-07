@@ -87,6 +87,7 @@ const SEIKETSURecordPage: React.FC = () => {
           .filter((task: TodoistTask) => task.parent_id === null)
           .filter((task: TodoistTask) => !task.is_completed)
           .sort((a, b) => {
+            // Primary sort: priority (descending)
             if (b.priority !== a.priority) {
               return b.priority - a.priority;
             }
@@ -99,7 +100,7 @@ const SEIKETSURecordPage: React.FC = () => {
               return null;
             };
 
-            // Prioriza o campo deadline nativo do Todoist
+            // Secondary sort: deadline (ascending)
             const deadlineA = a.deadline?.date ? parseAndValidateDate(a.deadline.date) : null;
             const deadlineB = b.deadline?.date ? parseAndValidateDate(b.deadline.date) : null;
 
@@ -109,22 +110,23 @@ const SEIKETSURecordPage: React.FC = () => {
                 return deadlineComparison;
               }
             } else if (deadlineA) {
-              return -1; 
+              return -1; // Task A has a deadline, Task B doesn't, so A comes first
             } else if (deadlineB) {
-              return 1; 
+              return 1; // Task B has a deadline, Task A doesn't, so B comes first
             }
 
+            // Tertiary sort: due date (ascending)
             const dateA = parseAndValidateDate(a.due?.date);
             const dateB = parseAndValidateDate(b.due?.date);
 
             if (dateA && dateB) {
               return dateA.getTime() - dateB.getTime();
             } else if (dateA) {
-              return -1;
+              return -1; // Task A has a due date, Task B doesn't, so A comes first
             } else if (dateB) {
-              return 1;
+              return 1; // Task B has a due date, Task A doesn't, so B comes first
             }
-            return 0; 
+            return 0; // Both have no valid date or deadline
           });
 
         if (filteredAndSortedTasks.length > 0) {

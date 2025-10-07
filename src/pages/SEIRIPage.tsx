@@ -77,7 +77,49 @@ const SEIRIPage = () => {
       if (fetchedTasks && fetchedTasks.length > 0) {
         const filteredAndCleanedTasks = fetchedTasks
           .filter((task: TodoistTask) => task.parent_id === null) // Exclui subtarefas
-          .filter((task: TodoistTask) => !task.is_completed); // Exclui tarefas já concluídas
+          .filter((task: TodoistTask) => !task.is_completed) // Exclui tarefas já concluídas
+          .sort((a, b) => {
+            // Primary sort: priority (descending)
+            if (b.priority !== a.priority) {
+              return b.priority - a.priority;
+            }
+
+            const parseAndValidateDate = (dateString: string | null | undefined): Date | null => {
+              if (typeof dateString === 'string' && dateString.trim() !== '') {
+                const parsed = parseISO(dateString);
+                return isValid(parsed) ? parsed : null;
+              }
+              return null;
+            };
+
+            // Secondary sort: deadline (ascending)
+            const deadlineA = a.deadline?.date ? parseAndValidateDate(a.deadline.date) : null;
+            const deadlineB = b.deadline?.date ? parseAndValidateDate(b.deadline.date) : null;
+
+            if (deadlineA && deadlineB) {
+              const deadlineComparison = deadlineA.getTime() - deadlineB.getTime();
+              if (deadlineComparison !== 0) {
+                return deadlineComparison;
+              }
+            } else if (deadlineA) {
+              return -1; // Task A has a deadline, Task B doesn't, so A comes first
+            } else if (deadlineB) {
+              return 1; // Task B has a deadline, Task A doesn't, so B comes first
+            }
+
+            // Tertiary sort: due date (ascending)
+            const dateA = parseAndValidateDate(a.due?.date);
+            const dateB = parseAndValidateDate(b.due?.date);
+
+            if (dateA && dateB) {
+              return dateA.getTime() - dateB.getTime();
+            } else if (dateA) {
+              return -1; // Task A has a due date, Task B doesn't, so A comes first
+            } else if (dateB) {
+              return 1; // Task B has a due date, Task A doesn't, so B comes first
+            }
+            return 0; // Both have no valid date or deadline
+          });
 
         if (filteredAndCleanedTasks.length > 0) {
           setTasksToTriage(filteredAndCleanedTasks);
