@@ -31,6 +31,8 @@ const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking';
 const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
 const SEITON_PROGRESS_KEY = 'seiton_progress';
 const SEITON_FALLBACK_TASK_LIMIT = 12;
+const AI_TUTOR_SHEET_WIDTH_KEY = 'ai_tutor_sheet_width'; // Importar a chave da largura
+const DEFAULT_SHEET_WIDTH = 'md'; // Largura padrão
 
 interface SeitonRankingData {
   rankedTasks: TodoistTask[];
@@ -100,6 +102,8 @@ const SEISOPage = () => {
   const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
   const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
 
+  const [aiTutorSheetWidth, setAiTutorSheetWidth] = useState(DEFAULT_SHEET_WIDTH); // Novo estado para a largura do sheet
+
   const totalTasks = allTasksInSession.length;
   const currentTask = allTasksInSession[currentTaskIndex];
 
@@ -110,6 +114,12 @@ const SEISOPage = () => {
   useEffect(() => {
     localStorage.setItem(SEISO_USE_SEITON_RANKING_KEY, JSON.stringify(useSeitonRanking));
   }, [useSeitonRanking]);
+
+  // Efeito para carregar a largura do sheet do localStorage
+  useEffect(() => {
+    const savedWidth = localStorage.getItem(AI_TUTOR_SHEET_WIDTH_KEY);
+    setAiTutorSheetWidth(savedWidth || DEFAULT_SHEET_WIDTH);
+  }, []);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -499,6 +509,9 @@ const SEISOPage = () => {
     ? ((parseInt(countdownInputDuration) * 60 - countdownTimeLeft) / (parseInt(countdownInputDuration) * 60)) * 100 
     : 0;
 
+  // Mapeia a largura selecionada para as classes Tailwind
+  const sheetWidthClass = `sm:max-w-${aiTutorSheetWidth} md:max-w-${aiTutorSheetWidth}`;
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-orange-100 p-4">
@@ -751,7 +764,7 @@ const SEISOPage = () => {
       <MadeWithDyad />
 
       <Sheet open={isAITutorChatOpen} onOpenChange={setIsAITutorChatOpen}>
-        <SheetContent className="flex flex-col sm:max-w-lg md:max-w-xl">
+        <SheetContent className={cn("flex flex-col", sheetWidthClass)}> {/* Aplicar a classe de largura aqui */}
           {currentTask && (
             <AITutorChat
               taskTitle={currentTask.content}
