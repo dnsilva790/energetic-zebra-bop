@@ -22,6 +22,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 
+const AI_SUGGESTION_SYSTEM_PROMPT_KEY = 'ai_suggestion_system_prompt';
+const DEFAULT_SUGGESTION_PROMPT = `Você é um assistente de produtividade. Dada a seguinte tarefa, sugira 3 a 5 opções de reagendamento (data e hora, se aplicável) que sejam razoáveis, considerando a prioridade e o vencimento atual. Formate cada sugestão como uma linha separada, começando com um asterisco, por exemplo: "* Amanhã às 10:00", "* Próxima segunda-feira". Evite sugerir datas passadas.`;
+
+
 const SEIKETSURecordPage: React.FC = () => {
   const navigate = useNavigate();
   const [tasksToReview, setTasksToReview] = useState<TodoistTask[]>([]);
@@ -231,10 +235,10 @@ const SEIKETSURecordPage: React.FC = () => {
     setAiSuggestions([]);
     setAiError(null);
 
+    const systemPrompt = localStorage.getItem(AI_SUGGESTION_SYSTEM_PROMPT_KEY) || DEFAULT_SUGGESTION_PROMPT;
+
     const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}.`;
-    const prompt = `Você é um assistente de produtividade. Dada a seguinte tarefa, sugira 3 a 5 opções de reagendamento (data e hora, se aplicável) que sejam razoáveis, considerando a prioridade e o vencimento atual. Formate cada sugestão como uma linha separada, começando com um asterisco, por exemplo: "* Amanhã às 10:00", "* Próxima segunda-feira". Evite sugerir datas passadas.
-    ${taskDetails}
-    Sugestões:`;
+    const prompt = `${systemPrompt}\n${taskDetails}\nSugestões:`;
 
     try {
         const response = await fetch(GEMINI_API_URL, {
