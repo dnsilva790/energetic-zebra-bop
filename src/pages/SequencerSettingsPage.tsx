@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, Clock, CalendarDays } from "lucide-react";
+import { ArrowLeft, Save, Clock, XCircle } from "lucide-react"; // Adicionado XCircle para o botão de remover
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { SequencerSettings } from "@/lib/types";
@@ -62,6 +62,11 @@ const SequencerSettingsPage: React.FC = () => {
     setSettings(DEFAULT_SEQUENCER_SETTINGS);
     localStorage.setItem(SEQUENCER_SETTINGS_KEY, JSON.stringify(DEFAULT_SEQUENCER_SETTINGS));
     showSuccess("Configurações do Sequenciador resetadas para o padrão!");
+  }, []);
+
+  // Nova função para lidar com a mudança do dia selecionado
+  const handleDayChange = useCallback((value: string) => {
+    setSelectedDay(value);
   }, []);
 
   const handleTimeBlockChange = useCallback((day: string, context: 'professional' | 'personal', index: number, field: 'start' | 'end', value: string) => {
@@ -152,7 +157,7 @@ const SequencerSettingsPage: React.FC = () => {
         <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="day-select" className="text-lg font-semibold">Dia da Semana</Label>
-            <Select value={selectedDay} onValueChange={setSelectedDay}>
+            <Select value={selectedDay} onValueChange={handleDayChange}> {/* CORRIGIDO AQUI */}
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Selecione um dia" />
               </SelectTrigger>
