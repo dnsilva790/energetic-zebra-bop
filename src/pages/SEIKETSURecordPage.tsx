@@ -209,6 +209,8 @@ const SEIKETSURecordPage: React.FC = () => {
       }
     }
 
+    console.log("SEIKETSU: handleSavePostpone - newDueDateString being sent:", newDueDateString); // Log para depuração
+
     const success = await handleApiCall(
       () => updateTaskDueDate(currentTask.id, newDueDateString),
       "Postergando tarefa...",
@@ -281,14 +283,15 @@ const SEIKETSURecordPage: React.FC = () => {
     let newDate: Date | undefined = undefined;
     let newTime: string = "";
     const now = new Date();
+    const startOfToday = startOfDay(now);
 
     const lowerSuggestion = suggestion.toLowerCase();
 
-    // 1. Handle relative dates
+    // 1. Handle relative dates (these should inherently be in the future)
     if (lowerSuggestion.includes("amanhã")) {
-        newDate = addDays(startOfDay(now), 1);
+        newDate = addDays(startOfToday, 1);
     } else if (lowerSuggestion.includes("próxima semana")) {
-        newDate = addDays(startOfDay(now), 7);
+        newDate = addDays(startOfToday, 7);
     } else if (lowerSuggestion.includes("próxima segunda-feira")) {
         newDate = nextMonday(now);
     } else if (lowerSuggestion.includes("próxima terça-feira")) {
@@ -323,7 +326,23 @@ const SEIKETSURecordPage: React.FC = () => {
         }
     }
 
-    // 3. Extract time if present in the suggestion string (e.g., "às 10:00", "10:00")
+    // 3. Ensure newDate is not in the past
+    if (newDate && newDate < startOfToday) {
+        // If the parsed date is in the past, try to advance it by a year if it's a specific date without year context
+        // or simply set it to today if it's a general past date.
+        if (newDate.getFullYear() < now.getFullYear()) { // If it's a past year, assume next year
+            newDate = new Date(newDate.setFullYear(now.getFullYear() + 1));
+        } else if (newDate.getMonth() < now.getMonth() || (newDate.getMonth() === now.getMonth() && newDate.getDate() < now.getDate())) {
+            // If it's a past month/day in the current year, assume next year
+            newDate = new Date(newDate.setFullYear(now.getFullYear() + 1));
+        }
+        // After potential year adjustment, if it's still before startOfToday, set it to startOfToday
+        if (newDate < startOfToday) {
+            newDate = startOfToday;
+        }
+    }
+
+    // 4. Extract time if present in the suggestion string (e.g., "às 10:00", "10:00")
     const timeMatch = suggestion.match(/(\d{1,2}:\d{2})/);
     if (timeMatch) {
         newTime = timeMatch[1];
