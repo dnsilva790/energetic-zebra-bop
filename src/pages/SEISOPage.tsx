@@ -25,13 +25,9 @@ import AITutorChat from "@/components/AITutorChat";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import SetDeadlineDialog from "@/components/SetDeadlineDialog";
+import { SEISO_FILTER_KEY, SEISO_USE_SEITON_RANKING_KEY, SEITON_LAST_RANKING_KEY, SEITON_PROGRESS_KEY, AI_TUTOR_SHEET_WIDTH_KEY } from "@/lib/constants";
 
-const SEISO_FILTER_KEY = 'seiso_filter_input';
-const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking';
-const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
-const SEITON_PROGRESS_KEY = 'seiton_progress';
 const SEITON_FALLBACK_TASK_LIMIT = 12;
-const AI_TUTOR_SHEET_WIDTH_KEY = 'ai_tutor_sheet_width'; // Importar a chave da largura
 const DEFAULT_SHEET_WIDTH = 'md'; // Largura padrão
 
 interface SeitonRankingData {
@@ -480,7 +476,7 @@ const SEISOPage = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (loading || isSessionFinished || !currentTask || !sessionStarted || showRescheduleDialog || isAITutorChatOpen || showSetDeadlineDialog) return;
 
-      if (event.key === 'c' || event.key === 'C') {
+      if (event.key === 'f' || event.key === 'F') { // F for Complete (changed from C)
         event.preventDefault();
         handleCompleteTask();
       } else if (event.key === 'p' || event.key === 'P') {
@@ -515,7 +511,7 @@ const SEISOPage = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-orange-100 p-4">
-        <p className="text-lg text-orange-600">Carregando tarefas...</p>
+        <p className="text-lg text-orange-600">Carregando tarefas para triagem...</p>
       </div>
     );
   }
@@ -715,7 +711,7 @@ const SEISOPage = () => {
                   onClick={handleCompleteTask}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
                 >
-                  <Check className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
+                  <Check className="mr-2 h-5 w-5" /> CONCLUÍDA (F)
                 </Button>
                 <Button
                   onClick={handleSkipTask}

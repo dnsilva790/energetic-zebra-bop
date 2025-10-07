@@ -276,7 +276,7 @@ const SEIRIPage = () => {
       } else if (event.key === 'r' || event.key === 'R') { // R for Reschedule
         event.preventDefault();
         handleOpenRescheduleDialog();
-      } else if (event.key === 'c' || event.key === 'C') { // C for Complete
+      } else if (event.key === 'f' || event.key === 'F') { // F for Complete (changed from C)
         event.preventDefault();
         handleCompleteTask();
       }
@@ -436,7 +436,7 @@ const SEIRIPage = () => {
                   onClick={handleCompleteTask}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
                 >
-                  <Check className="mr-2 h-5 w-5" /> CONCLUIR (C)
+                  <Check className="mr-2 h-5 w-5" /> CONCLUIR (F)
                 </Button>
               </div>
             </div>
