@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Play, Brain, Clock } from "lucide-react"; 
+import { Settings, Brush, LayoutDashboard, Play, Brain, Clock, ListOrdered } from "lucide-react"; 
 import {
   Card,
   CardContent,
@@ -80,7 +80,7 @@ const MainMenuPage = () => {
         </CardContent>
       </Card>
 
-      <div className="mt-8 flex gap-4">
+      <div className="mt-8 flex gap-4 flex-wrap justify-center">
         <Button
           variant="outline"
           onClick={() => navigate("/setup")}
@@ -99,11 +99,19 @@ const MainMenuPage = () => {
         </Button>
         <Button
           variant="outline"
-          onClick={() => navigate("/ai-suggestion-settings")} // Novo botão
+          onClick={() => navigate("/ai-suggestion-settings")}
           className="flex items-center gap-2 text-indigo-700 hover:text-indigo-900 border-indigo-300 hover:border-indigo-400 bg-white/70 backdrop-blur-sm"
         >
           <Brain size={20} />
           Configurações da IA de Sugestão
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => navigate("/sequencer-settings")} {/* Novo botão */}
+          className="flex items-center gap-2 text-teal-700 hover:text-teal-900 border-teal-300 hover:border-teal-400 bg-white/70 backdrop-blur-sm"
+        >
+          <ListOrdered size={20} />
+          Configurações do Sequenciador
         </Button>
       </div>
       <MadeWithDyad />

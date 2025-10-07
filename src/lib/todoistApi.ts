@@ -45,29 +45,6 @@ export async function handleApiCall<T>(apiFunction: () => Promise<T>, loadingMes
   }
 }
 
-// Helper para converter string de tempo UTC para string de tempo de Brasília
-const convertUtcToBrasilia = (date: string, time: string): { data: string | null, hora_brasilia: string | null } => {
-  if (!date || !time) {
-    return { data: null, hora_brasilia: null };
-  }
-  const utcDateTimeString = `${date}T${time}:00Z`; // Assume time is HH:MM
-  const utcDate = parseISO(utcDateTimeString);
-  if (!isValid(utcDate)) {
-    console.warn(`CLIENT: Invalid UTC date/time string for conversion: ${utcDateTimeString}`);
-    return { data: null, hora_brasilia: null };
-  }
-  try {
-    const brasiliaDate = toZonedTime(utcDate, 'America/Sao_Paulo'); // Usando toZonedTime
-    return {
-      data: format(brasiliaDate, 'yyyy-MM-dd'),
-      hora_brasilia: format(brasiliaDate, 'HH:mm'),
-    };
-  } catch (tzError: any) {
-    console.error(`CLIENT: Error converting timezone for ${utcDateTimeString}:`, tzError);
-    return { data: null, hora_brasilia: null };
-  }
-};
-
 /**
  * Cria uma ou mais tarefas no Todoist através do endpoint Serverless.
  * @param tasks Um array de objetos de tarefa a serem criados.
@@ -145,6 +122,28 @@ export async function updateTaskDescription(taskId: string, contentToAppend: str
       };
     }
 
+    // Extrair labels, durationMinutes e contextType
+    const labels: string[] = rawUpdatedTask.labels || [];
+    let durationMinutes: number | undefined;
+    let contextType: 'pessoal' | 'profissional' | undefined;
+
+    labels.forEach(label => {
+      if (label.startsWith('duracao:')) {
+        const durationStr = label.substring('duracao:'.length);
+        const matchMinutes = durationStr.match(/(\d+)m/);
+        const matchHours = durationStr.match(/(\d+)h/);
+        if (matchMinutes) {
+          durationMinutes = parseInt(matchMinutes[1]);
+        } else if (matchHours) {
+          durationMinutes = parseInt(matchHours[1]) * 60;
+        }
+      } else if (label === 'contexto:pessoal') {
+        contextType = 'pessoal';
+      } else if (label === 'contexto:profissional') {
+        contextType = 'profissional';
+      }
+    });
+
     return {
       id: rawUpdatedTask.id,
       content: rawUpdatedTask.content,
@@ -155,6 +154,9 @@ export async function updateTaskDescription(taskId: string, contentToAppend: str
       project_id: rawUpdatedTask.project_id,
       parent_id: rawUpdatedTask.parent_id,
       deadline: processedDeadline, // Incluir o campo deadline nativo
+      labels: labels,
+      durationMinutes: durationMinutes,
+      contextType: contextType,
     };
   } catch (error: any) {
     console.error("Client-side error calling /api/update-task-description:", error);
@@ -202,6 +204,28 @@ export async function getTasks(filter?: string): Promise<TodoistTask[]> {
       };
     }
 
+    // Extrair labels, durationMinutes e contextType
+    const labels: string[] = task.labels || [];
+    let durationMinutes: number | undefined;
+    let contextType: 'pessoal' | 'profissional' | undefined;
+
+    labels.forEach(label => {
+      if (label.startsWith('duracao:')) {
+        const durationStr = label.substring('duracao:'.length);
+        const matchMinutes = durationStr.match(/(\d+)m/);
+        const matchHours = durationStr.match(/(\d+)h/);
+        if (matchMinutes) {
+          durationMinutes = parseInt(matchMinutes[1]);
+        } else if (matchHours) {
+          durationMinutes = parseInt(matchHours[1]) * 60;
+        }
+      } else if (label === 'contexto:pessoal') {
+        contextType = 'pessoal';
+      } else if (label === 'contexto:profissional') {
+        contextType = 'profissional';
+      }
+    });
+
     return {
       id: task.id,
       content: task.content,
@@ -212,7 +236,9 @@ export async function getTasks(filter?: string): Promise<TodoistTask[]> {
       project_id: task.project_id,
       parent_id: task.parent_id,
       deadline: processedDeadline, // Incluir o campo deadline nativo
-      // Outros campos como project_name, classificacao serão adicionados posteriormente se necessário
+      labels: labels,
+      durationMinutes: durationMinutes,
+      contextType: contextType,
     };
   });
 
@@ -263,6 +289,28 @@ export async function updateTask(taskId: string, data: any): Promise<TodoistTask
     };
   }
 
+  // Extrair labels, durationMinutes e contextType
+  const labels: string[] = rawUpdatedTask.labels || [];
+  let durationMinutes: number | undefined;
+  let contextType: 'pessoal' | 'profissional' | undefined;
+
+  labels.forEach(label => {
+    if (label.startsWith('duracao:')) {
+      const durationStr = label.substring('duracao:'.length);
+      const matchMinutes = durationStr.match(/(\d+)m/);
+      const matchHours = durationStr.match(/(\d+)h/);
+      if (matchMinutes) {
+        durationMinutes = parseInt(matchMinutes[1]);
+      } else if (matchHours) {
+        durationMinutes = parseInt(matchHours[1]) * 60;
+      }
+    } else if (label === 'contexto:pessoal') {
+      contextType = 'pessoal';
+    } else if (label === 'contexto:profissional') {
+      contextType = 'profissional';
+    }
+  });
+
   return {
     id: rawUpdatedTask.id,
     content: rawUpdatedTask.content,
@@ -273,6 +321,9 @@ export async function updateTask(taskId: string, data: any): Promise<TodoistTask
     project_id: rawUpdatedTask.project_id,
     parent_id: rawUpdatedTask.parent_id,
     deadline: processedDeadline, // Incluir o campo deadline nativo
+    labels: labels,
+    durationMinutes: durationMinutes,
+    contextType: contextType,
   };
 }
 
@@ -385,6 +436,28 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
     };
   }
 
+  // Extrair labels, durationMinutes e contextType
+  const labels: string[] = rawUpdatedTask.labels || [];
+  let durationMinutes: number | undefined;
+  let contextType: 'pessoal' | 'profissional' | undefined;
+
+  labels.forEach(label => {
+    if (label.startsWith('duracao:')) {
+      const durationStr = label.substring('duracao:'.length);
+      const matchMinutes = durationStr.match(/(\d+)m/);
+      const matchHours = durationStr.match(/(\d+)h/);
+      if (matchMinutes) {
+        durationMinutes = parseInt(matchMinutes[1]);
+      } else if (matchHours) {
+        durationMinutes = parseInt(matchHours[1]) * 60;
+      }
+    } else if (label === 'contexto:pessoal') {
+      contextType = 'pessoal';
+    } else if (label === 'contexto:profissional') {
+      contextType = 'profissional';
+    }
+  });
+
   return {
     id: rawUpdatedTask.id,
     content: rawUpdatedTask.content,
@@ -395,6 +468,9 @@ export async function updateTaskDueDate(taskId: string, dueDate: string): Promis
     project_id: rawUpdatedTask.project_id,
     parent_id: rawUpdatedTask.parent_id,
     deadline: processedDeadline, // Incluir o campo deadline nativo
+    labels: labels,
+    durationMinutes: durationMinutes,
+    contextType: contextType,
   };
 }
 
@@ -449,6 +525,28 @@ export async function updateTaskDeadline(taskId: string, newDeadlineDate: string
       };
     }
 
+    // Extrair labels, durationMinutes e contextType
+    const labels: string[] = rawUpdatedTask.labels || [];
+    let durationMinutes: number | undefined;
+    let contextType: 'pessoal' | 'profissional' | undefined;
+
+    labels.forEach(label => {
+      if (label.startsWith('duracao:')) {
+        const durationStr = label.substring('duracao:'.length);
+        const matchMinutes = durationStr.match(/(\d+)m/);
+        const matchHours = durationStr.match(/(\d+)h/);
+        if (matchMinutes) {
+          durationMinutes = parseInt(matchMinutes[1]);
+        } else if (matchHours) {
+          durationMinutes = parseInt(matchHours[1]) * 60;
+        }
+      } else if (label === 'contexto:pessoal') {
+        contextType = 'pessoal';
+      } else if (label === 'contexto:profissional') {
+        contextType = 'profissional';
+      }
+    });
+
     return {
       id: rawUpdatedTask.id,
       content: rawUpdatedTask.content,
@@ -459,6 +557,9 @@ export async function updateTaskDeadline(taskId: string, newDeadlineDate: string
       project_id: rawUpdatedTask.project_id,
       parent_id: rawUpdatedTask.parent_id,
       deadline: processedDeadline,
+      labels: labels,
+      durationMinutes: durationMinutes,
+      contextType: contextType,
     };
 
   } catch (error: any) {
