@@ -27,14 +27,13 @@ const convertUtcToBrasilia = (date: string, time: string): { data: string | null
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('=== suggest-task-time called ===');
-  // console.log('Request body:', req.body); // Removido para reduzir verbosidade
   console.log('Environment check:', {
     hasGeminiApiKey: !!process.env.GEMINI_API_KEY,
-    // Do NOT log the actual key!
   });
 
   try {
     if (req.method !== 'POST') {
+      console.error('SERVERLESS: Method Not Allowed - Only POST requests are supported.');
       return res.status(405).json({ error: 'Method Not Allowed', message: 'Only POST requests are supported.' });
     }
 
@@ -75,8 +74,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       agenda_existente: processedAgendaExistente,
     };
 
-    // console.log("SERVERLESS: User prompt content sent to Gemini:", JSON.stringify(userPromptContent, null, 2)); // Removido para reduzir verbosidade
-
     let geminiResponse;
     try {
       geminiResponse = await fetch(GEMINI_API_URL, {
@@ -85,11 +82,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: systemPrompt }]
-          },
           contents: [
-            { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
+            { role: 'user', parts: [{ text: systemPrompt }] }, // System instruction as the first user message
+            { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] }, // Actual user prompt
           ],
         }),
       });
@@ -119,11 +114,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const rawGeminiData = await geminiResponse.text();
-      // console.log("SERVERLESS: Raw Gemini response (full API response):", rawGeminiData); // Removido para reduzir verbosidade
       console.log("SERVERLESS: Gemini API response received. Length:", rawGeminiData.length);
 
 
-      // O Gemini agora retorna uma string, então sempre tentamos extrair de um bloco Markdown ou parsear diretamente
       const markdownMatch = rawGeminiData.match(/```json\n([\s\S]*?)\n```/);
       let aiResponseContentString = markdownMatch && markdownMatch[1] ? markdownMatch[1] : rawGeminiData;
 
@@ -136,11 +129,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
       }
 
-      // --- Validação Refinada ---
-      // console.log("SERVERLESS: Final parsedSuggestions object:", JSON.stringify(parsedSuggestions, null, 2)); // Removido para reduzir verbosidade
-      // console.log("SERVERLESS: Type of parsedSuggestions:", typeof parsedSuggestions); // Removido para reduzir verbosidade
-      // console.log("SERVERLESS: Is parsedSuggestions null?", parsedSuggestions === null); // Removido para reduzir verbosidade
-      // console.log("SERVERLESS: Does parsedSuggestions have 'sugestoes' property?", Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes')); // Removido para reduzir verbosidade
       console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (Object.prototype.toString)?", Object.prototype.toString.call(parsedSuggestions.sugestoes) === '[object Array]');
 
       if (!parsedSuggestions || typeof parsedSuggestions !== 'object' || parsedSuggestions === null) {
@@ -155,7 +143,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error("SERVERLESS: A propriedade 'sugestoes' da resposta da IA não é um array. Tipo real:", typeof parsedSuggestions.sugestoes, "Valor:", parsedSuggestions.sugestoes);
         throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' não é um array).");
       }
-      // --- Fim da Validação Refinada ---
 
       return res.status(200).json({
         status: 'success',
