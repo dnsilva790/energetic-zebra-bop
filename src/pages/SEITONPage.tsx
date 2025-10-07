@@ -20,6 +20,16 @@ const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
 type SeitonStep = 'loading' | 'tournamentComparison' | 'result';
 
+interface ComparisonEntry {
+  challengerId: string; // Adicionado
+  opponentId: string;   // Adicionado
+  challengerContent: string;
+  opponentContent: string;
+  winner: 'challenger' | 'opponent' | 'N/A';
+  action: string;
+  timestamp: string;
+}
+
 interface SeitonProgress {
   tournamentQueue: TodoistTask[];
   rankedTasks: TodoistTask[];
@@ -28,14 +38,6 @@ interface SeitonProgress {
   currentChallenger: TodoistTask | null;
   currentOpponentIndex: number | null;
   comparisonHistory: ComparisonEntry[];
-}
-
-interface ComparisonEntry {
-  challengerContent: string;
-  opponentContent: string;
-  winner: 'challenger' | 'opponent' | 'N/A';
-  action: string;
-  timestamp: string;
 }
 
 interface UndoState {
@@ -77,6 +79,9 @@ const SEITONPage = () => {
   const [aiComparisonSuggestion, setAiComparisonSuggestion] = useState<'A' | 'B' | null>(null);
   const [aiComparisonExplanation, setAiComparisonExplanation] = useState<string | null>(null);
   const [showAiComparisonSuggestion, setShowAiComparisonSuggestion] = useState(false);
+
+  // Novo estado para armazenar o vencedor do último embate entre as tarefas atuais
+  const [lastWinnerInCurrentComparison, setLastWinnerInCurrentComparison] = useState<'challenger' | 'opponent' | null>(null);
 
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -170,7 +175,12 @@ const SEITONPage = () => {
         const currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
         const currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
         const currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
-        const currentComparisonHistory = loaded.comparisonHistory || [];
+        // Filtra o histórico para remover entradas sem IDs (formato antigo) ou tarefas que não existem mais
+        const currentComparisonHistory = (loaded.comparisonHistory || []).filter(entry => 
+          entry.challengerId && entry.opponentId && 
+          activeTasks.some(at => at.id === entry.challengerId) && 
+          activeTasks.some(at => at.id === entry.opponentId)
+        );
 
         setTournamentQueue(currentTournamentQueue);
         setRankedTasks(currentRankedTasks);
@@ -239,11 +249,31 @@ const SEITONPage = () => {
     }
   }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, loading, saveProgress]);
 
+  // Função para encontrar o último vencedor entre duas tarefas
+  const findLastWinner = useCallback((cId: string, oId: string): 'challenger' | 'opponent' | null => {
+    // Procura no histórico por uma correspondência direta ou invertida
+    const found = comparisonHistory.find(entry =>
+      (entry.challengerId === cId && entry.opponentId === oId) ||
+      (entry.challengerId === oId && entry.opponentId === cId)
+    );
+
+    if (found) {
+      if (found.challengerId === cId && found.opponentId === oId) {
+        return found.winner; // O desafiante atual era o desafiante no passado
+      } else if (found.challengerId === oId && found.opponentId === cId) {
+        // O desafiante atual era o oponente no passado, e vice-versa
+        return found.winner === 'challenger' ? 'opponent' : 'challenger';
+      }
+    }
+    return null;
+  }, [comparisonHistory]);
+
   const startNextTournamentComparison = useCallback(async () => {
     console.log("SEITONPage - startNextTournamentComparison called.");
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
+    setLastWinnerInCurrentComparison(null); // Resetar o último vencedor
 
     if (tournamentQueue.length === 0) {
       console.log("SEITONPage - Tournament queue is empty, moving to result.");
@@ -269,7 +299,14 @@ const SEITONPage = () => {
     setCurrentOpponentIndex(opponentIndex);
     setCurrentStep('tournamentComparison');
     console.log("SEITONPage - Starting comparison. Opponent Index:", opponentIndex, "Opponent:", rankedTasks[opponentIndex]?.content);
-  }, [tournamentQueue, rankedTasks, updateTaskAndReturn]);
+
+    // Verificar o histórico de comparações para as tarefas atuais
+    if (nextChallenger && rankedTasks[opponentIndex]) {
+      const winner = findLastWinner(nextChallenger.id, rankedTasks[opponentIndex].id);
+      setLastWinnerInCurrentComparison(winner);
+    }
+
+  }, [tournamentQueue, rankedTasks, updateTaskAndReturn, findLastWinner]);
 
   useEffect(() => {
     console.log("SEITONPage - Flow management effect triggered. Current step:", currentStep, "Challenger:", currentChallenger?.content || "Nenhum", "Queue length:", tournamentQueue.length);
@@ -385,6 +422,8 @@ const SEITONPage = () => {
 
     setComparisonHistory(prevHistory => [
       {
+        challengerId: currentChallenger.id, // Usar ID
+        opponentId: opponentTask.id,       // Usar ID
         challengerContent: currentChallenger.content,
         opponentContent: opponentTask.content,
         winner: challengerWins ? 'challenger' : 'opponent',
@@ -392,7 +431,7 @@ const SEITONPage = () => {
         timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
       },
       ...prevHistory,
-    ].slice(0, 3));
+    ].slice(0, 100)); // Manter um histórico maior para consultas
 
     console.log("SEITONPage - After comparison. New Ranked:", newRankedTasks.map(t => t.content), "New P3:", newP3Tasks.map(t => t.content));
 
@@ -412,7 +451,7 @@ const SEITONPage = () => {
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
-
+    setLastWinnerInCurrentComparison(null); // Resetar após a comparação
   }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn, setLastUndoableAction]);
 
   const handleCancelTask = useCallback(async (taskIdToCancel: string) => {
@@ -460,6 +499,8 @@ const SEITONPage = () => {
 
         setComparisonHistory(prevHistory => [
             {
+                challengerId: currentChallenger?.id || "N/A", // Usar ID
+                opponentId: isOpponentCancelled ? currentOpponent?.id || "N/A" : "N/A", // Usar ID
                 challengerContent: currentChallenger?.content || "N/A",
                 opponentContent: isOpponentCancelled ? currentOpponent?.content || "N/A" : "N/A",
                 winner: 'N/A',
@@ -467,7 +508,7 @@ const SEITONPage = () => {
                 timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
             },
             ...prevHistory,
-        ].slice(0, 3));
+        ].slice(0, 100));
     } else {
         showError("Falha ao cancelar a tarefa.");
         setLastUndoableAction(null);
@@ -476,7 +517,7 @@ const SEITONPage = () => {
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
-
+    setLastWinnerInCurrentComparison(null); // Resetar após a ação
 }, [currentChallenger, currentOpponentIndex, rankedTasks, completeTask, tournamentQueue, p3Tasks, setLastUndoableAction]);
 
   const handleUndo = useCallback(async () => {
@@ -693,6 +734,7 @@ const SEITONPage = () => {
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
+    setLastWinnerInCurrentComparison(null); // Resetar também
     await fetchAndSetupTasks();
   }, [fetchAndSetupTasks]);
 
@@ -701,7 +743,8 @@ const SEITONPage = () => {
     title: string,
     description: string,
     priorityOverride?: number,
-    onCardClick?: () => void
+    onCardClick?: () => void,
+    isLastWinner?: boolean // Novo prop para indicar se foi o último vencedor
   ) => {
     if (!task) {
         return null;
@@ -710,13 +753,18 @@ const SEITONPage = () => {
     return (
       <Card
         className={cn(
-          "w-full shadow-lg bg-white/80 backdrop-blur-sm p-4",
+          "w-full shadow-lg bg-white/80 backdrop-blur-sm p-4 relative", // Adicionado 'relative' para posicionamento do badge
           onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200"
         )}
         onClick={onCardClick}
         tabIndex={onCardClick ? 0 : -1}
         role={onCardClick ? "button" : undefined}
       >
+        {isLastWinner && (
+          <span className="absolute top-2 right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+            Último Vencedor!
+          </span>
+        )}
         <CardHeader className="text-center p-0 mb-2">
           <CardTitle className="text-xl font-bold text-gray-800 flex items-center justify-center gap-2">
             {task.content}
@@ -847,9 +895,23 @@ const SEITONPage = () => {
               Escolha a tarefa que você considera mais prioritária ou cancele uma delas.
             </CardDescription>
             <div className="grid grid-cols-1 gap-4">
-              {renderTaskCard(currentChallenger, "Tarefa A", "Challenger", currentChallenger.priority, () => handleTournamentComparison(true))}
+              {renderTaskCard(
+                currentChallenger,
+                "Tarefa A",
+                "Challenger",
+                currentChallenger.priority,
+                () => handleTournamentComparison(true),
+                lastWinnerInCurrentComparison === 'challenger'
+              )}
               <p className="text-xl font-bold text-gray-700">VS</p>
-              {renderTaskCard(currentOpponent, "Tarefa B", `Posição ${currentOpponentIndex + 1} no Ranking`, currentOpponent.priority, () => handleTournamentComparison(false))}
+              {renderTaskCard(
+                currentOpponent,
+                "Tarefa B",
+                `Posição ${currentOpponentIndex + 1} no Ranking`,
+                currentOpponent.priority,
+                () => handleTournamentComparison(false),
+                lastWinnerInCurrentComparison === 'opponent'
+              )}
             </div>
             
             <div className="mt-6 space-y-2">
@@ -1019,9 +1081,9 @@ const SEITONPage = () => {
                 <h4 className="font-semibold mt-2">Histórico de Comparações (Últimas 3):</h4>
                 {comparisonHistory.length > 0 ? (
                   <ul className="list-disc list-inside ml-4 space-y-1">
-                    {comparisonHistory.map((entry, index) => (
+                    {comparisonHistory.slice(0,3).map((entry, index) => (
                       <li key={index}>
-                        <span className="font-medium">[{entry.timestamp}]</span> Desafiante: "{entry.challengerContent}" vs. Oponente: "{entry.opponentContent}". Vencedor: {entry.winner}. Ação: {entry.action}
+                        <span className="font-medium">[{entry.timestamp}]</span> Desafiante: "{entry.challengerContent}" (ID: {entry.challengerId}) vs. Oponente: "{entry.opponentContent}" (ID: {entry.opponentId}). Vencedor: {entry.winner}. Ação: {entry.action}
                       </li>
                     ))}
                   </ul>
