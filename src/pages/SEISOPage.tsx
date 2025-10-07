@@ -74,9 +74,9 @@ const SEISOPage = () => {
     const savedPreference = localStorage.getItem(SEISO_USE_SEITON_RANKING_KEY);
     return savedPreference ? JSON.parse(savedPreference) : true;
   });
-  const [sessionStarted, setSessionStarted] = useState(false);
-  const [allTasksInSession, setAllTasksInSession] = useState<TodoistTask[]>([]); // Lista de tarefas da sessão
-  const [currentTaskIndex, setCurrentTaskIndex] = useState(0); // Índice da tarefa atual na lista
+  const [sessionStarted, setSessionStarted] = useState(false); // Inicialmente false
+  const [allTasksInSession, setAllTasksInSession] = useState<TodoistTask[]>([]);
+  const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [tasksCompleted, setTasksCompleted] = useState(0);
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -100,7 +100,6 @@ const SEISOPage = () => {
   const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
   const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
 
-  // Deriva a tarefa atual e o total de tarefas da lista da sessão
   const totalTasks = allTasksInSession.length;
   const currentTask = allTasksInSession[currentTaskIndex];
 
@@ -232,27 +231,28 @@ const SEISOPage = () => {
       }
 
       const combinedTasks = [...p1, ...others];
-      setAllTasksInSession(combinedTasks); // Atualiza a lista de tarefas da sessão
+      setAllTasksInSession(combinedTasks);
       setIsUsingSeitonRanking(usingSeitonSource);
-      setSessionStarted(true);
-      setCurrentTaskIndex(0); // Sempre começa da primeira tarefa
+      setSessionStarted(true); // Inicia a sessão se houver tarefas
+      setCurrentTaskIndex(0);
       setTasksCompleted(0);
       setIsSessionFinished(false);
     } else {
       showSuccess("Nenhuma tarefa encontrada. Tente outro filtro ou complete o SEITON.");
       setIsSessionFinished(true);
-      setSessionStarted(false);
+      setSessionStarted(false); // Garante que a sessão não está iniciada
       setIsUsingSeitonRanking(false);
-      setAllTasksInSession([]); // Garante que a lista esteja vazia
+      setAllTasksInSession([]);
     }
     setLoading(false);
   }, [filterInput, navigate, useSeitonRanking]);
 
-  useEffect(() => {
-    if (!sessionStarted) {
-      fetchTasksAndFilter();
-    }
-  }, [fetchTasksAndFilter, sessionStarted]);
+  // REMOVIDO: useEffect que chamava fetchTasksAndFilter automaticamente
+  // useEffect(() => {
+  //   if (!sessionStarted) {
+  //     fetchTasksAndFilter();
+  //   }
+  // }, [fetchTasksAndFilter, sessionStarted]);
 
   useEffect(() => {
     if (currentTask && sessionStarted) {
@@ -323,18 +323,16 @@ const SEISOPage = () => {
     }
   }, []);
 
-  // Nova função para lidar com a conclusão de uma ação na tarefa
   const handleTaskActionComplete = useCallback(() => {
     stopAllTimers();
     setAllTasksInSession(prevTasks => {
       const updatedTasks = prevTasks.filter(task => task.id !== currentTask?.id);
       if (updatedTasks.length === 0) {
         setIsSessionFinished(true);
+        setSessionStarted(false); // Garante que a sessão é marcada como não iniciada
       }
       return updatedTasks;
     });
-    // currentTaskIndex permanece o mesmo, efetivamente apontando para a próxima tarefa
-    // na lista agora mais curta.
   }, [currentTask, stopAllTimers]);
 
   const handleCompleteTask = useCallback(async () => {
@@ -432,7 +430,6 @@ const SEISOPage = () => {
       );
 
       if (updatedTask) {
-        // Atualizar a tarefa na lista da sessão
         setAllTasksInSession(prevTasks => prevTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
       }
     } catch (error) {
@@ -498,7 +495,15 @@ const SEISOPage = () => {
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
           </Button>
-          <Button variant="outline" onClick={() => { setIsSessionFinished(false); setSessionStarted(false); setFilterInput(localStorage.getItem(SEISO_FILTER_KEY) || "today | overdue"); }} className="mt-2">
+          <Button 
+            variant="outline" 
+            onClick={() => { 
+              setIsSessionFinished(false); 
+              setSessionStarted(false); // Garante que a sessão não está iniciada para mostrar o filtro
+              setFilterInput(localStorage.getItem(SEISO_FILTER_KEY) || "today | overdue"); 
+            }} 
+            className="mt-2"
+          >
             Iniciar Nova Sessão
           </Button>
         </Card>
@@ -524,7 +529,7 @@ const SEISOPage = () => {
         </p>
       </div>
 
-      {!sessionStarted ? (
+      {!sessionStarted ? ( // Esta condição agora garante que o filtro aparece primeiro
         <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold text-gray-800">Definir Filtro de Tarefas</CardTitle>
@@ -565,7 +570,7 @@ const SEISOPage = () => {
               {filterError && <p className="text-red-500 text-sm mt-1">{filterError}</p>}
             </div>
             <Button
-              onClick={fetchTasksAndFilter}
+              onClick={fetchTasksAndFilter} // Agora o botão chama a função
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md transition-colors"
               disabled={loading}
             >
