@@ -8,12 +8,12 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain, AlertCircle
+  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain, AlertCircle, Loader2
 } from "lucide-react"; 
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, handleApiCall, updateTaskDueDate, completeTask } from "@/lib/todoistApi"; 
-import { format, parseISO, setHours, setMinutes, isValid, addDays } from "date-fns";
+import { format, parseISO, setHours, setMinutes, isValid, addDays, parse, startOfDay, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TodoistTask } from "@/lib/types"; 
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
@@ -36,6 +36,14 @@ const SEIKETSURecordPage: React.FC = () => {
   const [showPostponeDialog, setShowPostponeDialog] = useState(false);
   const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
   const [selectedDueTime, setSelectedDueTime] = useState<string>("");
+
+  // AI Suggestion States
+  const [isAISuggesting, setIsAISuggesting] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
   const currentTask = tasksToReview[currentTaskIndex];
   const totalTasks = tasksToReview.length;
@@ -175,6 +183,8 @@ const SEIKETSURecordPage: React.FC = () => {
     if (currentTask) {
       setSelectedDueDate(addDays(new Date(), 1));
       setSelectedDueTime("");
+      setAiSuggestions([]); // Clear previous AI suggestions
+      setAiError(null); // Clear previous AI error
       setShowPostponeDialog(true);
     }
   }, [currentTask]);
@@ -209,6 +219,114 @@ const SEIKETSURecordPage: React.FC = () => {
       showError("Falha ao postergar a tarefa.");
     }
   }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
+
+  const handleAISuggestion = useCallback(async () => {
+    if (!GEMINI_API_KEY) {
+        setAiError("Chave da API do Gemini não configurada. Por favor, adicione VITE_GEMINI_API_KEY ao seu .env.");
+        return;
+    }
+    if (!currentTask) return;
+
+    setIsAISuggesting(true);
+    setAiSuggestions([]);
+    setAiError(null);
+
+    const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}.`;
+    const prompt = `Você é um assistente de produtividade. Dada a seguinte tarefa, sugira 3 a 5 opções de reagendamento (data e hora, se aplicável) que sejam razoáveis, considerando a prioridade e o vencimento atual. Formate cada sugestão como uma linha separada, começando com um asterisco, por exemplo: "* Amanhã às 10:00", "* Próxima segunda-feira". Evite sugerir datas passadas.
+    ${taskDetails}
+    Sugestões:`;
+
+    try {
+        const response = await fetch(GEMINI_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível obter sugestões do Tutor de IA.";
+        
+        const parsedSuggestions = aiResponseContent.split('\n')
+            .map(line => line.trim())
+            .filter(line => line.startsWith('* '))
+            .map(line => line.substring(2).trim()); // Remove "* " prefix
+
+        setAiSuggestions(parsedSuggestions);
+        if (parsedSuggestions.length === 0) {
+            setAiError("O Tutor de IA não conseguiu gerar sugestões úteis. Tente novamente ou insira manualmente.");
+        }
+    } catch (error: any) {
+        console.error("Erro ao obter sugestões de reagendamento do Gemini:", error);
+        setAiError(`Erro ao obter sugestões: ${error.message}.`);
+        showError(`Erro ao obter sugestões de reagendamento: ${error.message}`);
+    } finally {
+        setIsAISuggesting(false);
+    }
+  }, [GEMINI_API_KEY, GEMINI_API_URL, currentTask, getPriorityLabel]);
+
+  const applyAISuggestion = useCallback((suggestion: string) => {
+    let newDate: Date | undefined = undefined;
+    let newTime: string = "";
+    const now = new Date();
+
+    const lowerSuggestion = suggestion.toLowerCase();
+
+    // 1. Handle relative dates
+    if (lowerSuggestion.includes("amanhã")) {
+        newDate = addDays(startOfDay(now), 1);
+    } else if (lowerSuggestion.includes("próxima semana")) {
+        newDate = addDays(startOfDay(now), 7);
+    } else if (lowerSuggestion.includes("próxima segunda-feira")) {
+        newDate = nextMonday(now);
+    } else if (lowerSuggestion.includes("próxima terça-feira")) {
+        newDate = nextTuesday(now);
+    } else if (lowerSuggestion.includes("próxima quarta-feira")) {
+        newDate = nextWednesday(now);
+    } else if (lowerSuggestion.includes("próxima quinta-feira")) {
+        newDate = nextThursday(now);
+    } else if (lowerSuggestion.includes("próxima sexta-feira")) {
+        newDate = nextFriday(now);
+    } else if (lowerSuggestion.includes("próximo sábado")) {
+        newDate = nextSaturday(now);
+    } else if (lowerSuggestion.includes("próximo domingo")) {
+        newDate = nextSunday(now);
+    } else {
+        // 2. Try to parse specific date formats
+        try {
+            // Try "dd/MM/yyyy 'às' HH:mm"
+            let parsed = parse(suggestion, "dd/MM/yyyy 'às' HH:mm", now, { locale: ptBR });
+            if (isValid(parsed)) {
+                newDate = parsed;
+                newTime = format(parsed, "HH:mm");
+            } else {
+                // Try "dd/MM/yyyy"
+                parsed = parse(suggestion, "dd/MM/yyyy", now, { locale: ptBR });
+                if (isValid(parsed)) {
+                    newDate = startOfDay(parsed);
+                }
+            }
+        } catch (e) {
+            console.warn("Could not parse AI suggestion date:", suggestion, e);
+        }
+    }
+
+    // 3. Extract time if present in the suggestion string (e.g., "às 10:00", "10:00")
+    const timeMatch = suggestion.match(/(\d{1,2}:\d{2})/);
+    if (timeMatch) {
+        newTime = timeMatch[1];
+    }
+
+    setSelectedDueDate(newDate);
+    setSelectedDueTime(newTime);
+    showSuccess(`Sugestão "${suggestion}" aplicada.`);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -368,6 +486,49 @@ const SEIKETSURecordPage: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {/* AI Suggestion Section */}
+            <div className="space-y-2">
+                <Button
+                    onClick={handleAISuggestion}
+                    disabled={isAISuggesting || !GEMINI_API_KEY}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center"
+                >
+                    {isAISuggesting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                        <Brain className="mr-2 h-4 w-4" />
+                    )}
+                    Sugerir Horários com IA
+                </Button>
+                {!GEMINI_API_KEY && (
+                    <p className="text-red-500 text-sm text-center flex items-center justify-center">
+                        <AlertCircle className="h-4 w-4 mr-1" />
+                        Chave Gemini não configurada. Adicione VITE_GEMINI_API_KEY ao seu .env.
+                    </p>
+                )}
+                {aiError && (
+                    <p className="text-red-500 text-sm text-center">{aiError}</p>
+                )}
+                {aiSuggestions.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                        <Label className="text-sm font-medium">Sugestões da IA:</Label>
+                        <div className="flex flex-wrap gap-2">
+                            {aiSuggestions.map((suggestion, index) => (
+                                <Button
+                                    key={index}
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => applyAISuggestion(suggestion)}
+                                    disabled={isAISuggesting}
+                                >
+                                    {suggestion}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+            {/* Existing Date/Time Pickers */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="date" className="text-right">
                 Data
