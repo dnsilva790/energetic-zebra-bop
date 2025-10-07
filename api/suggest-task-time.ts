@@ -85,10 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          system_instruction: { // Usando system_instruction para o prompt do sistema
+          system_instruction: {
             parts: [{ text: systemPrompt }]
           },
-          contents: [ // A array contents agora começa diretamente com a mensagem do usuário
+          contents: [
             { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
           ],
           generationConfig: {
@@ -120,11 +120,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log("SERVERLESS: Raw Gemini response:", rawGeminiData);
 
       const data = JSON.parse(rawGeminiData);
-      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      let aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (typeof aiResponseContent !== 'string') {
         console.error("SERVERLESS: Unexpected type for aiResponseContent:", typeof aiResponseContent, "Value:", aiResponseContent);
         throw new Error("O conteúdo da resposta da IA não é uma string. Não é possível processar as sugestões.");
+      }
+
+      // NEW: Attempt to extract JSON from markdown code block
+      console.log("SERVERLESS: Raw AI response content from Gemini (before cleaning):", aiResponseContent);
+      const jsonMatch = aiResponseContent.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch && jsonMatch[1]) {
+        aiResponseContent = jsonMatch[1].trim();
+        console.log("SERVERLESS: Extracted JSON from markdown block:", aiResponseContent);
+      } else {
+        // If not a markdown block, try to clean up common conversational intros/outros
+        aiResponseContent = aiResponseContent.replace(/^\s*```json\s*/, '').replace(/\s*```\s*$/, '').trim();
+        console.log("SERVERLESS: Cleaned AI response content (no markdown block detected):", aiResponseContent);
       }
 
       let parsedSuggestions;
@@ -159,7 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     return res.status(500).json({ 
       error: 'Failed to get AI suggestions due to an internal server error.',
-      details: error.message // This will be included in the response
+      details: error.message
     });
   }
 }
