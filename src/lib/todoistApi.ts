@@ -1,7 +1,7 @@
 import { toast } from "sonner";
-import { TodoistTask, TodoistProject, AISuggestion, AISuggestionResponse } from "./types"; // Importar os novos tipos
+import { TodoistTask, TodoistProject } from "./types"; 
 import { format, parseISO, isValid } from "date-fns";
-import { toZonedTime } from 'date-fns-tz'; // Importar toZonedTime
+import { toZonedTime } from 'date-fns-tz'; 
 
 const TODOIST_CONFIG = {
   baseURL: 'https://api.todoist.com/rest/v2',
@@ -459,138 +459,6 @@ export async function updateTaskDeadline(taskId: string, newDeadline: string | n
 
   } catch (error: any) {
     console.error("Client-side error in updateTaskDeadline:", error);
-    throw error;
-  }
-}
-
-
-/**
- * Obtém sugestões de data e hora da IA para uma tarefa.
- * @param taskContent O conteúdo (título) da tarefa.
- * @param taskDescription A descrição da tarefa.
- * @param systemPrompt O prompt do sistema personalizado para a IA.
- * @param currentDateTime A hora atual no fuso horário de Brasília (ISO string com offset).
- * @param existingAgenda Um array de objetos representando a agenda existente.
- * @returns Um objeto AISuggestionResponse com sugestões de data/hora ou undefined em caso de erro.
- */
-export async function getAISuggestedTimes(
-  taskContent: string,
-  taskDescription: string,
-  systemPrompt: string,
-  currentDateTime: string,
-  existingAgenda: any[]
-): Promise<AISuggestionResponse | undefined> {
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-
-  if (!GEMINI_API_KEY) {
-    console.error("CLIENT: VITE_GEMINI_API_KEY environment variable not set.");
-    throw new Error("Chave da API do Gemini não configurada. Por favor, adicione-a ao seu arquivo .env.");
-  }
-
-  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-  try {
-    const processedAgendaExistente = existingAgenda.map((item: any) => {
-      if (item.data && item.hora_utc) {
-        const { data, hora_brasilia } = convertUtcToBrasilia(item.data, item.hora_utc);
-        if (data && hora_brasilia) {
-          return {
-            tarefa: item.tarefa,
-            data: data,
-            hora_brasilia: hora_brasilia,
-            duracao_min: item.duracao_min,
-            prioridade: item.prioridade,
-          };
-        }
-      }
-      return null;
-    }).filter(Boolean);
-
-    const userPromptContent = {
-      hora_atual: currentDateTime,
-      nova_tarefa: {
-        descricao: taskContent,
-        contexto_adicional: taskDescription,
-      },
-      agenda_existente: processedAgendaExistente,
-    };
-
-    const geminiResponse = await fetch(GEMINI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
-        ],
-      }),
-    });
-
-    if (!geminiResponse.ok) {
-      let errorMessage = `Erro na API Gemini: Status ${geminiResponse.status}`;
-      let errorDetails = '';
-      const contentType = geminiResponse.headers.get('content-type');
-      
-      if (contentType && contentType.includes('application/json')) {
-        try {
-          const errorData = await geminiResponse.json();
-          errorDetails = errorData.error?.message || errorData.message || JSON.stringify(errorData);
-          errorMessage += `. Detalhes: ${errorDetails}`;
-        } catch (jsonError: any) {
-          console.warn("CLIENT: Failed to parse Gemini API error response as JSON:", jsonError);
-          errorMessage = `Erro ao obter sugestões da IA: Resposta JSON malformada. Erro de parsing: ${jsonError.message}`;
-        }
-      } else {
-        const textError = await geminiResponse.text();
-        errorDetails = textError.substring(0, 500);
-        errorMessage += `. Resposta: ${errorDetails}`;
-      }
-      
-      console.error("CLIENT: Gemini API Error Response - Status:", geminiResponse.status, "Status Text:", geminiResponse.statusText, "Details:", errorDetails);
-      throw new Error(errorMessage);
-    }
-
-    const rawGeminiData = await geminiResponse.text();
-    console.log("CLIENT: Gemini API response received. Length:", rawGeminiData.length);
-    console.log("CLIENT: Raw Gemini API response:", rawGeminiData); // Log the raw response
-
-    const markdownMatch = rawGeminiData.match(/```json\n([\s\S]*?)\n```/);
-    let aiResponseContentString = markdownMatch && markdownMatch[1] ? markdownMatch[1] : rawGeminiData;
-    console.log("CLIENT: Extracted AI response content string (after markdown match):", aiResponseContentString); // Log extracted string
-
-    let parsedSuggestions;
-    try {
-      parsedSuggestions = JSON.parse(aiResponseContentString);
-      console.log("CLIENT: Successfully parsed AI response as JSON.");
-      console.log("CLIENT: Parsed AI response object:", parsedSuggestions); // Log the parsed object
-    } catch (jsonParseError: any) {
-      console.error("CLIENT: Failed to parse AI response as JSON:", aiResponseContentString, "Error:", jsonParseError);
-      throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
-    }
-
-    if (!parsedSuggestions || typeof parsedSuggestions !== 'object' || parsedSuggestions === null) {
-      console.error("CLIENT: A resposta da IA não é um objeto JSON válido ou é nula.");
-      throw new Error("A resposta da IA não está no formato esperado (objeto principal ausente ou inválido).");
-    }
-    console.log("CLIENT: Checking for 'sugestoes' property in parsed object."); // New log
-    if (!Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes')) {
-      console.error("CLIENT: A resposta da IA não possui a propriedade 'sugestoes'.");
-      throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' ausente).");
-    }
-    if (Object.prototype.toString.call(parsedSuggestions.sugestoes) !== '[object Array]') {
-      console.error("CLIENT: A propriedade 'sugestoes' da resposta da IA não é um array. Tipo real:", typeof parsedSuggestions.sugestoes, "Valor:", parsedSuggestions.sugestoes);
-      throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' não é um array).");
-    }
-
-    return {
-      sugestoes: parsedSuggestions.sugestoes,
-      metadata: parsedSuggestions.metadata,
-    };
-
-  } catch (error: any) {
-    console.error(`CLIENT: Error during Gemini API call or parsing:`, error.message, error.stack);
     throw error;
   }
 }

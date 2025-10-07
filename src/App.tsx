@@ -11,7 +11,6 @@ import SEITONPage from "./pages/SEITONPage";
 import SEISOPage from "./pages/SEISOPage";
 import SEIKETSURecordPage from "./pages/SEIKETSURecordPage"; 
 import AITutorSettingsPage from "./pages/AITutorSettingsPage";
-import AITaskSuggestionSettingsPage from "./pages/AITaskSuggestionSettingsPage"; // Importar a nova página
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,7 +31,6 @@ const App = () => (
             <Route path="/5s/seiso" element={<SEISOPage />} />
             <Route path="/5s/seiketsu" element={<SEIKETSURecordPage />} /> 
             <Route path="/ai-tutor-settings" element={<AITutorSettingsPage />} />
-            <Route path="/ai-task-suggestion-settings" element={<AITaskSuggestionSettingsPage />} /> {/* Adicionada a nova rota */}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

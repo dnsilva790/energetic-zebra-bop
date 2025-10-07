@@ -93,14 +93,6 @@ const MainMenuPage = () => {
           <Brain size={20} />
           Configurações do Tutor IA
         </Button>
-        <Button
-          variant="outline"
-          onClick={() => navigate("/ai-task-suggestion-settings")}
-          className="flex items-center gap-2 text-teal-700 hover:text-teal-900 border-teal-300 hover:border-teal-400 bg-white/70 backdrop-blur-sm"
-        >
-          <Brain size={20} />
-          Configurações de Sugestão de IA
-        </Button>
       </div>
       <MadeWithDyad />
     </div>
