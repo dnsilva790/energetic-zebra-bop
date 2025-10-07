@@ -610,7 +610,7 @@ const SEIKETSURecordPage: React.FC = () => {
                 <XCircle className="mr-2 h-5 w-5" /> CONCLUÍDA (F)
               </Button>
               <Button
-                onClick={handleOpenRescheduleDialog} {/* Chama a função que abre o diálogo e preenche */}
+                onClick={handleOpenRescheduleDialog} 
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
               >
                 <CalendarDays className="mr-2 h-5 w-5" /> POSTERGAR (P)
