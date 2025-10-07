@@ -98,7 +98,6 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
   const [input, setInput] = useState<string>('');
   const [isGeminiLoading, setIsGeminiLoading] = useState<boolean>(false);
   const [parsedMicroSteps, setParsedMicroSteps] = useState<{ content: string; description: string }[]>([]);
-  const [initialAiResponseReceived, setInitialAiResponseReceived] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const initialMessageSentRef = useRef(false); // Novo ref para controlar a mensagem inicial
 
@@ -154,11 +153,6 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
 
       setMessages(prev => {
         const newMessages = [...prev, { role: 'model', content: aiResponseContent }];
-        
-        if (!initialAiResponseReceived) {
-            setInitialAiResponseReceived(true);
-        }
-        
         return newMessages;
       });
       showSuccess("Resposta do Tutor de IA recebida!");
@@ -169,12 +163,11 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
     } finally {
       setIsGeminiLoading(false);
     }
-  }, [GEMINI_API_URL, initialAiResponseReceived]);
+  }, [GEMINI_API_URL]); // Dependência ajustada
 
   // Efeito para carregar o histórico e enviar a mensagem inicial
   useEffect(() => {
     // Resetar estados relacionados à tarefa quando taskId muda
-    setInitialAiResponseReceived(false);
     setParsedMicroSteps([]);
     setMessages([]); // Limpar mensagens ao mudar de tarefa
     initialMessageSentRef.current = false; // Resetar o ref ao mudar de tarefa
@@ -189,7 +182,7 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
           const parsedHistory = JSON.parse(savedHistory);
           if (Array.isArray(parsedHistory) && parsedHistory.length > 0) {
             loadedMessages = parsedHistory;
-            setInitialAiResponseReceived(true);
+            initialMessageSentRef.current = true; // Marcar como enviado se o histórico existir
           }
         } catch (e) {
           console.error("Falha ao analisar o histórico do chat do localStorage", e);
@@ -200,10 +193,11 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
 
     if (loadedMessages.length > 0) {
       setMessages(loadedMessages);
-    } else {
+    } else if (!initialMessageSentRef.current) { // Apenas envia se não foi enviado (ex: pelo histórico)
       const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
       const newInitialMessages = [{ role: 'user', content: initialUserPrompt }];
       setMessages(newInitialMessages);
+      initialMessageSentRef.current = true; // Marcar como enviado imediatamente para evitar loops
       sendMessageToGemini(newInitialMessages, systemPrompt); // Envia a mensagem inicial para o Gemini
     }
   }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini, getSystemPrompt]);
