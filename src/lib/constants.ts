@@ -9,4 +9,5 @@ export const SEITON_PROGRESS_KEY = 'seiton_progress';
 export const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
 export const SEQUENCER_TASK_LIMIT_KEY = 'sequencer_task_limit';
 export const AI_COMPARISON_SYSTEM_PROMPT_KEY = 'ai_comparison_system_prompt';
-export const AI_CONTEXT_PROMPT_KEY = 'ai_context_prompt'; // Nova constante
+export const AI_CONTEXT_PROMPT_KEY = 'ai_context_prompt';
+export const SEITON_COMPARISON_HISTORY_KEY = 'seiton_comparison_history'; // Nova constante

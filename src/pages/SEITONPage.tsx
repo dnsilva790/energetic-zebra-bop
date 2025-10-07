@@ -14,15 +14,15 @@ import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SetDeadlineDialog from "@/components/SetDeadlineDialog";
-import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY } from "@/lib/constants";
+import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY, SEITON_COMPARISON_HISTORY_KEY } from "@/lib/constants";
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
 type SeitonStep = 'loading' | 'tournamentComparison' | 'result';
 
 interface ComparisonEntry {
-  challengerId: string; // Adicionado
-  opponentId: string;   // Adicionado
+  challengerId: string;
+  opponentId: string;
   challengerContent: string;
   opponentContent: string;
   winner: 'challenger' | 'opponent' | 'N/A';
@@ -30,6 +30,7 @@ interface ComparisonEntry {
   timestamp: string;
 }
 
+// A interface SeitonProgress agora não inclui comparisonHistory, pois será salvo separadamente
 interface SeitonProgress {
   tournamentQueue: TodoistTask[];
   rankedTasks: TodoistTask[];
@@ -37,7 +38,6 @@ interface SeitonProgress {
   currentStep: SeitonStep;
   currentChallenger: TodoistTask | null;
   currentOpponentIndex: number | null;
-  comparisonHistory: ComparisonEntry[];
 }
 
 interface UndoState {
@@ -65,7 +65,22 @@ const SEITONPage = () => {
   
   const [currentChallenger, setCurrentChallenger] = useState<TodoistTask | null>(null);
   const [currentOpponentIndex, setCurrentOpponentIndex] = useState<number | null>(null);
-  const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]);
+  
+  // comparisonHistory agora é inicializado a partir de sua própria chave de armazenamento
+  const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>(() => {
+    if (typeof window !== 'undefined') {
+      const savedHistory = localStorage.getItem(SEITON_COMPARISON_HISTORY_KEY);
+      if (savedHistory) {
+        try {
+          return JSON.parse(savedHistory);
+        } catch (e) {
+          console.error("Error parsing SEITON_COMPARISON_HISTORY_KEY from localStorage:", e);
+          return [];
+        }
+      }
+    }
+    return [];
+  });
   
   const [loading, setLoading] = useState(true);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -108,10 +123,11 @@ const SEITONPage = () => {
       currentStep,
       currentChallenger,
       currentOpponentIndex,
-      comparisonHistory,
     };
     localStorage.setItem(SEITON_PROGRESS_KEY, JSON.stringify(progress));
+    localStorage.setItem(SEITON_COMPARISON_HISTORY_KEY, JSON.stringify(comparisonHistory)); // Salva o histórico separadamente
     console.log("SEITONPage - Progress saved:", progress);
+    console.log("SEITONPage - Comparison history saved:", comparisonHistory);
   }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory]);
 
   const getPriorityColor = (priority: number) => {
@@ -175,12 +191,14 @@ const SEITONPage = () => {
         const currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
         const currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
         const currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
-        // Filtra o histórico para remover entradas sem IDs (formato antigo) ou tarefas que não existem mais
-        const currentComparisonHistory = (loaded.comparisonHistory || []).filter(entry => 
+        
+        // O histórico de comparações é carregado pelo useState inicializador, não do progress
+        // Apenas filtramos o histórico existente para remover tarefas que não existem mais
+        setComparisonHistory(prevHistory => (prevHistory || []).filter(entry => 
           entry.challengerId && entry.opponentId && 
           activeTasks.some(at => at.id === entry.challengerId) && 
           activeTasks.some(at => at.id === entry.opponentId)
-        );
+        ));
 
         setTournamentQueue(currentTournamentQueue);
         setRankedTasks(currentRankedTasks);
@@ -188,7 +206,6 @@ const SEITONPage = () => {
         setCurrentChallenger(currentChallenger);
         setCurrentOpponentIndex(loaded.currentOpponentIndex);
         setCurrentStep(loaded.currentStep);
-        setComparisonHistory(currentComparisonHistory);
         setLastUndoableAction(null);
 
         if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0 && !currentChallenger) {
@@ -208,7 +225,7 @@ const SEITONPage = () => {
         setP3Tasks([]);
         setCurrentChallenger(null);
         setCurrentOpponentIndex(null);
-        setComparisonHistory([]);
+        // comparisonHistory já é carregado pelo useState inicializador, não precisa resetar aqui
         setLastUndoableAction(null);
         setCurrentStep('tournamentComparison');
         if (activeTasks.length === 0) {
@@ -247,7 +264,7 @@ const SEITONPage = () => {
     if (!loading) { // Don't save progress during initial AI ranking
       saveProgress();
     }
-  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, loading, saveProgress]);
+  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory, loading, saveProgress]);
 
   // Função para encontrar o último vencedor entre duas tarefas
   const findLastWinner = useCallback((cId: string, oId: string): 'challenger' | 'opponent' | null => {
@@ -452,7 +469,7 @@ const SEITONPage = () => {
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
     setLastWinnerInCurrentComparison(null); // Resetar após a comparação
-  }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn, setLastUndoableAction]);
+  }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn, setLastUndoableAction, setComparisonHistory]);
 
   const handleCancelTask = useCallback(async (taskIdToCancel: string) => {
     if (!currentChallenger && currentOpponentIndex === null) {
@@ -518,7 +535,7 @@ const SEITONPage = () => {
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
     setLastWinnerInCurrentComparison(null); // Resetar após a ação
-}, [currentChallenger, currentOpponentIndex, rankedTasks, completeTask, tournamentQueue, p3Tasks, setLastUndoableAction]);
+}, [currentChallenger, currentOpponentIndex, rankedTasks, completeTask, tournamentQueue, p3Tasks, setLastUndoableAction, setComparisonHistory]);
 
   const handleUndo = useCallback(async () => {
     if (!lastUndoableAction) {
@@ -721,15 +738,16 @@ const SEITONPage = () => {
 
   const handleResetRanking = useCallback(async () => {
     setLoading(true);
-    localStorage.removeItem(SEITON_PROGRESS_KEY);
-    localStorage.removeItem(SEITON_LAST_RANKING_KEY);
+    localStorage.removeItem(SEITON_PROGRESS_KEY); // Remove apenas o progresso da sessão atual
+    localStorage.removeItem(SEITON_LAST_RANKING_KEY); // Remove o último ranking finalizado
+    // NÃO remove SEITON_COMPARISON_HISTORY_KEY para manter o histórico de embates
     showSuccess("Ranking resetado. Recarregando tarefas...");
     setTournamentQueue([]);
     setRankedTasks([]);
     setP3Tasks([]);
     setCurrentChallenger(null);
     setCurrentOpponentIndex(null);
-    setComparisonHistory([]);
+    // comparisonHistory não é resetado aqui, pois é persistente
     setLastUndoableAction(null);
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
@@ -975,7 +993,7 @@ const SEITONPage = () => {
                 <h3 className="text-xl font-bold text-yellow-700 mb-2">P2 (Alta)</h3>
                 <ul className="list-disc list-inside space-y-1">
                   {rankedTasks.slice(4, RANKING_SIZE).map((task) => (
-                    <li key={task.id} className="text-gray-800">{task.content}</li>
+                    <li key={task.id}>{task.content}</li>
                   ))}
                 </ul>
               </div>
