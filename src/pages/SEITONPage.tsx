@@ -755,6 +755,25 @@ const SEITONPage = () => {
       return activeTask || null; 
   }, [rankedTasks]);
 
+  const handleResetRanking = useCallback(async () => {
+    setLoading(true);
+    localStorage.removeItem(SEITON_PROGRESS_KEY);
+    localStorage.removeItem(SEITON_LAST_RANKING_KEY); // Também limpa o último ranking salvo
+    showSuccess("Ranking resetado. Recarregando tarefas...");
+    // Resetar todos os estados relevantes para seus valores iniciais
+    setTournamentQueue([]);
+    setRankedTasks([]);
+    setP3Tasks([]);
+    setCurrentChallenger(null);
+    setCurrentOpponentIndex(null);
+    setComparisonHistory([]);
+    setLastUndoableAction(null);
+    setAiComparisonSuggestion(null);
+    setAiComparisonExplanation(null);
+    setShowAiComparisonSuggestion(false);
+    await fetchAndSetupTasks(); // Recarregar tarefas para começar do zero
+  }, [fetchAndSetupTasks]);
+
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
