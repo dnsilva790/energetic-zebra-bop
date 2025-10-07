@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import FiveSButton from "@/components/FiveSButton";
 import { showSuccess } from "@/utils/toast";
+import DateTimeDisplay from "@/components/DateTimeDisplay"; // Importar o novo componente
 
 const MainMenuPage = () => {
   const navigate = useNavigate();
@@ -35,7 +36,7 @@ const MainMenuPage = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100 p-4">
-      <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm">
+      <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm mb-6">
         <CardHeader className="text-center">
           <CardTitle className="text-4xl font-extrabold text-gray-800">
             ADHD Todoist task manager
@@ -44,35 +45,38 @@ const MainMenuPage = () => {
             Escolha por onde começar hoje
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-          <FiveSButton
-            icon={Brush}
-            title="SEIRI - Fazer Faxina"
-            description="Limpar e organizar seu backlog"
-            colorClass="bg-green-600 hover:bg-green-700"
-            onClick={() => handleButtonClick("SEIRI")}
-          />
-          <FiveSButton
-            icon={LayoutDashboard}
-            title="SEITON - Planejar Dia"
-            description="Priorizar tarefas com sistema de torneio"
-            colorClass="bg-blue-600 hover:bg-blue-700"
-            onClick={() => handleButtonClick("SEITON")}
-          />
-          <FiveSButton
-            icon={Play}
-            title="SEISO - Executar Tarefas"
-            description="Focar e executar tarefas com filtro personalizado"
-            colorClass="bg-orange-600 hover:bg-orange-700"
-            onClick={() => handleButtonClick("SEISO")}
-          />
-          <FiveSButton
-            icon={Clock} 
-            title="SEIKETSU - Revisão Diária"
-            description="Decida o que fazer hoje e o que postergar"
-            colorClass="bg-indigo-600 hover:bg-indigo-700" 
-            onClick={() => handleButtonClick("SEIKETSU")}
-          />
+        <CardContent className="flex flex-col items-center gap-6 p-6">
+          <DateTimeDisplay /> {/* Adicionando o componente de data e hora aqui */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+            <FiveSButton
+              icon={Brush}
+              title="SEIRI - Fazer Faxina"
+              description="Limpar e organizar seu backlog"
+              colorClass="bg-green-600 hover:bg-green-700"
+              onClick={() => handleButtonClick("SEIRI")}
+            />
+            <FiveSButton
+              icon={LayoutDashboard}
+              title="SEITON - Planejar Dia"
+              description="Priorizar tarefas com sistema de torneio"
+              colorClass="bg-blue-600 hover:bg-blue-700"
+              onClick={() => handleButtonClick("SEITON")}
+            />
+            <FiveSButton
+              icon={Play}
+              title="SEISO - Executar Tarefas"
+              description="Focar e executar tarefas com filtro personalizado"
+              colorClass="bg-orange-600 hover:bg-orange-700"
+              onClick={() => handleButtonClick("SEISO")}
+            />
+            <FiveSButton
+              icon={Clock} 
+              title="SEIKETSU - Revisão Diária"
+              description="Decida o que fazer hoje e o que postergar"
+              colorClass="bg-indigo-600 hover:bg-indigo-700" 
+              onClick={() => handleButtonClick("SEIKETSU")}
+            />
+          </div>
         </CardContent>
       </Card>
 
