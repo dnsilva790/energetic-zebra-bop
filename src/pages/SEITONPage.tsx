@@ -14,11 +14,11 @@ import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SetDeadlineDialog from "@/components/SetDeadlineDialog";
-import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY, SEITON_COMPARISON_HISTORY_KEY } from "@/lib/constants";
+import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY, SEITON_MODE_KEY, SEITON_COMPARISON_HISTORY_PROFESSIONAL_KEY, SEITON_COMPARISON_HISTORY_PERSONAL_KEY } from "@/lib/constants";
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
-type SeitonStep = 'loading' | 'tournamentComparison' | 'result';
+type SeitonStep = 'loading' | 'modeSelection' | 'tournamentComparison' | 'result'; // Added 'modeSelection'
 
 interface ComparisonEntry {
   challengerId: string;
@@ -35,9 +35,10 @@ interface SeitonProgress {
   tournamentQueue: TodoistTask[];
   rankedTasks: TodoistTask[];
   p3Tasks: TodoistTask[];
-  currentStep: SeitonStep;
+  currentStep: Exclude<SeitonStep, 'modeSelection'>; // Exclude modeSelection from saved progress
   currentChallenger: TodoistTask | null;
   currentOpponentIndex: number | null;
+  seitonMode: 'professional' | 'personal' | null; // Save the mode with progress
 }
 
 interface UndoState {
@@ -66,21 +67,10 @@ const SEITONPage = () => {
   const [currentChallenger, setCurrentChallenger] = useState<TodoistTask | null>(null);
   const [currentOpponentIndex, setCurrentOpponentIndex] = useState<number | null>(null);
   
-  // comparisonHistory agora é inicializado a partir de sua própria chave de armazenamento
-  const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>(() => {
-    if (typeof window !== 'undefined') {
-      const savedHistory = localStorage.getItem(SEITON_COMPARISON_HISTORY_KEY);
-      if (savedHistory) {
-        try {
-          return JSON.parse(savedHistory);
-        } catch (e) {
-          console.error("Error parsing SEITON_COMPARISON_HISTORY_KEY from localStorage:", e);
-          return [];
-        }
-      }
-    }
-    return [];
-  });
+  const [seitonMode, setSeitonMode] = useState<'professional' | 'personal' | null>(null); // New state for mode
+  
+  // comparisonHistory now depends on seitonMode
+  const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -113,22 +103,30 @@ const SEITONPage = () => {
     console.log("SEITONPage - rankedTasks length:", rankedTasks.length, "Contents:", rankedTasks.map(t => `${t.content} (Prio: ${t.priority})`));
     console.log("SEITONPage - p3Tasks length:", p3Tasks.length, "Contents:", p3Tasks.map(t => `${t.content} (Prio: ${t.priority})`));
     console.log("SEITONPage - tournamentQueue length:", tournamentQueue.length, "Contents:", tournamentQueue.map(t => `${t.content} (Prio: ${t.priority})`));
-  }, [currentStep, currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue]);
+    console.log("SEITONPage - seitonMode:", seitonMode);
+  }, [currentStep, currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, seitonMode]);
+
+  const getComparisonHistoryKey = useCallback((mode: 'professional' | 'personal') => {
+    return mode === 'professional' ? SEITON_COMPARISON_HISTORY_PROFESSIONAL_KEY : SEITON_COMPARISON_HISTORY_PERSONAL_KEY;
+  }, []);
 
   const saveProgress = useCallback(() => {
+    if (!seitonMode) return; // Don't save if mode is not set
+
     const progress: SeitonProgress = {
       tournamentQueue,
       rankedTasks,
       p3Tasks,
-      currentStep,
+      currentStep: currentStep === 'modeSelection' ? 'loading' : currentStep, // Don't save modeSelection as a step
       currentChallenger,
       currentOpponentIndex,
+      seitonMode, // Save the current mode
     };
     localStorage.setItem(SEITON_PROGRESS_KEY, JSON.stringify(progress));
-    localStorage.setItem(SEITON_COMPARISON_HISTORY_KEY, JSON.stringify(comparisonHistory)); // Salva o histórico separadamente
+    localStorage.setItem(getComparisonHistoryKey(seitonMode), JSON.stringify(comparisonHistory)); // Save the specific history
     console.log("SEITONPage - Progress saved:", progress);
-    console.log("SEITONPage - Comparison history saved:", comparisonHistory);
-  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory]);
+    console.log(`SEITONPage - Comparison history for ${seitonMode} mode saved:`, comparisonHistory);
+  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, seitonMode, comparisonHistory, getComparisonHistoryKey]);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -150,11 +148,13 @@ const SEITONPage = () => {
     }
   };
 
-  const fetchAndSetupTasks = useCallback(async () => {
+  const fetchAndSetupTasks = useCallback(async (mode: 'professional' | 'personal') => {
     setLoading(true);
-    console.log("SEITONPage - fetchAndSetupTasks: Starting API call to get tasks.");
+    console.log(`SEITONPage - fetchAndSetupTasks: Starting API call to get tasks for ${mode} mode.`);
     try {
-      const fetchedTasks = await handleApiCall(getTasks, "Carregando tarefas...");
+      const filter = mode === 'professional' ? "#profissional & (today | overdue | no due date)" : "#pessoal & (today | overdue | no due date)";
+      const fetchedTasks = await handleApiCall(() => getTasks(filter), `Carregando tarefas para o modo ${mode === 'professional' ? 'Profissional' : 'Pessoal'}...`);
+      
       if (!fetchedTasks) {
         showError("Não foi possível carregar as tarefas do Todoist.");
         navigate("/main-menu");
@@ -184,54 +184,68 @@ const SEITONPage = () => {
         });
 
       const savedProgressRaw = localStorage.getItem(SEITON_PROGRESS_KEY);
+      const comparisonHistoryKey = getComparisonHistoryKey(mode);
+      const savedComparisonHistoryRaw = localStorage.getItem(comparisonHistoryKey);
 
       if (savedProgressRaw) {
         const loaded: SeitonProgress = JSON.parse(savedProgressRaw);
-        const currentTournamentQueue = loaded.tournamentQueue.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-        const currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-        const currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-        const currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
-        
-        // O histórico de comparações é carregado pelo useState inicializador, não do progress
-        // Apenas filtramos o histórico existente para remover tarefas que não existem mais
-        setComparisonHistory(prevHistory => (prevHistory || []).filter(entry => 
-          entry.challengerId && entry.opponentId && 
-          activeTasks.some(at => at.id === entry.challengerId) && 
-          activeTasks.some(at => at.id === entry.opponentId)
-        ));
+        // Only load if the saved mode matches the current mode
+        if (loaded.seitonMode === mode) {
+          const currentTournamentQueue = loaded.tournamentQueue.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+          const currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+          const currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+          const currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
+          
+          setTournamentQueue(currentTournamentQueue);
+          setRankedTasks(currentRankedTasks);
+          setP3Tasks(currentP3Tasks);
+          setCurrentChallenger(currentChallenger);
+          setCurrentOpponentIndex(loaded.currentOpponentIndex);
+          setCurrentStep(loaded.currentStep);
+          setSeitonMode(loaded.seitonMode); // Ensure mode is set from loaded progress
+          setLastUndoableAction(null);
 
-        setTournamentQueue(currentTournamentQueue);
-        setRankedTasks(currentRankedTasks);
-        setP3Tasks(currentP3Tasks);
-        setCurrentChallenger(currentChallenger);
-        setCurrentOpponentIndex(loaded.currentOpponentIndex);
-        setCurrentStep(loaded.currentStep);
-        setLastUndoableAction(null);
+          if (savedComparisonHistoryRaw) {
+            try {
+              setComparisonHistory(JSON.parse(savedComparisonHistoryRaw));
+            } catch (e) {
+              console.error(`Error parsing comparison history for ${mode} mode from localStorage:`, e);
+              setComparisonHistory([]);
+            }
+          } else {
+            setComparisonHistory([]);
+          }
 
-        if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0 && !currentChallenger) {
-          showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
-          setCurrentStep('result');
-          localStorage.removeItem(SEITON_PROGRESS_KEY);
-        } else if (loaded.currentStep === 'tournamentComparison' && currentChallenger && currentRankedTasks.length > 0) {
-          // Ensure opponent index is valid if we're resuming a comparison
-          setCurrentOpponentIndex(Math.min(RANKING_SIZE - 1, currentRankedTasks.length - 1));
+          if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0 && !currentChallenger) {
+            showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
+            setCurrentStep('result');
+            localStorage.removeItem(SEITON_PROGRESS_KEY);
+          } else if (loaded.currentStep === 'tournamentComparison' && currentChallenger && currentRankedTasks.length > 0) {
+            // Ensure opponent index is valid if we're resuming a comparison
+            setCurrentOpponentIndex(Math.min(RANKING_SIZE - 1, currentRankedTasks.length - 1));
+          }
+          console.log("SEITONPage - Loaded saved progress and resumed.");
+          return; // Exit after loading saved progress
+        } else {
+          console.log("SEITONPage - Saved progress found but mode mismatch. Starting new tournament for selected mode.");
+          // Fall through to new tournament setup if mode doesn't match
         }
-        console.log("SEITONPage - Loaded saved progress and resumed.");
-      } else {
-        // No saved progress, start a new tournament
-        console.log("SEITONPage - No saved progress, starting new tournament.");
-        setTournamentQueue(activeTasks);
-        setRankedTasks([]);
-        setP3Tasks([]);
-        setCurrentChallenger(null);
-        setCurrentOpponentIndex(null);
-        // comparisonHistory já é carregado pelo useState inicializador, não precisa resetar aqui
-        setLastUndoableAction(null);
-        setCurrentStep('tournamentComparison');
-        if (activeTasks.length === 0) {
-          showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
-          setCurrentStep('result');
-        }
+      }
+      
+      // No saved progress for this mode, or mode mismatch, start a new tournament
+      console.log(`SEITONPage - Starting new tournament for ${mode} mode.`);
+      setTournamentQueue(activeTasks);
+      setRankedTasks([]);
+      setP3Tasks([]);
+      setCurrentChallenger(null);
+      setCurrentOpponentIndex(null);
+      setComparisonHistory([]); // Reset history for new session
+      setLastUndoableAction(null);
+      setCurrentStep('tournamentComparison');
+      setSeitonMode(mode); // Set the mode for the new session
+      if (activeTasks.length === 0) {
+        showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
+        setCurrentStep('result');
       }
     } catch (error) {
       console.error("SEITONPage - Uncaught error in fetchAndSetupTasks:", error);
@@ -240,31 +254,34 @@ const SEITONPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, getComparisonHistoryKey]);
 
   useEffect(() => {
-    fetchAndSetupTasks();
-  }, [fetchAndSetupTasks]);
-
-  const updateTaskAndReturn = useCallback(async (task: TodoistTask, newPriority: number): Promise<TodoistTask> => {
-    if (task.priority !== newPriority) {
-      console.log(`SEITONPage - Updating Todoist priority for task ${task.content} from ${task.priority} to ${newPriority}`);
-      const updatedTodoistTask = await handleApiCall(
-        () => updateTask(task.id, { priority: newPriority }),
-        `Atualizando prioridade para ${task.content}...`
-      );
-      if (updatedTodoistTask) {
-        return { ...task, priority: newPriority };
+    // Initial load: check for saved mode or prompt for selection
+    const savedProgressRaw = localStorage.getItem(SEITON_PROGRESS_KEY);
+    if (savedProgressRaw) {
+      try {
+        const loaded: SeitonProgress = JSON.parse(savedProgressRaw);
+        if (loaded.seitonMode) {
+          setSeitonMode(loaded.seitonMode);
+          fetchAndSetupTasks(loaded.seitonMode);
+          return;
+        }
+      } catch (e) {
+        console.error("Error parsing saved progress on initial load:", e);
+        localStorage.removeItem(SEITON_PROGRESS_KEY); // Clear corrupted progress
       }
     }
-    return task;
-  }, []);
+    // If no valid saved mode, prompt for selection
+    setCurrentStep('modeSelection');
+    setLoading(false);
+  }, [fetchAndSetupTasks]); // Only run once on mount
 
   useEffect(() => {
-    if (!loading) { // Don't save progress during initial AI ranking
+    if (!loading && seitonMode) { // Don't save progress during initial AI ranking or if mode isn't set
       saveProgress();
     }
-  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory, loading, saveProgress]);
+  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory, loading, saveProgress, seitonMode]);
 
   // Função para encontrar o último vencedor entre duas tarefas
   const findLastWinner = useCallback((cId: string, oId: string): 'challenger' | 'opponent' | null => {
@@ -681,9 +698,9 @@ const SEITONPage = () => {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || showSetDeadlineDialog) return;
+      if (loading || showSetDeadlineDialog || currentStep !== 'tournamentComparison') return;
 
-      if (currentStep === 'tournamentComparison' && currentChallenger && currentOpponentIndex !== null) {
+      if (currentChallenger && currentOpponentIndex !== null) {
         if (event.key === '1' || event.key === 'ArrowUp') {
           event.preventDefault();
           handleTournamentComparison(true);
@@ -737,24 +754,28 @@ const SEITONPage = () => {
   }, [rankedTasks]);
 
   const handleResetRanking = useCallback(async () => {
+    if (!seitonMode) {
+      showError("Modo SEITON não definido. Não é possível resetar o ranking.");
+      return;
+    }
     setLoading(true);
     localStorage.removeItem(SEITON_PROGRESS_KEY); // Remove apenas o progresso da sessão atual
     localStorage.removeItem(SEITON_LAST_RANKING_KEY); // Remove o último ranking finalizado
-    // NÃO remove SEITON_COMPARISON_HISTORY_KEY para manter o histórico de embates
-    showSuccess("Ranking resetado. Recarregando tarefas...");
+    localStorage.removeItem(getComparisonHistoryKey(seitonMode)); // Remove o histórico de embates específico do modo
+    showSuccess("Ranking e histórico resetados. Recarregando tarefas...");
     setTournamentQueue([]);
     setRankedTasks([]);
     setP3Tasks([]);
     setCurrentChallenger(null);
     setCurrentOpponentIndex(null);
-    // comparisonHistory não é resetado aqui, pois é persistente
+    setComparisonHistory([]); // Resetar o histórico no estado
     setLastUndoableAction(null);
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
     setLastWinnerInCurrentComparison(null); // Resetar também
-    await fetchAndSetupTasks();
-  }, [fetchAndSetupTasks]);
+    await fetchAndSetupTasks(seitonMode);
+  }, [fetchAndSetupTasks, seitonMode, getComparisonHistoryKey]);
 
   const renderTaskCard = (
     task: TodoistTask | null,
@@ -854,6 +875,7 @@ const SEITONPage = () => {
   console.log("  Tournament Queue Length:", tournamentQueue.length);
   console.log("  Ranked Tasks Length:", rankedTasks.length);
   console.log("  P3 Tasks Length:", p3Tasks.length);
+  console.log("  SEITON Mode:", seitonMode);
 
   if (loading) {
     return (
@@ -862,8 +884,6 @@ const SEITONPage = () => {
       </div>
     );
   }
-
-  const currentOpponent = currentOpponentIndex !== null ? rankedTasks[currentOpponentIndex] : null;
 
   if (!GEMINI_API_KEY) {
     return (
@@ -888,6 +908,39 @@ const SEITONPage = () => {
     );
   }
 
+  if (currentStep === 'modeSelection') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-blue-100 p-4">
+        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-6">
+          <CardTitle className="text-3xl font-bold text-gray-800">Escolha o Modo do Torneio</CardTitle>
+          <CardDescription className="text-lg text-gray-600">
+            Selecione o contexto para o qual você deseja priorizar as tarefas.
+          </CardDescription>
+          <div className="flex flex-col gap-4">
+            <Button
+              onClick={() => fetchAndSetupTasks('professional')}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 text-lg rounded-md transition-colors"
+            >
+              Iniciar Torneio Profissional
+            </Button>
+            <Button
+              onClick={() => fetchAndSetupTasks('personal')}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 text-lg rounded-md transition-colors"
+            >
+              Iniciar Torneio Pessoal
+            </Button>
+          </div>
+          <Button variant="ghost" onClick={() => navigate("/main-menu")} className="text-gray-700 hover:bg-gray-100 mt-4">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Voltar ao Menu Principal
+          </Button>
+        </Card>
+        <MadeWithDyad />
+      </div>
+    );
+  }
+
+  const currentOpponent = currentOpponentIndex !== null ? rankedTasks[currentOpponentIndex] : null;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-blue-100 p-4">
       <div className="w-full max-w-3xl mb-6">
@@ -901,7 +954,7 @@ const SEITONPage = () => {
           <div className="w-20"></div>
         </div>
         <p className="text-xl text-blue-700 text-center mb-8">
-          Priorize suas tarefas com torneio
+          Priorize suas tarefas com torneio ({seitonMode === 'professional' ? 'Profissional' : 'Pessoal'})
         </p>
       </div>
 
@@ -1064,6 +1117,7 @@ const SEITONPage = () => {
             <CardTitle className="text-xl font-bold mb-3">Painel de Debug</CardTitle>
             <div className="space-y-3">
               <p><strong>Current Step:</strong> {currentStep}</p>
+              <p><strong>SEITON Mode:</strong> {seitonMode || "Não definido"}</p>
               <p><strong>Current Challenger:</strong> {currentChallenger ? `${currentChallenger.content} (ID: ${currentChallenger.id}, Prio: ${currentChallenger.priority})` : "Nenhum"}</p>
               <p><strong>Current Opponent Index:</strong> {currentOpponentIndex !== null ? currentOpponentIndex : "Nenhum"}</p>
               <p><strong>Selected Task (for SEISO Card):</strong> {selectedTask ? `${selectedTask.content} (ID: ${selectedTask.id}, Prio: ${selectedTask.priority})` : "Nenhum"}</p>
