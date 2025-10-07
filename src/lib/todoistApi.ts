@@ -563,8 +563,8 @@ export async function getAISuggestedTimes(
         // Convertendo a data de vencimento da tarefa para o formato esperado pela IA
         const dueDate = parseISO(task.due.date);
         if (isValid(dueDate)) {
-          const timeString = task.due.string.match(/(\d{2}:\d{2})/); // Tenta extrair HH:MM
-          const hora_utc = timeString ? timeString[1] : '09:00'; // Default para 09:00 se não houver hora
+          const timeMatch = task.due.string.match(/(\d{2}:\d{2})/); // Tenta extrair HH:MM
+          const hora_utc = timeMatch ? timeMatch[1] : '09:00'; // Default para 09:00 se não houver hora
 
           const { data, hora_brasilia } = convertUtcToBrasilia(format(dueDate, 'yyyy-MM-dd'), hora_utc);
           
@@ -626,21 +626,39 @@ export async function getAISuggestedTimes(
       throw new Error(errorMessage);
     }
 
-    const rawGeminiData = await geminiResponse.text();
-    console.log("CLIENT: Gemini API response received. Length:", rawGeminiData.length);
-    console.log("CLIENT: Raw Gemini API response:", rawGeminiData); // Log the raw response
+    const rawGeminiData = await geminiResponse.json(); // Agora parseamos o JSON principal
+    console.log("CLIENT: Gemini API response received. Raw JSON object:", rawGeminiData);
 
-    const markdownMatch = rawGeminiData.match(/```json\n([\s\S]*?)\n```/);
-    let aiResponseContentString = markdownMatch && markdownMatch[1] ? markdownMatch[1] : rawGeminiData;
-    console.log("CLIENT: Extracted AI response content string (after markdown match):", aiResponseContentString); // Log extracted string
+    // Extrair o texto da resposta do modelo
+    const aiResponseContentString = rawGeminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!aiResponseContentString) {
+      console.error("CLIENT: No text content found in Gemini API response.");
+      throw new Error("A resposta da IA não contém conteúdo de texto.");
+    }
+
+    console.log("CLIENT: Extracted raw AI response text:", aiResponseContentString);
+
+    // Procurar pelo bloco de código JSON dentro da string de texto
+    const markdownMatch = aiResponseContentString.match(/```json\n([\s\S]*?)\n```/);
+    let jsonString = markdownMatch && markdownMatch[1] ? markdownMatch[1] : aiResponseContentString;
+    
+    // Se não encontrou o bloco markdown, mas a string parece ser JSON direto, tenta usar ela
+    if (!markdownMatch && jsonString.trim().startsWith('{') && jsonString.trim().endsWith('}')) {
+        console.log("CLIENT: No markdown block found, but content looks like direct JSON. Attempting to parse directly.");
+    } else if (!markdownMatch) {
+        console.warn("CLIENT: No markdown block found and content does not look like direct JSON. Attempting to parse raw text, which might fail.");
+    }
+
+    console.log("CLIENT: Final string to parse as JSON:", jsonString);
 
     let parsedSuggestions;
     try {
-      parsedSuggestions = JSON.parse(aiResponseContentString);
+      parsedSuggestions = JSON.parse(jsonString);
       console.log("CLIENT: Successfully parsed AI response as JSON.");
-      console.log("CLIENT: Parsed AI response object:", parsedSuggestions); // Log the parsed object
+      console.log("CLIENT: Parsed AI response object:", parsedSuggestions);
     } catch (jsonParseError: any) {
-      console.error("CLIENT: Failed to parse AI response as JSON:", aiResponseContentString, "Error:", jsonParseError);
+      console.error("CLIENT: Failed to parse AI response as JSON:", jsonString, "Error:", jsonParseError);
       throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
     }
 
@@ -648,7 +666,7 @@ export async function getAISuggestedTimes(
       console.error("CLIENT: A resposta da IA não é um objeto JSON válido ou é nula.");
       throw new Error("A resposta da IA não está no formato esperado (objeto principal ausente ou inválido).");
     }
-    console.log("CLIENT: Checking for 'sugestoes' property in parsed object."); // New log
+    console.log("CLIENT: Checking for 'sugestoes' property in parsed object.");
     if (!Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes')) {
       console.error("CLIENT: A resposta da IA não possui a propriedade 'sugestoes'.");
       throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' ausente).");
