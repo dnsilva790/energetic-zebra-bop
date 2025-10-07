@@ -14,11 +14,11 @@ import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SetDeadlineDialog from "@/components/SetDeadlineDialog";
-import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY, AI_BATCH_RANKING_PROMPT_KEY, AI_INITIAL_RANKING_LIMIT } from "@/lib/constants";
+import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY } from "@/lib/constants";
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
-type SeitonStep = 'loading' | 'initialAIRanking' | 'aiRankingResult' | 'tournamentComparison' | 'result';
+type SeitonStep = 'loading' | 'tournamentComparison' | 'result';
 
 interface SeitonProgress {
   tournamentQueue: TodoistTask[];
@@ -54,19 +54,9 @@ A
 A Tarefa A tem prioridade mais alta e um vencimento mais próximo.
 `;
 
-const DEFAULT_BATCH_RANKING_PROMPT = `Você é um assistente de produtividade. Dada uma lista de tarefas, ranqueie-as da mais importante para a menos importante. Considere a prioridade (4=mais alta, 1=mais baixa), data de vencimento, data limite, se é recorrente, e a descrição.
-Formate sua resposta como uma lista numerada, onde cada item é o ID da tarefa seguido pelo seu conteúdo.
-Exemplo:
-1. [ID_TAREFA_1] Conteúdo da Tarefa 1
-2. [ID_TAREFA_2] Conteúdo da Tarefa 2
-3. [ID_TAREFA_3] Conteúdo da Tarefa 3
-...
-`;
-
 const SEITONPage = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<SeitonStep>('loading');
-  const [allFetchedTasks, setAllFetchedTasks] = useState<TodoistTask[]>([]);
   const [tournamentQueue, setTournamentQueue] = useState<TodoistTask[]>([]);
   const [rankedTasks, setRankedTasks] = useState<TodoistTask[]>([]);
   const [p3Tasks, setP3Tasks] = useState<TodoistTask[]>([]);
@@ -139,73 +129,6 @@ const SEITONPage = () => {
     }
   };
 
-  const performAIBatchRanking = useCallback(async (tasksToRank: TodoistTask[]): Promise<TodoistTask[]> => {
-    if (!GEMINI_API_KEY) {
-      showError("A chave da API do Gemini (VITE_GEMINI_API_KEY) não está configurada.");
-      return [];
-    }
-
-    const systemPrompt = localStorage.getItem(AI_BATCH_RANKING_PROMPT_KEY) || DEFAULT_BATCH_RANKING_PROMPT;
-    
-    const taskListForAI = tasksToRank.map(task => {
-      const priorityLabel = getPriorityLabel(task.priority);
-      const dueDate = task.due?.date ? formatDateForDisplay(task.due) : 'Nenhum';
-      const deadlineDate = task.deadline?.date ? formatDateForDisplay(task.deadline) : 'Nenhum';
-      const isRecurring = task.due?.is_recurring ? 'Sim' : 'Não';
-      const description = task.description || 'Nenhuma descrição.';
-      return `[ID:${task.id}] Conteúdo: "${task.content}". Descrição: "${description}". Prioridade: ${priorityLabel} (${task.priority}). Vencimento: ${dueDate}. Data Limite: ${deadlineDate}. Recorrente: ${isRecurring}.`;
-    }).join('\n');
-
-    const prompt = `${systemPrompt}\n\nTarefas para ranquear:\n${taskListForAI}`;
-
-    try {
-      const response = await fetch(GEMINI_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      
-      const rankedTaskIds: string[] = [];
-      const lines = aiResponseContent.split('\n');
-      lines.forEach(line => {
-        const match = line.match(/\[ID:(\w+)\]/);
-        if (match && match[1]) {
-          rankedTaskIds.push(match[1]);
-        }
-      });
-
-      const rankedTasksMap = new Map(tasksToRank.map(task => [task.id, task]));
-      const sortedByAI: TodoistTask[] = [];
-      rankedTaskIds.forEach(id => {
-        const task = rankedTasksMap.get(id);
-        if (task) {
-          sortedByAI.push(task);
-          rankedTasksMap.delete(id); // Remove para evitar duplicatas e identificar não ranqueadas
-        }
-      });
-
-      // Adicionar tarefas que a IA não ranqueou explicitamente ao final
-      rankedTasksMap.forEach(task => sortedByAI.push(task));
-
-      return sortedByAI;
-
-    } catch (error: any) {
-      console.error("Erro ao obter ranking em lote da IA:", error);
-      showError(`Erro ao obter ranking da IA: ${error.message}`);
-      return tasksToRank; // Retorna a lista original em caso de erro
-    }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, getPriorityLabel]);
-
   const fetchAndSetupTasks = useCallback(async () => {
     setLoading(true);
     console.log("SEITONPage - fetchAndSetupTasks: Starting API call to get tasks.");
@@ -238,7 +161,6 @@ const SEITONPage = () => {
           if (isValidDateB) return 1;
           return 0;
         });
-      setAllFetchedTasks(activeTasks);
 
       const savedProgressRaw = localStorage.getItem(SEITON_PROGRESS_KEY);
 
@@ -269,43 +191,20 @@ const SEITONPage = () => {
         }
         console.log("SEITONPage - Loaded saved progress and resumed.");
       } else {
-        // No saved progress, perform initial AI ranking
-        setCurrentStep('initialAIRanking');
-        console.log("SEITONPage - No saved progress, initiating AI batch ranking.");
-        
-        const tasksForAIRanking = activeTasks.slice(0, AI_INITIAL_RANKING_LIMIT);
-        const unrankedBacklog = activeTasks.slice(AI_INITIAL_RANKING_LIMIT);
-
-        if (tasksForAIRanking.length === 0 && unrankedBacklog.length === 0) {
-          showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
-          setCurrentStep('result');
-          setLoading(false);
-          return;
-        }
-
-        const aiRanked = await performAIBatchRanking(tasksForAIRanking);
-        
-        // Distribute AI-ranked tasks into P1/P2 and P3 based on their position
-        const initialRanked: TodoistTask[] = [];
-        const initialP3: TodoistTask[] = [];
-
-        aiRanked.forEach((task, index) => {
-          if (index < RANKING_SIZE) {
-            initialRanked.push(task);
-          } else {
-            initialP3.push(task);
-          }
-        });
-
-        setRankedTasks(initialRanked);
-        setP3Tasks([...initialP3, ...unrankedBacklog]); // Add remaining tasks to P3
-        setTournamentQueue([]); // No tournament queue initially, as AI has ranked
+        // No saved progress, start a new tournament
+        console.log("SEITONPage - No saved progress, starting new tournament.");
+        setTournamentQueue(activeTasks);
+        setRankedTasks([]);
+        setP3Tasks([]);
         setCurrentChallenger(null);
         setCurrentOpponentIndex(null);
         setComparisonHistory([]);
         setLastUndoableAction(null);
-        setCurrentStep('aiRankingResult');
-        showSuccess("Ranking inicial da IA gerado!");
+        setCurrentStep('tournamentComparison');
+        if (activeTasks.length === 0) {
+          showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
+          setCurrentStep('result');
+        }
       }
     } catch (error) {
       console.error("SEITONPage - Uncaught error in fetchAndSetupTasks:", error);
@@ -314,7 +213,7 @@ const SEITONPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, performAIBatchRanking]);
+  }, [navigate]);
 
   useEffect(() => {
     fetchAndSetupTasks();
@@ -335,7 +234,7 @@ const SEITONPage = () => {
   }, []);
 
   useEffect(() => {
-    if (!loading && currentStep !== 'initialAIRanking') { // Don't save progress during initial AI ranking
+    if (!loading) { // Don't save progress during initial AI ranking
       saveProgress();
     }
   }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, loading, saveProgress]);
@@ -724,7 +623,7 @@ const SEITONPage = () => {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || showSetDeadlineDialog || currentStep === 'initialAIRanking' || currentStep === 'aiRankingResult') return;
+      if (loading || showSetDeadlineDialog) return;
 
       if (currentStep === 'tournamentComparison' && currentChallenger && currentOpponentIndex !== null) {
         if (event.key === '1' || event.key === 'ArrowUp') {
@@ -796,71 +695,6 @@ const SEITONPage = () => {
     setShowAiComparisonSuggestion(false);
     await fetchAndSetupTasks();
   }, [fetchAndSetupTasks]);
-
-  const handleAcceptAIRanking = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Update priorities in Todoist based on AI's initial ranking
-      const updatePromises: Promise<TodoistTask>[] = [];
-      rankedTasks.forEach((task, index) => {
-        let targetPriority = 2; // Default to P3
-        if (index < 4) { // Top 4 are P1
-          targetPriority = 4;
-        } else if (index < RANKING_SIZE) { // Next 20 are P2
-          targetPriority = 3;
-        }
-        updatePromises.push(updateTaskAndReturn(task, targetPriority));
-      });
-      p3Tasks.forEach(task => {
-        updatePromises.push(updateTaskAndReturn(task, 2)); // Ensure all P3 tasks are P3
-      });
-
-      await Promise.all(updatePromises);
-      showSuccess("Ranking da IA aceito e prioridades atualizadas no Todoist!");
-      setCurrentStep('result');
-    } catch (error) {
-      console.error("Erro ao aceitar ranking da IA:", error);
-      showError("Falha ao aceitar o ranking da IA.");
-    } finally {
-      setLoading(false);
-    }
-  }, [rankedTasks, p3Tasks, updateTaskAndReturn]);
-
-  const handleStartManualTournament = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Move all tasks from p3Tasks and any remaining from rankedTasks (beyond RANKING_SIZE) into tournamentQueue
-      const tasksToQueue = [...p3Tasks];
-      if (rankedTasks.length > RANKING_SIZE) {
-        tasksToQueue.push(...rankedTasks.slice(RANKING_SIZE));
-        setRankedTasks(rankedTasks.slice(0, RANKING_SIZE)); // Keep only top RANKING_SIZE in ranked
-      }
-      
-      // Ensure initial ranked tasks have correct priorities
-      const initialRankedPromises = rankedTasks.slice(0, RANKING_SIZE).map(async (task, index) => {
-        let targetPriority = 2; // Default to P3
-        if (index < 4) { // Top 4 are P1
-          targetPriority = 4;
-        } else if (index < RANKING_SIZE) { // Next 20 are P2
-          targetPriority = 3;
-        }
-        return updateTaskAndReturn(task, targetPriority);
-      });
-      const resolvedInitialRanked = await Promise.all(initialRankedPromises);
-      setRankedTasks(resolvedInitialRanked.filter(Boolean) as TodoistTask[]);
-
-      setTournamentQueue(tasksToQueue);
-      setP3Tasks([]); // Clear P3 as they are now in the queue
-      setCurrentStep('tournamentComparison');
-      showSuccess("Torneio manual iniciado com base no ranking da IA!");
-    } catch (error) {
-      console.error("Erro ao iniciar torneio manual:", error);
-      showError("Falha ao iniciar o torneio manual.");
-    } finally {
-      setLoading(false);
-    }
-  }, [rankedTasks, p3Tasks, updateTaskAndReturn]);
-
 
   const renderTaskCard = (
     task: TodoistTask | null,
@@ -1006,67 +840,6 @@ const SEITONPage = () => {
       </div>
 
       <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
-        {currentStep === 'initialAIRanking' && (
-          <div className="text-center space-y-4">
-            <CardTitle className="text-2xl font-bold text-gray-800">Organizando tarefas com IA...</CardTitle>
-            <CardDescription className="text-lg text-gray-600">
-              Aguarde enquanto a inteligência artificial ranqueia suas tarefas. Isso pode levar alguns segundos.
-            </CardDescription>
-            <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mt-4" />
-          </div>
-        )}
-
-        {currentStep === 'aiRankingResult' && (
-          <div className="space-y-6 text-center">
-            <CardTitle className="text-3xl font-bold text-gray-800">Ranking Sugerido pela IA!</CardTitle>
-            <CardDescription className="text-lg text-gray-600">
-              A IA ranqueou suas tarefas. Você pode aceitar ou refinar manualmente.
-            </CardDescription>
-
-            {rankedTasks.slice(0, 4).length > 0 && (
-              <div className="text-left p-4 border rounded-md bg-red-50/50">
-                <h3 className="text-xl font-bold text-red-700 mb-2">P1 (Urgente)</h3>
-                <ul className="list-disc list-inside space-y-1">
-                  {rankedTasks.slice(0, 4).map((task) => (
-                    <li key={task.id} className="text-gray-800">{task.content}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {rankedTasks.slice(4, RANKING_SIZE).length > 0 && (
-              <div className="text-left p-4 border rounded-md bg-yellow-50/50">
-                <h3 className="text-xl font-bold text-yellow-700 mb-2">P2 (Alta)</h3>
-                <ul className="list-disc list-inside space-y-1">
-                  {rankedTasks.slice(4, RANKING_SIZE).map((task) => (
-                    <li key={task.id} className="text-gray-800">{task.content}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {p3Tasks.length > 0 && (
-              <div className="text-left p-4 border rounded-md bg-blue-50/50">
-                <h3 className="text-xl font-bold text-blue-700 mb-2">P3 (Média)</h3>
-                <ul className="list-disc list-inside space-y-1">
-                  {p3Tasks.map((task) => (
-                    <li key={task.id}>{task.content}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-4 mt-6">
-              <Button onClick={handleAcceptAIRanking} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center justify-center">
-                <Check className="mr-2 h-5 w-5" /> Aceitar Ranking da IA
-              </Button>
-              <Button onClick={handleStartManualTournament} variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50 font-semibold py-2 px-6 rounded-md transition-colors flex items-center justify-center">
-                <Play className="mr-2 h-5 w-5" /> Iniciar Torneio Manual
-              </Button>
-            </div>
-          </div>
-        )}
-
         {currentStep === 'tournamentComparison' && currentChallenger && currentOpponent && currentOpponentIndex !== null ? (
           <div className="space-y-6 text-center">
             <CardTitle className="text-2xl font-bold text-gray-800">Qual é mais importante?</CardTitle>
@@ -1157,7 +930,7 @@ const SEITONPage = () => {
               </div>
             )}
 
-            {allFetchedTasks.length === 0 && (
+            {tournamentQueue.length === 0 && rankedTasks.length === 0 && p3Tasks.length === 0 && (
               <p className="text-gray-600">Nenhuma tarefa para priorizar. Bom trabalho!</p>
             )}
 
