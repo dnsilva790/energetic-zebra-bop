@@ -12,13 +12,13 @@ import { TodoistTask } from "@/lib/types";
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { cn, formatDateForDisplay } from "@/lib/utils"; // Importar cn e formatDateForDisplay
-import SetDeadlineDialog from "@/components/SetDeadlineDialog"; // Importar o novo componente
-import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY } from "@/lib/constants";
+import { cn, formatDateForDisplay } from "@/lib/utils";
+import SetDeadlineDialog from "@/components/SetDeadlineDialog";
+import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, AI_COMPARISON_SYSTEM_PROMPT_KEY, AI_BATCH_RANKING_PROMPT_KEY, AI_INITIAL_RANKING_LIMIT } from "@/lib/constants";
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
-type SeitonStep = 'loading' | 'tournamentComparison' | 'result';
+type SeitonStep = 'loading' | 'initialAIRanking' | 'aiRankingResult' | 'tournamentComparison' | 'result';
 
 interface SeitonProgress {
   tournamentQueue: TodoistTask[];
@@ -27,18 +27,17 @@ interface SeitonProgress {
   currentStep: SeitonStep;
   currentChallenger: TodoistTask | null;
   currentOpponentIndex: number | null;
-  comparisonHistory: ComparisonEntry[]; // Adicionado ao progresso salvo
+  comparisonHistory: ComparisonEntry[];
 }
 
 interface ComparisonEntry {
   challengerContent: string;
   opponentContent: string;
-  winner: 'challenger' | 'opponent' | 'N/A'; // Adicionado N/A para cancelamento
+  winner: 'challenger' | 'opponent' | 'N/A';
   action: string;
   timestamp: string;
 }
 
-// Novo tipo para o estado de desfazer
 interface UndoState {
   type: 'compare' | 'cancel';
   snapshotTournamentQueue: TodoistTask[];
@@ -46,14 +45,22 @@ interface UndoState {
   snapshotP3Tasks: TodoistTask[];
   snapshotCurrentChallenger: TodoistTask | null;
   snapshotCurrentOpponentIndex: number | null;
-  cancelledTaskId?: string; // Apenas para tipo 'cancel'
+  cancelledTaskId?: string;
 }
 
 const DEFAULT_AI_COMPARISON_PROMPT = `Você é um assistente de produtividade. Dadas duas tarefas, A e B, determine qual delas é mais importante para ser feita primeiro. Considere a prioridade (4=mais alta, 1=mais baixa), data de vencimento, data limite, se é recorrente, e a descrição. Responda com 'A' se a Tarefa A for mais importante, ou 'B' se a Tarefa B for mais importante. Em uma nova linha, forneça uma explicação concisa (1-2 frases) do porquê.
 Exemplo:
 A
 A Tarefa A tem prioridade mais alta e um vencimento mais próximo.
+`;
 
+const DEFAULT_BATCH_RANKING_PROMPT = `Você é um assistente de produtividade. Dada uma lista de tarefas, ranqueie-as da mais importante para a menos importante. Considere a prioridade (4=mais alta, 1=mais baixa), data de vencimento, data limite, se é recorrente, e a descrição.
+Formate sua resposta como uma lista numerada, onde cada item é o ID da tarefa seguido pelo seu conteúdo.
+Exemplo:
+1. [ID_TAREFA_1] Conteúdo da Tarefa 1
+2. [ID_TAREFA_2] Conteúdo da Tarefa 2
+3. [ID_TAREFA_3] Conteúdo da Tarefa 3
+...
 `;
 
 const SEITONPage = () => {
@@ -66,17 +73,16 @@ const SEITONPage = () => {
   
   const [currentChallenger, setCurrentChallenger] = useState<TodoistTask | null>(null);
   const [currentOpponentIndex, setCurrentOpponentIndex] = useState<number | null>(null);
-  const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]); // Novo estado para histórico
+  const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
-  const [lastUndoableAction, setLastUndoableAction] = useState<UndoState | null>(null); // Novo estado para desfazer
+  const [lastUndoableAction, setLastUndoableAction] = useState<UndoState | null>(null);
 
   const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
   const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
 
-  // AI Suggestion States
   const [isAISuggestingComparison, setIsAISuggestingComparison] = useState(false);
   const [aiComparisonSuggestion, setAiComparisonSuggestion] = useState<'A' | 'B' | null>(null);
   const [aiComparisonExplanation, setAiComparisonExplanation] = useState<string | null>(null);
@@ -107,11 +113,98 @@ const SEITONPage = () => {
       currentStep,
       currentChallenger,
       currentOpponentIndex,
-      comparisonHistory, // Salvar histórico
+      comparisonHistory,
     };
     localStorage.setItem(SEITON_PROGRESS_KEY, JSON.stringify(progress));
     console.log("SEITONPage - Progress saved:", progress);
   }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory]);
+
+  const getPriorityColor = (priority: number) => {
+    switch (priority) {
+      case 4: return "text-red-600";
+      case 3: return "text-yellow-600";
+      case 2: return "text-blue-600";
+      case 1: return "text-gray-600";
+      default: return "text-gray-600";
+    }
+  };
+
+  const getPriorityLabel = (priority: number) => {
+    switch (priority) {
+      case 4: return "P1 (Urgente)";
+      case 3: return "P2 (Alta)";
+      case 2: return "P3 (Média)";
+      case 1: return "P4 (Baixa)";
+      default: return "Sem Prioridade";
+    }
+  };
+
+  const performAIBatchRanking = useCallback(async (tasksToRank: TodoistTask[]): Promise<TodoistTask[]> => {
+    if (!GEMINI_API_KEY) {
+      showError("A chave da API do Gemini (VITE_GEMINI_API_KEY) não está configurada.");
+      return [];
+    }
+
+    const systemPrompt = localStorage.getItem(AI_BATCH_RANKING_PROMPT_KEY) || DEFAULT_BATCH_RANKING_PROMPT;
+    
+    const taskListForAI = tasksToRank.map(task => {
+      const priorityLabel = getPriorityLabel(task.priority);
+      const dueDate = task.due?.date ? formatDateForDisplay(task.due) : 'Nenhum';
+      const deadlineDate = task.deadline?.date ? formatDateForDisplay(task.deadline) : 'Nenhum';
+      const isRecurring = task.due?.is_recurring ? 'Sim' : 'Não';
+      const description = task.description || 'Nenhuma descrição.';
+      return `[ID:${task.id}] Conteúdo: "${task.content}". Descrição: "${description}". Prioridade: ${priorityLabel} (${task.priority}). Vencimento: ${dueDate}. Data Limite: ${deadlineDate}. Recorrente: ${isRecurring}.`;
+    }).join('\n');
+
+    const prompt = `${systemPrompt}\n\nTarefas para ranquear:\n${taskListForAI}`;
+
+    try {
+      const response = await fetch(GEMINI_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      
+      const rankedTaskIds: string[] = [];
+      const lines = aiResponseContent.split('\n');
+      lines.forEach(line => {
+        const match = line.match(/\[ID:(\w+)\]/);
+        if (match && match[1]) {
+          rankedTaskIds.push(match[1]);
+        }
+      });
+
+      const rankedTasksMap = new Map(tasksToRank.map(task => [task.id, task]));
+      const sortedByAI: TodoistTask[] = [];
+      rankedTaskIds.forEach(id => {
+        const task = rankedTasksMap.get(id);
+        if (task) {
+          sortedByAI.push(task);
+          rankedTasksMap.delete(id); // Remove para evitar duplicatas e identificar não ranqueadas
+        }
+      });
+
+      // Adicionar tarefas que a IA não ranqueou explicitamente ao final
+      rankedTasksMap.forEach(task => sortedByAI.push(task));
+
+      return sortedByAI;
+
+    } catch (error: any) {
+      console.error("Erro ao obter ranking em lote da IA:", error);
+      showError(`Erro ao obter ranking da IA: ${error.message}`);
+      return tasksToRank; // Retorna a lista original em caso de erro
+    }
+  }, [GEMINI_API_KEY, GEMINI_API_URL, getPriorityLabel]);
 
   const fetchAndSetupTasks = useCallback(async () => {
     setLoading(true);
@@ -124,132 +217,95 @@ const SEITONPage = () => {
         return;
       }
 
-      // Filtra tarefas para incluir apenas as ATIVAS e não excluídas
       const activeTasks = fetchedTasks
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-        .filter((task: TodoistTask) => !(task as any).is_completed && !(task as any).completed) // Filtro robusto
+        .filter((task: TodoistTask) => !task.is_completed && !(task as any).completed)
         .sort((a, b) => {
-          // Primary sort: priority (descending)
-          if (b.priority !== a.priority) {
-            return b.priority - a.priority;
-          }
-
-          // Secondary sort: deadline (ascending)
+          if (b.priority !== a.priority) return b.priority - a.priority;
           const deadlineA = a.deadline?.date ? parseISO(a.deadline.date) : null;
           const deadlineB = b.deadline?.date ? parseISO(b.deadline.date) : null;
-
           const isValidDeadlineA = deadlineA && isValid(deadlineA);
           const isValidDeadlineB = deadlineB && isValid(deadlineB);
-
-          if (isValidDeadlineA && isValidDeadlineB) {
-            return deadlineA!.getTime() - deadlineB!.getTime();
-          }
-          if (isValidDeadlineA) {
-            return -1;
-          }
-          if (isValidDeadlineB) {
-            return 1;
-          }
-
-          // Tertiary sort: due date (ascending)
+          if (isValidDeadlineA && isValidDeadlineB) return deadlineA!.getTime() - deadlineB!.getTime();
+          if (isValidDeadlineA) return -1;
+          if (isValidDeadlineB) return 1;
           const dateA = a.due?.date ? parseISO(a.due.date) : null;
           const dateB = b.due?.date ? parseISO(b.due.date) : null;
-
           const isValidDateA = dateA && isValid(dateA);
           const isValidDateB = dateB && isValid(dateB);
-
-          if (isValidDateA && isValidDateB) {
-            return dateA!.getTime() - dateB!.getTime();
-          }
-          if (isValidDateA) {
-            return -1;
-          }
-          if (isValidDateB) {
-            return 1;
-          }
-          return 0; // Both have no valid date or deadline
+          if (isValidDateA && isValidDateB) return dateA!.getTime() - dateB!.getTime();
+          if (isValidDateA) return -1;
+          if (isValidDateB) return 1;
+          return 0;
         });
-      console.log("SEITONPage - Active tasks from API (sorted by priority, deadline and due date):", activeTasks.map(t => `${t.content} (Prio: ${t.priority}, Deadline: ${t.deadline?.date || 'N/A'}, Due: ${t.due?.date || 'N/A'})`));
-
       setAllFetchedTasks(activeTasks);
 
       const savedProgressRaw = localStorage.getItem(SEITON_PROGRESS_KEY);
 
-      let currentTournamentQueue: TodoistTask[] = [];
-      let currentRankedTasks: TodoistTask[] = [];
-      let currentP3Tasks: TodoistTask[] = [];
-      let currentChallenger: TodoistTask | null = null;
-      let currentOpponentIndex: number | null = null;
-      let currentStepState: SeitonStep = 'loading'; // Default to loading
-      let currentComparisonHistory: ComparisonEntry[] = [];
-
       if (savedProgressRaw) {
         const loaded: SeitonProgress = JSON.parse(savedProgressRaw);
-        console.log("SEITONPage - Raw progress loaded:", loaded);
+        const currentTournamentQueue = loaded.tournamentQueue.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+        const currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+        const currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
+        const currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
+        const currentComparisonHistory = loaded.comparisonHistory || [];
 
-        // Filter out any tasks from the loaded state that are no longer active
-        currentTournamentQueue = loaded.tournamentQueue.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-        currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-        currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-        currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
-        currentComparisonHistory = loaded.comparisonHistory || [];
+        setTournamentQueue(currentTournamentQueue);
+        setRankedTasks(currentRankedTasks);
+        setP3Tasks(currentP3Tasks);
+        setCurrentChallenger(currentChallenger);
+        setCurrentOpponentIndex(loaded.currentOpponentIndex);
+        setCurrentStep(loaded.currentStep);
+        setComparisonHistory(currentComparisonHistory);
+        setLastUndoableAction(null);
 
-        // Re-evaluate currentOpponentIndex based on the *filtered* currentRankedTasks
-        if (currentChallenger && currentRankedTasks.length > 0) {
-          currentOpponentIndex = Math.min(RANKING_SIZE - 1, currentRankedTasks.length - 1);
-          currentStepState = 'tournamentComparison'; // Ensure step is comparison if challenger and ranked tasks exist
-          console.log("SEITONPage - Re-evaluated currentOpponentIndex after loading:", currentOpponentIndex);
-        } else if (currentChallenger && currentRankedTasks.length === 0) {
-          // If challenger exists but no ranked tasks, it means challenger should be added directly
-          // This will be handled by startNextTournamentComparison, so ensure opponent index is null.
-          currentOpponentIndex = null;
-          currentStepState = 'tournamentComparison'; // Still in comparison mode, just waiting for direct add
-          console.log("SEITONPage - Set currentOpponentIndex to null as rankedTasks is empty but challenger exists.");
-        } else if (currentRankedTasks.length > 0 || currentP3Tasks.length > 0) {
-          currentStepState = 'result'; // If no challenger, but ranked tasks, it's results
-          currentOpponentIndex = null;
-        } else {
-          currentStepState = 'result'; // No tasks at all
-          currentOpponentIndex = null;
+        if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0 && !currentChallenger) {
+          showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
+          setCurrentStep('result');
+          localStorage.removeItem(SEITON_PROGRESS_KEY);
+        } else if (loaded.currentStep === 'tournamentComparison' && currentChallenger && currentRankedTasks.length > 0) {
+          // Ensure opponent index is valid if we're resuming a comparison
+          setCurrentOpponentIndex(Math.min(RANKING_SIZE - 1, currentRankedTasks.length - 1));
         }
-        console.log("SEITONPage - Filtered loaded progress. Queue:", currentTournamentQueue.map(t => t.content), "Ranked:", currentRankedTasks.map(t => t.content), "P3:", currentP3Tasks.map(t => t.content), "Challenger:", currentChallenger?.content || "Nenhum", "Determined Step:", currentStepState, "Opponent Index:", currentOpponentIndex);
-      }
+        console.log("SEITONPage - Loaded saved progress and resumed.");
+      } else {
+        // No saved progress, perform initial AI ranking
+        setCurrentStep('initialAIRanking');
+        console.log("SEITONPage - No saved progress, initiating AI batch ranking.");
+        
+        const tasksForAIRanking = activeTasks.slice(0, AI_INITIAL_RANKING_LIMIT);
+        const unrankedBacklog = activeTasks.slice(AI_INITIAL_RANKING_LIMIT);
 
-      const processedTaskIds = new Set<string>();
-      currentTournamentQueue.forEach(t => processedTaskIds.add(t.id));
-      currentRankedTasks.forEach(t => processedTaskIds.add(t.id));
-      currentP3Tasks.forEach(t => processedTaskIds.add(t.id));
-      if (currentChallenger) processedTaskIds.add(currentChallenger.id);
-      console.log("SEITONPage - Processed Task IDs (from loaded state):", Array.from(processedTaskIds));
-
-      const newTasks = activeTasks.filter(task => !processedTaskIds.has(task.id));
-      console.log("SEITONPage - New tasks to add to queue:", newTasks.map(t => t.content));
-
-      if (newTasks.length > 0) {
-        currentTournamentQueue = [...currentTournamentQueue, ...newTasks];
-        // If new tasks are added, and we're not already in a comparison, switch to it.
-        if (currentStepState !== 'tournamentComparison') {
-          currentStepState = 'tournamentComparison';
+        if (tasksForAIRanking.length === 0 && unrankedBacklog.length === 0) {
+          showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
+          setCurrentStep('result');
+          setLoading(false);
+          return;
         }
-        showSuccess(`${newTasks.length} novas tarefas adicionadas para triagem.`);
-      }
 
-      setTournamentQueue(currentTournamentQueue);
-      setRankedTasks(currentRankedTasks);
-      setP3Tasks(currentP3Tasks);
-      setCurrentChallenger(currentChallenger);
-      setCurrentOpponentIndex(currentOpponentIndex);
-      setCurrentStep(currentStepState); // Set the determined step
-      setComparisonHistory(currentComparisonHistory); // Definir histórico
-      setLastUndoableAction(null); // Reset undo state on fresh load
+        const aiRanked = await performAIBatchRanking(tasksForAIRanking);
+        
+        // Distribute AI-ranked tasks into P1/P2 and P3 based on their position
+        const initialRanked: TodoistTask[] = [];
+        const initialP3: TodoistTask[] = [];
 
-      if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0 && !currentChallenger) {
-        showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
-        setCurrentStep('result');
-        localStorage.removeItem(SEITON_PROGRESS_KEY);
-      } else if (currentStepState === 'loading' && (currentTournamentQueue.length > 0 || currentChallenger)) {
-        // This case should be handled by the logic above, but as a fallback
-        setCurrentStep('tournamentComparison');
+        aiRanked.forEach((task, index) => {
+          if (index < RANKING_SIZE) {
+            initialRanked.push(task);
+          } else {
+            initialP3.push(task);
+          }
+        });
+
+        setRankedTasks(initialRanked);
+        setP3Tasks([...initialP3, ...unrankedBacklog]); // Add remaining tasks to P3
+        setTournamentQueue([]); // No tournament queue initially, as AI has ranked
+        setCurrentChallenger(null);
+        setCurrentOpponentIndex(null);
+        setComparisonHistory([]);
+        setLastUndoableAction(null);
+        setCurrentStep('aiRankingResult');
+        showSuccess("Ranking inicial da IA gerado!");
       }
     } catch (error) {
       console.error("SEITONPage - Uncaught error in fetchAndSetupTasks:", error);
@@ -258,7 +314,7 @@ const SEITONPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, performAIBatchRanking]);
 
   useEffect(() => {
     fetchAndSetupTasks();
@@ -279,14 +335,13 @@ const SEITONPage = () => {
   }, []);
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading && currentStep !== 'initialAIRanking') { // Don't save progress during initial AI ranking
       saveProgress();
     }
   }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, loading, saveProgress]);
 
   const startNextTournamentComparison = useCallback(async () => {
     console.log("SEITONPage - startNextTournamentComparison called.");
-    // Reset AI suggestion states when starting a new comparison
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
@@ -304,7 +359,7 @@ const SEITONPage = () => {
 
     if (rankedTasks.length === 0) {
       console.log("SEITONPage - Ranked tasks is empty, adding challenger directly.");
-      const updatedChallenger = await updateTaskAndReturn(nextChallenger, 4); // Default to P1 if first task
+      const updatedChallenger = await updateTaskAndReturn(nextChallenger, 4);
       setRankedTasks(prev => [...prev, updatedChallenger]);
       setTournamentQueue(prevQueue => prevQueue.slice(1));
       setCurrentChallenger(null);
@@ -326,10 +381,7 @@ const SEITONPage = () => {
       } else if (currentStep === 'tournamentComparison' && !currentChallenger && tournamentQueue.length === 0) {
         console.log("SEITONPage - Flow: No current challenger, queue is empty. Tournament finished.");
         setCurrentStep('result');
-        // localStorage.removeItem(SEITON_PROGRESS_KEY); // Handled by other useEffect
       }
-      // Other cases (like 'loading' transitioning to 'tournamentComparison' or 'result')
-      // are now primarily handled by fetchAndSetupTasks.
     };
     handleFlow();
   }, [currentStep, currentChallenger, tournamentQueue.length, startNextTournamentComparison]);
@@ -340,7 +392,6 @@ const SEITONPage = () => {
       return;
     }
 
-    // Salvar estado atual para desfazer
     setLastUndoableAction({
       type: 'compare',
       snapshotTournamentQueue: tournamentQueue,
@@ -357,21 +408,19 @@ const SEITONPage = () => {
     let newP3Tasks = [...p3Tasks];
     let actionDescription = "";
 
-    // Ensure challenger is not already in rankedTasks or p3Tasks to prevent duplicates
     newRankedTasks = newRankedTasks.filter(t => t.id !== currentChallenger.id);
     newP3Tasks = newP3Tasks.filter(t => t.id !== currentChallenger.id);
 
-    let challengerFinished = false; // Flag to indicate if challenger has found its final place
+    let challengerFinished = false;
 
     if (challengerWins) {
       console.log("SEITONPage - Challenger wins, attempting to move up.");
-      newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger); // Insert challenger at current opponent's position
+      newRankedTasks.splice(currentOpponentIndex, 0, currentChallenger);
 
-      // Handle overflow if ranked list is full
       if (newRankedTasks.length > RANKING_SIZE) {
-        const pushedOutTask = newRankedTasks.pop(); // Remove the last task
+        const pushedOutTask = newRankedTasks.pop();
         if (pushedOutTask) {
-          const updatedPushedOutTask = await updateTaskAndReturn(pushedOutTask, 2); // Set priority to P3
+          const updatedPushedOutTask = await updateTaskAndReturn(pushedOutTask, 2);
           newP3Tasks.push(updatedPushedOutTask);
           actionDescription += ` Tarefa "${pushedOutTask.content}" movida para P3.`;
           console.log(`SEITONPage - Ranked list full, pushed out ${pushedOutTask.content} to P3.`);
@@ -385,21 +434,19 @@ const SEITONPage = () => {
         challengerFinished = true;
       } else {
         console.log(`SEITONPage - Challenger continues to fight, next opponent index: ${nextOpponentIndexCandidate}`);
-        setCurrentOpponentIndex(nextOpponentIndexCandidate); // Challenger moves up
+        setCurrentOpponentIndex(nextOpponentIndexCandidate);
         actionDescription += ` Desafiante "${currentChallenger.content}" inserido na posição ${currentOpponentIndex + 1} e continua a lutar contra "${newRankedTasks[nextOpponentIndexCandidate]?.content || 'o topo'}".`;
       }
-    } else { // Challenger loses
+    } else {
       console.log("SEITONPage - Opponent wins, challenger loses. Placing challenger below opponent.");
       
-      // Insert challenger immediately after the opponent
       newRankedTasks.splice(currentOpponentIndex + 1, 0, currentChallenger);
       actionDescription = `Oponente "${opponentTask.content}" venceu. Desafiante "${currentChallenger.content}" inserido abaixo do oponente.`;
 
-      // Handle overflow if ranked list is full after insertion
       if (newRankedTasks.length > RANKING_SIZE) {
-        const pushedOutTask = newRankedTasks.pop(); // Remove the last task
+        const pushedOutTask = newRankedTasks.pop();
         if (pushedOutTask) {
-          const updatedPushedOutTask = await updateTaskAndReturn(pushedOutTask, 2); // Set priority to P3
+          const updatedPushedOutTask = await updateTaskAndReturn(pushedOutTask, 2);
           newP3Tasks.push(updatedPushedOutTask);
           actionDescription += ` Tarefa "${pushedOutTask.content}" movida para P3.`;
           console.log(`SEITONPage - Ranked list full, pushed out ${pushedOutTask.content} to P3.`);
@@ -408,20 +455,19 @@ const SEITONPage = () => {
       challengerFinished = true;
     }
 
-    // --- Batch update priorities based on final list positions ---
     console.log("SEITONPage - Re-evaluating priorities for remaining ranked tasks.");
     
     const finalRankedTasksPromises = newRankedTasks.map(async (task, index) => {
-        let targetPriority = 2; // Default to P3 (priority 2)
-        if (index < 4) { // Top 4 are P1
+        let targetPriority = 2;
+        if (index < 4) {
             targetPriority = 4;
-        } else if (index < RANKING_SIZE) { // Next 20 are P2
+        } else if (index < RANKING_SIZE) {
             targetPriority = 3;
         }
         return updateTaskAndReturn(task, targetPriority);
     });
 
-    const finalP3TasksPromises = newP3Tasks.map(task => updateTaskAndReturn(task, 2)); // Ensure all P3 tasks are P3
+    const finalP3TasksPromises = newP3Tasks.map(task => updateTaskAndReturn(task, 2));
 
     const [resolvedRankedTasks, resolvedP3Tasks] = await Promise.all([
         Promise.all(finalRankedTasksPromises),
@@ -431,7 +477,6 @@ const SEITONPage = () => {
     newRankedTasks = resolvedRankedTasks.filter(Boolean) as TodoistTask[];
     newP3Tasks = resolvedP3Tasks.filter(Boolean) as TodoistTask[];
 
-    // Log final state of lists before setting state
     console.log("SEITONPage - Final state of lists before setting state:");
     console.log("  newRankedTasks (contents):", newRankedTasks.map(t => `${t.content} (Prio: ${t.priority})`));
     console.log("  newP3Tasks (contents):", newP3Tasks.map(t => `${t.content} (Prio: ${t.priority})`));
@@ -439,7 +484,6 @@ const SEITONPage = () => {
     setRankedTasks(newRankedTasks);
     setP3Tasks(newP3Tasks);
 
-    // Record comparison history
     setComparisonHistory(prevHistory => [
       {
         challengerContent: currentChallenger.content,
@@ -449,7 +493,7 @@ const SEITONPage = () => {
         timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
       },
       ...prevHistory,
-    ].slice(0, 3)); // Manter apenas as 3 últimas
+    ].slice(0, 3));
 
     console.log("SEITONPage - After comparison. New Ranked:", newRankedTasks.map(t => t.content), "New P3:", newP3Tasks.map(t => t.content));
 
@@ -457,19 +501,15 @@ const SEITONPage = () => {
       console.log("SEITONPage - Challenger finished its journey. Moving to next challenger from queue.");
       setCurrentChallenger(null);
       setCurrentOpponentIndex(null);
-      setTournamentQueue(prev => prev.slice(1)); // Remove from queue
+      setTournamentQueue(prev => prev.slice(1));
     }
-    // If challengerFinished is false, it means the challenger is still fighting,
-    // so currentChallenger and currentOpponentIndex are already updated for the next round.
     
-    // Check if tournament is completely finished
     if (tournamentQueue.length === 0 && currentChallenger === null) {
       console.log("SEITONPage - Tournament finished, moving to result.");
       setCurrentStep('result');
       localStorage.removeItem(SEITON_PROGRESS_KEY);
     }
 
-    // Reset AI suggestion states after a comparison is made
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
@@ -492,7 +532,6 @@ const SEITONPage = () => {
         return;
     }
 
-    // Salvar estado atual para desfazer
     setLastUndoableAction({
       type: 'cancel',
       snapshotTournamentQueue: tournamentQueue,
@@ -514,21 +553,17 @@ const SEITONPage = () => {
 
         if (isChallengerCancelled) {
             setTournamentQueue(prevQueue => prevQueue.filter(task => task.id !== taskIdToCancel));
-            setCurrentChallenger(null); // Reset challenger to trigger next comparison
-            setCurrentOpponentIndex(null); // Reset opponent index
+            setCurrentChallenger(null);
+            setCurrentOpponentIndex(null);
         } else if (isOpponentCancelled) {
             setRankedTasks(prevRanked => prevRanked.filter(task => task.id !== taskIdToCancel));
-            // If opponent is cancelled, the current challenger remains, and the comparison continues.
-            // The next render will show the updated rankedTasks, and the comparison will proceed
-            // with the same challenger against the new task at the currentOpponentIndex (or adjusted).
         }
 
-        // Record comparison history for cancellation
         setComparisonHistory(prevHistory => [
             {
                 challengerContent: currentChallenger?.content || "N/A",
                 opponentContent: isOpponentCancelled ? currentOpponent?.content || "N/A" : "N/A",
-                winner: 'N/A', // No winner in a cancellation
+                winner: 'N/A',
                 action: `Tarefa "${isChallengerCancelled ? currentChallenger?.content : currentOpponent?.content || 'desconhecida'}" cancelada.`,
                 timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
             },
@@ -536,10 +571,9 @@ const SEITONPage = () => {
         ].slice(0, 3));
     } else {
         showError("Falha ao cancelar a tarefa.");
-        setLastUndoableAction(null); // Clear undo state if API call fails
+        setLastUndoableAction(null);
     }
 
-    // Reset AI suggestion states after a task is cancelled
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
@@ -552,11 +586,10 @@ const SEITONPage = () => {
       return;
     }
 
-    setLoading(true); // Indica carregamento durante a operação de desfazer
+    setLoading(true);
 
     try {
       if (lastUndoableAction.type === 'cancel' && lastUndoableAction.cancelledTaskId) {
-        // Desfazer um cancelamento: reabrir tarefa no Todoist
         const success = await handleApiCall(
           () => reopenTask(lastUndoableAction.cancelledTaskId!),
           "Desfazendo cancelamento...",
@@ -566,15 +599,14 @@ const SEITONPage = () => {
           throw new Error("Falha ao reabrir a tarefa no Todoist.");
         }
       }
-      // Restaurar o estado do snapshot
       setTournamentQueue(lastUndoableAction.snapshotTournamentQueue);
       setRankedTasks(lastUndoableAction.snapshotRankedTasks);
       setP3Tasks(lastUndoableAction.snapshotP3Tasks);
       setCurrentChallenger(lastUndoableAction.snapshotCurrentChallenger);
       setCurrentOpponentIndex(lastUndoableAction.snapshotCurrentOpponentIndex);
-      setCurrentStep('tournamentComparison'); // Assume que voltamos para a comparação
+      setCurrentStep('tournamentComparison');
 
-      setLastUndoableAction(null); // Limpar estado de desfazer
+      setLastUndoableAction(null);
       showSuccess("Ação desfeita com sucesso!");
     } catch (error: any) {
       console.error("Erro ao desfazer ação:", error);
@@ -589,19 +621,18 @@ const SEITONPage = () => {
     setShowSetDeadlineDialog(true);
   }, []);
 
-  const handleSaveDeadline = useCallback(async (newDeadlineDate: string | null) => { // Parâmetro agora é string | null
+  const handleSaveDeadline = useCallback(async (newDeadlineDate: string | null) => {
     if (!taskToSetDeadline) return;
 
     setLoading(true);
     try {
       const updatedTask = await handleApiCall(
-        () => updateTaskDeadline(taskToSetDeadline.id, newDeadlineDate), // Passa a string da data ou null
+        () => updateTaskDeadline(taskToSetDeadline.id, newDeadlineDate),
         "Atualizando data limite...",
         newDeadlineDate ? "Data limite definida com sucesso!" : "Data limite removida com sucesso!"
       );
 
       if (updatedTask) {
-        // Atualizar as listas de tarefas com a tarefa modificada
         const updateTaskInList = (list: TodoistTask[]) => 
           list.map(t => t.id === updatedTask.id ? updatedTask : t);
 
@@ -688,33 +719,31 @@ const SEITONPage = () => {
     } finally {
       setIsAISuggestingComparison(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, currentChallenger, currentOpponentIndex, rankedTasks]);
+  }, [GEMINI_API_KEY, GEMINI_API_URL, currentChallenger, currentOpponentIndex, rankedTasks, getPriorityLabel]);
 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || showSetDeadlineDialog) return; // Desativa atalhos se o diálogo de deadline estiver aberto
+      if (loading || showSetDeadlineDialog || currentStep === 'initialAIRanking' || currentStep === 'aiRankingResult') return;
 
       if (currentStep === 'tournamentComparison' && currentChallenger && currentOpponentIndex !== null) {
-        if (event.key === '1' || event.key === 'ArrowUp') { // Adicionado ArrowUp
+        if (event.key === '1' || event.key === 'ArrowUp') {
           event.preventDefault();
           handleTournamentComparison(true);
-        } else if (event.key === '2' || event.key === 'ArrowDown') { // Adicionado ArrowDown
+        } else if (event.key === '2' || event.key === 'ArrowDown') {
           event.preventDefault();
           handleTournamentComparison(false);
-        } else if (event.key === 'x' || event.key === 'X') { // 'X' for Cancel Challenger
+        } else if (event.key === 'x' || event.key === 'X') {
           event.preventDefault();
-          // O atalho de teclado 'X' cancelará o desafiante (tarefa de cima) por padrão.
-          // Certifique-se de que currentChallenger não é null antes de acessar .id
           if (currentChallenger) {
             handleCancelTask(currentChallenger.id); 
           } else {
             showError("Nenhuma tarefa desafiante para cancelar.");
           }
-        } else if (event.key === 'z' || event.key === 'Z') { // 'Z' for Undo
+        } else if (event.key === 'z' || event.key === 'Z') {
           event.preventDefault();
           handleUndo();
-        } else if (event.key === 'i' || event.key === 'I') { // 'I' for AI Suggestion
+        } else if (event.key === 'i' || event.key === 'I') {
           event.preventDefault();
           handleAISuggestComparison();
         }
@@ -727,7 +756,6 @@ const SEITONPage = () => {
     };
   }, [loading, currentStep, currentChallenger, currentOpponentIndex, handleTournamentComparison, handleCancelTask, handleUndo, showSetDeadlineDialog, handleAISuggestComparison]);
 
-  // Effect to save final ranking when currentStep becomes 'result'
   useEffect(() => {
     if (currentStep === 'result') {
       const finalRanking = {
@@ -739,28 +767,23 @@ const SEITONPage = () => {
     }
   }, [currentStep, rankedTasks, p3Tasks]);
 
-  // Lógica de seleção da tarefa para o Card de Foco (SEISO)
   const selectedTask = useMemo(() => {
       if (!rankedTasks || rankedTasks.length === 0) {
           return null;
       }
       
-      // O SEISO encontra a primeira tarefa com maior ranking que AINDA ESTÁ ATIVA.
       const activeTask = rankedTasks.find(task => 
-          // Verifica se as flags de conclusão (is_completed ou completed) não estão marcadas.
           !task.is_completed && !(task as any).completed
       );
       
-      // Retorna a tarefa ativa de maior prioridade, ou nulo se todas estiverem concluídas.
       return activeTask || null; 
   }, [rankedTasks]);
 
   const handleResetRanking = useCallback(async () => {
     setLoading(true);
     localStorage.removeItem(SEITON_PROGRESS_KEY);
-    localStorage.removeItem(SEITON_LAST_RANKING_KEY); // Também limpa o último ranking salvo
+    localStorage.removeItem(SEITON_LAST_RANKING_KEY);
     showSuccess("Ranking resetado. Recarregando tarefas...");
-    // Resetar todos os estados relevantes para seus valores iniciais
     setTournamentQueue([]);
     setRankedTasks([]);
     setP3Tasks([]);
@@ -771,52 +794,94 @@ const SEITONPage = () => {
     setAiComparisonSuggestion(null);
     setAiComparisonExplanation(null);
     setShowAiComparisonSuggestion(false);
-    await fetchAndSetupTasks(); // Recarregar tarefas para começar do zero
+    await fetchAndSetupTasks();
   }, [fetchAndSetupTasks]);
 
+  const handleAcceptAIRanking = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Update priorities in Todoist based on AI's initial ranking
+      const updatePromises: Promise<TodoistTask>[] = [];
+      rankedTasks.forEach((task, index) => {
+        let targetPriority = 2; // Default to P3
+        if (index < 4) { // Top 4 are P1
+          targetPriority = 4;
+        } else if (index < RANKING_SIZE) { // Next 20 are P2
+          targetPriority = 3;
+        }
+        updatePromises.push(updateTaskAndReturn(task, targetPriority));
+      });
+      p3Tasks.forEach(task => {
+        updatePromises.push(updateTaskAndReturn(task, 2)); // Ensure all P3 tasks are P3
+      });
 
-  const getPriorityColor = (priority: number) => {
-    switch (priority) {
-      case 4: return "text-red-600";
-      case 3: return "text-yellow-600";
-      case 2: return "text-blue-600";
-      case 1: return "text-gray-600";
-      default: return "text-gray-600";
+      await Promise.all(updatePromises);
+      showSuccess("Ranking da IA aceito e prioridades atualizadas no Todoist!");
+      setCurrentStep('result');
+    } catch (error) {
+      console.error("Erro ao aceitar ranking da IA:", error);
+      showError("Falha ao aceitar o ranking da IA.");
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [rankedTasks, p3Tasks, updateTaskAndReturn]);
 
-  const getPriorityLabel = (priority: number) => {
-    switch (priority) {
-      case 4: return "P1 (Urgente)";
-      case 3: return "P2 (Alta)";
-      case 2: return "P3 (Média)";
-      case 1: return "P4 (Baixa)";
-      default: return "Sem Prioridade";
+  const handleStartManualTournament = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Move all tasks from p3Tasks and any remaining from rankedTasks (beyond RANKING_SIZE) into tournamentQueue
+      const tasksToQueue = [...p3Tasks];
+      if (rankedTasks.length > RANKING_SIZE) {
+        tasksToQueue.push(...rankedTasks.slice(RANKING_SIZE));
+        setRankedTasks(rankedTasks.slice(0, RANKING_SIZE)); // Keep only top RANKING_SIZE in ranked
+      }
+      
+      // Ensure initial ranked tasks have correct priorities
+      const initialRankedPromises = rankedTasks.slice(0, RANKING_SIZE).map(async (task, index) => {
+        let targetPriority = 2; // Default to P3
+        if (index < 4) { // Top 4 are P1
+          targetPriority = 4;
+        } else if (index < RANKING_SIZE) { // Next 20 are P2
+          targetPriority = 3;
+        }
+        return updateTaskAndReturn(task, targetPriority);
+      });
+      const resolvedInitialRanked = await Promise.all(initialRankedPromises);
+      setRankedTasks(resolvedInitialRanked.filter(Boolean) as TodoistTask[]);
+
+      setTournamentQueue(tasksToQueue);
+      setP3Tasks([]); // Clear P3 as they are now in the queue
+      setCurrentStep('tournamentComparison');
+      showSuccess("Torneio manual iniciado com base no ranking da IA!");
+    } catch (error) {
+      console.error("Erro ao iniciar torneio manual:", error);
+      showError("Falha ao iniciar o torneio manual.");
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [rankedTasks, p3Tasks, updateTaskAndReturn]);
+
 
   const renderTaskCard = (
     task: TodoistTask | null,
     title: string,
     description: string,
     priorityOverride?: number,
-    onCardClick?: () => void // Adicionando a prop onCardClick
+    onCardClick?: () => void
   ) => {
     if (!task) {
-        console.log(`renderTaskCard: Task is null for title "${title}". This is why the card is not rendering.`);
         return null;
     }
-    console.log(`renderTaskCard: Rendering task "${task.content}" for title "${title}".`);
     const displayPriority = priorityOverride !== undefined ? priorityOverride : task.priority;
     return (
       <Card
         className={cn(
           "w-full shadow-lg bg-white/80 backdrop-blur-sm p-4",
-          onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200" // Adiciona estilos para indicar clicável
+          onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200"
         )}
-        onClick={onCardClick} // Torna o card clicável
-        tabIndex={onCardClick ? 0 : -1} // Torna-o focável pelo teclado se for clicável
-        role={onCardClick ? "button" : undefined} // Indica que é um botão para acessibilidade
+        onClick={onCardClick}
+        tabIndex={onCardClick ? 0 : -1}
+        role={onCardClick ? "button" : undefined}
       >
         <CardHeader className="text-center p-0 mb-2">
           <CardTitle className="text-xl font-bold text-gray-800 flex items-center justify-center gap-2">
@@ -830,7 +895,7 @@ const SEITONPage = () => {
               rel="noopener noreferrer"
               className="text-gray-400 hover:text-blue-600 transition-colors"
               aria-label="Abrir no Todoist"
-              onClick={(e) => e.stopPropagation()} // Impede que o clique no link acione o clique do card
+              onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="h-4 w-4" />
             </a>
@@ -859,7 +924,7 @@ const SEITONPage = () => {
         <CardFooter className="flex justify-center gap-2 mt-4 p-0">
           <Button
             onClick={(e) => {
-              e.stopPropagation(); // Impede que o clique no botão acione o clique do card
+              e.stopPropagation();
               handleCancelTask(task.id);
             }}
             className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-4 rounded-md transition-colors flex items-center text-sm"
@@ -881,7 +946,6 @@ const SEITONPage = () => {
     );
   };
 
-  // Adicionando logs no ciclo de renderização principal
   console.log("SEITONPage Render Cycle:");
   console.log("  Loading:", loading);
   console.log("  Current Step:", currentStep);
@@ -901,7 +965,6 @@ const SEITONPage = () => {
 
   const currentOpponent = currentOpponentIndex !== null ? rankedTasks[currentOpponentIndex] : null;
 
-  // Early exit if API key is missing for AI features
   if (!GEMINI_API_KEY) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-blue-100 p-4">
@@ -935,7 +998,7 @@ const SEITONPage = () => {
           <h1 className="text-4xl font-extrabold text-blue-800 text-center flex-grow">
             SEITON - Planejar Dia
           </h1>
-          <div className="w-20"></div> {/* Espaçador para centralizar o título */}
+          <div className="w-20"></div>
         </div>
         <p className="text-xl text-blue-700 text-center mb-8">
           Priorize suas tarefas com torneio
@@ -943,6 +1006,67 @@ const SEITONPage = () => {
       </div>
 
       <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
+        {currentStep === 'initialAIRanking' && (
+          <div className="text-center space-y-4">
+            <CardTitle className="text-2xl font-bold text-gray-800">Organizando tarefas com IA...</CardTitle>
+            <CardDescription className="text-lg text-gray-600">
+              Aguarde enquanto a inteligência artificial ranqueia suas tarefas. Isso pode levar alguns segundos.
+            </CardDescription>
+            <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mt-4" />
+          </div>
+        )}
+
+        {currentStep === 'aiRankingResult' && (
+          <div className="space-y-6 text-center">
+            <CardTitle className="text-3xl font-bold text-gray-800">Ranking Sugerido pela IA!</CardTitle>
+            <CardDescription className="text-lg text-gray-600">
+              A IA ranqueou suas tarefas. Você pode aceitar ou refinar manualmente.
+            </CardDescription>
+
+            {rankedTasks.slice(0, 4).length > 0 && (
+              <div className="text-left p-4 border rounded-md bg-red-50/50">
+                <h3 className="text-xl font-bold text-red-700 mb-2">P1 (Urgente)</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  {rankedTasks.slice(0, 4).map((task) => (
+                    <li key={task.id} className="text-gray-800">{task.content}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {rankedTasks.slice(4, RANKING_SIZE).length > 0 && (
+              <div className="text-left p-4 border rounded-md bg-yellow-50/50">
+                <h3 className="text-xl font-bold text-yellow-700 mb-2">P2 (Alta)</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  {rankedTasks.slice(4, RANKING_SIZE).map((task) => (
+                    <li key={task.id} className="text-gray-800">{task.content}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {p3Tasks.length > 0 && (
+              <div className="text-left p-4 border rounded-md bg-blue-50/50">
+                <h3 className="text-xl font-bold text-blue-700 mb-2">P3 (Média)</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  {p3Tasks.map((task) => (
+                    <li key={task.id}>{task.content}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-4 mt-6">
+              <Button onClick={handleAcceptAIRanking} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center justify-center">
+                <Check className="mr-2 h-5 w-5" /> Aceitar Ranking da IA
+              </Button>
+              <Button onClick={handleStartManualTournament} variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50 font-semibold py-2 px-6 rounded-md transition-colors flex items-center justify-center">
+                <Play className="mr-2 h-5 w-5" /> Iniciar Torneio Manual
+              </Button>
+            </div>
+          </div>
+        )}
+
         {currentStep === 'tournamentComparison' && currentChallenger && currentOpponent && currentOpponentIndex !== null ? (
           <div className="space-y-6 text-center">
             <CardTitle className="text-2xl font-bold text-gray-800">Qual é mais importante?</CardTitle>
@@ -955,7 +1079,6 @@ const SEITONPage = () => {
               {renderTaskCard(currentOpponent, "Tarefa B", `Posição ${currentOpponentIndex + 1} no Ranking`, currentOpponent.priority, () => handleTournamentComparison(false))}
             </div>
             
-            {/* AI Suggestion Section */}
             <div className="mt-6 space-y-2">
               <Button
                 onClick={handleAISuggestComparison}
@@ -1142,7 +1265,7 @@ const SEITONPage = () => {
         <SetDeadlineDialog
           isOpen={showSetDeadlineDialog}
           onClose={() => setShowSetDeadlineDialog(false)}
-          currentDeadline={taskToSetDeadline.deadline} // Passa o objeto deadline nativo
+          currentDeadline={taskToSetDeadline.deadline}
           onSave={handleSaveDeadline}
           loading={loading}
         />

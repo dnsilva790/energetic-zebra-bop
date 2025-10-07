@@ -8,4 +8,6 @@ export const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking';
 export const SEITON_PROGRESS_KEY = 'seiton_progress';
 export const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';
 export const SEQUENCER_TASK_LIMIT_KEY = 'sequencer_task_limit';
-export const AI_COMPARISON_SYSTEM_PROMPT_KEY = 'ai_comparison_system_prompt'; // Nova constante
+export const AI_COMPARISON_SYSTEM_PROMPT_KEY = 'ai_comparison_system_prompt';
+export const AI_BATCH_RANKING_PROMPT_KEY = 'ai_batch_ranking_system_prompt'; // Nova constante para o prompt de ranking em lote
+export const AI_INITIAL_RANKING_LIMIT = 30; // Limite de tarefas para o ranking inicial da IA

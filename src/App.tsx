@@ -13,7 +13,8 @@ import SEIKETSURecordPage from "./pages/SEIKETSURecordPage";
 import AITutorSettingsPage from "./pages/AITutorSettingsPage";
 import AISuggestionSettingsPage from "./pages/AISuggestionSettingsPage";
 import SequencerSettingsPage from "./pages/SequencerSettingsPage";
-import SequencerPage from "./pages/SequencerPage"; // Importar a nova página do Sequenciador
+import SequencerPage from "./pages/SequencerPage";
+import SEITONAISettingsPage from "./pages/SEITONAISettingsPage"; // Importar a nova página de configurações da IA do SEITON
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,7 +37,8 @@ const App = () => (
             <Route path="/ai-tutor-settings" element={<AITutorSettingsPage />} />
             <Route path="/ai-suggestion-settings" element={<AISuggestionSettingsPage />} />
             <Route path="/sequencer-settings" element={<SequencerSettingsPage />} />
-            <Route path="/sequencer" element={<SequencerPage />} /> {/* Nova rota para o Sequenciador */}
+            <Route path="/sequencer" element={<SequencerPage />} />
+            <Route path="/seiton-ai-settings" element={<SEITONAISettingsPage />} /> {/* Nova rota */}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
