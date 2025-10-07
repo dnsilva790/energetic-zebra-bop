@@ -28,7 +28,7 @@ const convertUtcToBrasilia = (date: string, time: string): { data: string | null
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('=== suggest-task-time called ===');
   console.log('Environment check:', {
-    hasGeminiApiKey: !!process.env.VITE_GEMINI_API_KEY, // Changed to VITE_GEMINI_API_KEY
+    hasGeminiApiKey: !!process.env.VITE_GEMINI_API_KEY,
   });
 
   try {
@@ -37,9 +37,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(405).json({ error: 'Method Not Allowed', message: 'Only POST requests are supported.' });
     }
 
-    const geminiApiKey = process.env.VITE_GEMINI_API_KEY; // Changed to VITE_GEMINI_API_KEY
+    const geminiApiKey = process.env.VITE_GEMINI_API_KEY;
     if (!geminiApiKey) {
-      console.error("SERVERLESS: VITE_GEMINI_API_KEY environment variable not set."); // Changed message
+      console.error("SERVERLESS: VITE_GEMINI_API_KEY environment variable not set.");
       return res.status(500).json({ error: 'Server Configuration Error', message: 'Gemini API key is not configured on the server.' });
     }
 
@@ -50,7 +50,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Bad Request', message: 'Missing systemPrompt, hora_atual, nova_tarefa, or agenda_existente in request body.' });
     }
 
-    // Using gemini-1.5-pro for more robust scheduling suggestions
     const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${geminiApiKey}`;
 
     const processedAgendaExistente = agenda_existente.map((item: any) => {
@@ -84,8 +83,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         body: JSON.stringify({
           contents: [
-            { role: 'user', parts: [{ text: systemPrompt }] }, // System instruction as the first user message
-            { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] }, // Actual user prompt
+            { role: 'user', parts: [{ text: systemPrompt }] },
+            { role: 'user', parts: [{ text: JSON.stringify(userPromptContent) }] },
           ],
         }),
       });
@@ -106,7 +105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         } else {
           const textError = await geminiResponse.text();
-          errorDetails = textError.substring(0, 500); // Limita o tamanho para logs
+          errorDetails = textError.substring(0, 500);
           errorMessage += `. Resposta: ${errorDetails}`;
         }
         
@@ -116,7 +115,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const rawGeminiData = await geminiResponse.text();
       console.log("SERVERLESS: Gemini API response received. Length:", rawGeminiData.length);
-
 
       const markdownMatch = rawGeminiData.match(/```json\n([\s\S]*?)\n```/);
       let aiResponseContentString = markdownMatch && markdownMatch[1] ? markdownMatch[1] : rawGeminiData;
@@ -129,8 +127,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error("SERVERLESS: Failed to parse AI response as JSON:", aiResponseContentString, "Error:", jsonParseError);
         throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
       }
-
-      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array (Object.prototype.toString)?", Object.prototype.toString.call(parsedSuggestions.sugestoes) === '[object Array]');
 
       if (!parsedSuggestions || typeof parsedSuggestions !== 'object' || parsedSuggestions === null) {
         console.error("SERVERLESS: A resposta da IA não é um objeto JSON válido ou é nula.");
