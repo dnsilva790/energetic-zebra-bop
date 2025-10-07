@@ -200,13 +200,11 @@ const AITutorChat: React.FC<AITutorChatProps> = ({ taskTitle, taskDescription, t
 
     if (loadedMessages.length > 0) {
       setMessages(loadedMessages);
-      initialMessageSentRef.current = true; // Marcar como enviado se houver histórico
-    } else if (!initialMessageSentRef.current) { // Só envia se não houver histórico e não foi enviado ainda
+    } else {
       const initialUserPrompt = `Minha tarefa atual é: ${taskTitle}. A descrição é: ${taskDescription}. Por favor, me guie em micro-passos e aguarde minha interação.`;
       const newInitialMessages = [{ role: 'user', content: initialUserPrompt }];
       setMessages(newInitialMessages);
       sendMessageToGemini(newInitialMessages, systemPrompt); // Envia a mensagem inicial para o Gemini
-      initialMessageSentRef.current = true; // Marcar como enviado
     }
   }, [taskId, taskTitle, taskDescription, localStorageKey, sendMessageToGemini, getSystemPrompt]);
 
