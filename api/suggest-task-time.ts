@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { format, parseISO, isValid } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz'; // Corrigido de utcToZonedTime para toZonedTime
+import { toZonedTime } from 'date-fns-tz';
 
 // Helper to convert UTC time string to Brasília time string
 const convertUtcToBrasilia = (date: string, time: string): { data: string | null, hora_brasilia: string | null } => {
@@ -26,6 +26,13 @@ const convertUtcToBrasilia = (date: string, time: string): { data: string | null
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log('=== suggest-task-time called ===');
+  console.log('Request body:', req.body);
+  console.log('Environment check:', {
+    hasGeminiApiKey: !!process.env.GEMINI_API_KEY,
+    // Do NOT log the actual key!
+  });
+
   try {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method Not Allowed', message: 'Only POST requests are supported.' });
@@ -145,11 +152,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
   } catch (error: any) {
-    console.error(`SERVERLESS: Unhandled error in /api/suggest-task-time:`, error.message, error.stack);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to get AI suggestions due to an internal server error.',
-      error: error.message,
+    console.error('ERROR in suggest-task-time:');
+    console.error('Message:', error.message);
+    console.error('Stack:', error.stack);
+    
+    return res.status(500).json({ 
+      error: 'Failed to get AI suggestions due to an internal server error.',
+      details: error.message // This will be included in the response
     });
   }
 }
