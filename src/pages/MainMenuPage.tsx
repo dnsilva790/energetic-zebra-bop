@@ -107,7 +107,7 @@ const MainMenuPage = () => {
         </Button>
         <Button
           variant="outline"
-          onClick={() => navigate("/sequencer-settings")} {/* Novo botão */}
+          onClick={() => navigate("/sequencer-settings")}
           className="flex items-center gap-2 text-teal-700 hover:text-teal-900 border-teal-300 hover:border-teal-400 bg-white/70 backdrop-blur-sm"
         >
           <ListOrdered size={20} />
