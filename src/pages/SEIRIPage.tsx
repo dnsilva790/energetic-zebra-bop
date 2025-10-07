@@ -31,8 +31,9 @@ const SEIRIPage = () => {
   });
   const [sessionStarted, setSessionStarted] = useState(false);
   const [tasksToTriage, setTasksToTriage] = useState<TodoistTask[]>([]);
+  const [initialTotalTasksCount, setInitialTotalTasksCount] = useState(0); // Novo estado para o total inicial
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
-  const [tasksProcessed, setTasksProcessed] = useState(0);
+  const [tasksProcessed, setTasksProcessed] = useState(0); // Contador de tarefas processadas
   const [isSessionFinished, setIsSessionFinished] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
@@ -42,7 +43,6 @@ const SEIRIPage = () => {
   const [selectedDueTime, setSelectedDueTime] = useState<string>("");
 
   const currentTask = tasksToTriage[currentTaskIndex];
-  const totalTasks = tasksToTriage.length;
 
   useEffect(() => {
     localStorage.setItem(SEIRI_FILTER_KEY, filterInput);
@@ -81,20 +81,23 @@ const SEIRIPage = () => {
 
         if (filteredAndCleanedTasks.length > 0) {
           setTasksToTriage(filteredAndCleanedTasks);
+          setInitialTotalTasksCount(filteredAndCleanedTasks.length); // Define o total inicial
           setSessionStarted(true);
           setCurrentTaskIndex(0);
-          setTasksProcessed(0);
+          setTasksProcessed(0); // Reseta o contador de processadas
           setIsSessionFinished(false);
           showSuccess(`Sessão de triagem iniciada com ${filteredAndCleanedTasks.length} tarefas.`);
         } else {
           showSuccess("Nenhuma tarefa encontrada para triagem com este filtro. Bom trabalho!");
           setIsSessionFinished(true);
           setSessionStarted(false);
+          setInitialTotalTasksCount(0); // Nenhuma tarefa, então 0
         }
       } else {
         showSuccess("Nenhuma tarefa encontrada para triagem com este filtro. Bom trabalho!");
         setIsSessionFinished(true);
         setSessionStarted(false);
+        setInitialTotalTasksCount(0); // Nenhuma tarefa, então 0
       }
     } catch (error: any) {
       console.error("SEIRI: Erro em fetchTasksForTriage:", error);
@@ -111,53 +114,56 @@ const SEIRIPage = () => {
     }
   }, [fetchTasksForTriage, sessionStarted]);
 
-  const moveToNextTask = useCallback(() => {
-    setTasksProcessed(prev => prev + 1);
-    if (currentTaskIndex < totalTasks - 1) {
+  const handleKeepTask = useCallback(() => {
+    setTasksProcessed(prev => prev + 1); // Incrementa o contador de tarefas processadas
+    if (currentTaskIndex < tasksToTriage.length - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
     } else {
+      // Se for a última tarefa na lista atual e a mantivermos, a sessão está concluída.
       setIsSessionFinished(true);
     }
-  }, [currentTaskIndex, totalTasks]);
-
-  const handleKeepTask = useCallback(() => {
     showSuccess("Tarefa mantida no backlog.");
-    moveToNextTask();
-  }, [moveToNextTask]);
+  }, [currentTaskIndex, tasksToTriage.length]);
 
   const handleDeleteTask = useCallback(async () => {
     if (currentTask) {
       const success = await handleApiCall(() => deleteTask(currentTask.id), "Deletando tarefa...", "Tarefa deletada do Todoist!");
       if (success) {
-        // Remove a tarefa da lista sem avançar o índice, pois a lista encolheu
-        setTasksToTriage(prevTasks => prevTasks.filter(task => task.id !== currentTask.id));
-        setTasksProcessed(prev => prev + 1);
-        if (tasksToTriage.length - 1 === 0 || currentTaskIndex >= tasksToTriage.length - 1) {
-          setIsSessionFinished(true);
-        }
+        setTasksToTriage(prevTasks => {
+          const updatedTasks = prevTasks.filter(task => task.id !== currentTask.id);
+          if (updatedTasks.length === 0) { // Se não houver mais tarefas na lista atual
+            setIsSessionFinished(true);
+          }
+          return updatedTasks;
+        });
+        setTasksProcessed(prev => prev + 1); // Incrementa o contador de tarefas processadas
+        // currentTaskIndex NÃO deve mudar, a próxima tarefa na lista filtrada ocupará essa posição.
         showSuccess("Tarefa deletada.");
       } else {
         showError("Falha ao deletar a tarefa no Todoist.");
       }
     }
-  }, [currentTask, currentTaskIndex, tasksToTriage.length]);
+  }, [currentTask]);
 
   const handleCompleteTask = useCallback(async () => {
     if (currentTask) {
       const success = await handleApiCall(() => completeTask(currentTask.id), "Concluindo tarefa...", "Tarefa concluída no Todoist!");
       if (success) {
-        // Remove a tarefa da lista sem avançar o índice, pois a lista encolheu
-        setTasksToTriage(prevTasks => prevTasks.filter(task => task.id !== currentTask.id));
-        setTasksProcessed(prev => prev + 1);
-        if (tasksToTriage.length - 1 === 0 || currentTaskIndex >= tasksToTriage.length - 1) {
-          setIsSessionFinished(true);
-        }
+        setTasksToTriage(prevTasks => {
+          const updatedTasks = prevTasks.filter(task => task.id !== currentTask.id);
+          if (updatedTasks.length === 0) { // Se não houver mais tarefas na lista atual
+            setIsSessionFinished(true);
+          }
+          return updatedTasks;
+        });
+        setTasksProcessed(prev => prev + 1); // Incrementa o contador de tarefas processadas
+        // currentTaskIndex NÃO deve mudar.
         showSuccess("Tarefa concluída.");
       } else {
         showError("Falha ao concluir a tarefa no Todoist.");
       }
     }
-  }, [currentTask, currentTaskIndex, tasksToTriage.length]);
+  }, [currentTask]);
 
   const handleOpenRescheduleDialog = useCallback(() => {
     if (currentTask?.due?.date) {
@@ -199,18 +205,21 @@ const SEIRIPage = () => {
     );
 
     if (success) {
-      // Remove a tarefa da lista sem avançar o índice, pois a lista encolheu
-      setTasksToTriage(prevTasks => prevTasks.filter(task => task.id !== currentTask.id));
-      setTasksProcessed(prev => prev + 1);
-      if (tasksToTriage.length - 1 === 0 || currentTaskIndex >= tasksToTriage.length - 1) {
-        setIsSessionFinished(true);
-      }
+      setTasksToTriage(prevTasks => {
+        const updatedTasks = prevTasks.filter(task => task.id !== currentTask.id);
+        if (updatedTasks.length === 0) { // Se não houver mais tarefas na lista atual
+          setIsSessionFinished(true);
+        }
+        return updatedTasks;
+      });
+      setTasksProcessed(prev => prev + 1); // Incrementa o contador de tarefas processadas
+      // currentTaskIndex NÃO deve mudar.
       setShowRescheduleDialog(false);
       showSuccess("Tarefa reagendada.");
     } else {
       showError("Falha ao reagendar a tarefa.");
     }
-  }, [currentTask, selectedDueDate, selectedDueTime, currentTaskIndex, tasksToTriage.length]);
+  }, [currentTask, selectedDueDate, selectedDueTime]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -237,7 +246,7 @@ const SEIRIPage = () => {
     };
   }, [loading, isSessionFinished, currentTask, sessionStarted, showRescheduleDialog, handleKeepTask, handleDeleteTask, handleOpenRescheduleDialog, handleCompleteTask]);
 
-  const taskProgressValue = totalTasks > 0 ? (tasksProcessed / totalTasks) * 100 : 0;
+  const taskProgressValue = initialTotalTasksCount > 0 ? (tasksProcessed / initialTotalTasksCount) * 100 : 0;
 
   if (loading) {
     return (
@@ -253,7 +262,7 @@ const SEIRIPage = () => {
         <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
           <CardTitle className="text-3xl font-bold text-gray-800">Sessão de Triagem Concluída!</CardTitle>
           <CardDescription className="text-lg text-gray-600">
-            Você revisou {tasksProcessed} tarefas.
+            Você revisou {tasksProcessed} de {initialTotalTasksCount} tarefas.
           </CardDescription>
           <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
             Voltar ao Menu Principal
@@ -397,7 +406,7 @@ const SEIRIPage = () => {
           {!isSessionFinished && currentTask && (
             <CardFooter className="flex flex-col items-center p-6 border-t mt-6">
               <p className="text-sm text-gray-600 mb-2">
-                Tarefa {tasksProcessed + 1} de {totalTasks}
+                Tarefa {tasksProcessed + 1} de {initialTotalTasksCount}
               </p>
               <Progress value={taskProgressValue} className="w-full h-2 bg-green-200 [&>*]:bg-green-600" />
             </CardFooter>
