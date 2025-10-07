@@ -153,10 +153,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw new Error("O conteúdo da resposta da IA não é uma string ou objeto JSON válido.");
       }
 
-      if (!parsedSuggestions || !Array.isArray(parsedSuggestions.sugestoes)) {
-        console.error("SERVERLESS: AI response does not contain a 'sugestoes' array:", parsedSuggestions);
-        throw new Error("A resposta da IA não está no formato esperado (missing 'sugestoes' array).");
+      // --- START NEW DIAGNOSTIC LOGS AND REFINED VALIDATION ---
+      console.log("SERVERLESS: Final parsedSuggestions object:", JSON.stringify(parsedSuggestions, null, 2));
+      console.log("SERVERLESS: Type of parsedSuggestions:", typeof parsedSuggestions);
+      console.log("SERVERLESS: Is parsedSuggestions null?", parsedSuggestions === null);
+      console.log("SERVERLESS: Does parsedSuggestions have 'sugestoes' property?", Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes'));
+      console.log("SERVERLESS: Type of parsedSuggestions.sugestoes:", typeof parsedSuggestions.sugestoes);
+      console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array?", Array.isArray(parsedSuggestions.sugestoes));
+
+      if (!parsedSuggestions || typeof parsedSuggestions !== 'object' || parsedSuggestions === null || !Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes') || !Array.isArray(parsedSuggestions.sugestoes)) {
+        console.error("SERVERLESS: AI response does not contain a 'sugestoes' array or is not a valid object structure. Details:", {
+          isParsedSuggestionsNull: parsedSuggestions === null,
+          isParsedSuggestionsObject: typeof parsedSuggestions === 'object',
+          hasSugestoesProperty: Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes'),
+          isSugestoesArray: Array.isArray(parsedSuggestions.sugestoes),
+          parsedSuggestionsContent: parsedSuggestions // Log the full content for debugging
+        });
+        throw new Error("A resposta da IA não está no formato esperado (missing 'sugestoes' array ou estrutura inválida).");
       }
+      // --- END NEW DIAGNOSTIC LOGS AND REFINED VALIDATION ---
 
       return res.status(200).json({
         status: 'success',
