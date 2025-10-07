@@ -4,7 +4,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { Button } from "@/components/ui/button";
-import { Settings, Brush, LayoutDashboard, Play, Brain, Clock } from "lucide-react"; 
+import { Settings, Brush, LayoutDashboard, Play, Brain, Clock, Lightbulb } from "lucide-react"; // Importar Lightbulb
 import {
   Card,
   CardContent,
@@ -92,6 +92,14 @@ const MainMenuPage = () => {
         >
           <Brain size={20} />
           Configurações do Tutor IA
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => navigate("/ai-suggestion-settings")} {/* Novo botão */}
+          className="flex items-center gap-2 text-teal-700 hover:text-teal-900 border-teal-300 hover:border-teal-400 bg-white/70 backdrop-blur-sm"
+        >
+          <Lightbulb size={20} />
+          Configurações de Sugestão IA
         </Button>
       </div>
       <MadeWithDyad />
