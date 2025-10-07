@@ -235,6 +235,30 @@ const SEIKETSURecordPage: React.FC = () => {
     }
   }, [currentTask]);
 
+  const handleOpenRescheduleDialog = useCallback(() => {
+    if (currentTask?.due?.date) {
+      const parsedDate = parseISO(currentTask.due.date);
+      setSelectedDueDate(isValid(parsedDate) ? parsedDate : undefined);
+      
+      // Check if the 'date' string contains a time component (e.g., 'T' followed by HH:MM)
+      const hasTimeComponent = currentTask.due.date.includes('T') && /\d{2}:\d{2}/.test(currentTask.due.date);
+      if (hasTimeComponent) {
+        const parsedDateWithTime = parseISO(currentTask.due.date);
+        if (isValid(parsedDateWithTime)) {
+          setSelectedDueTime(format(parsedDateWithTime, "HH:mm"));
+        } else {
+          setSelectedDueTime("");
+        }
+      } else {
+        setSelectedDueTime("");
+      }
+    } else {
+      setSelectedDueDate(addDays(new Date(), 1)); // Sugere amanhã por padrão
+      setSelectedDueTime("");
+    }
+    setShowPostponeDialog(true);
+  }, [currentTask]);
+
   const handleSavePostpone = useCallback(async () => {
     if (!currentTask || !selectedDueDate) {
       showError("Por favor, selecione uma data para postergar.");
@@ -422,7 +446,7 @@ const SEIKETSURecordPage: React.FC = () => {
         handleDoTodayQuick();
       } else if (event.key === 'p' || event.key === 'P') { // P for Postpone
         event.preventDefault();
-        handlePostponeClick();
+        handleOpenRescheduleDialog(); // Chama a função que abre o diálogo e preenche
       } else if (event.key === 'f' || event.key === 'F') { // F for Complete (changed from C)
         event.preventDefault();
         handleCompleteTask();
@@ -436,7 +460,7 @@ const SEIKETSURecordPage: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, showPostponeDialog, handleDoTodayQuick, handlePostponeClick, handleCompleteTask, handleAISuggestion]);
+  }, [loading, isSessionFinished, currentTask, showPostponeDialog, handleDoTodayQuick, handleOpenRescheduleDialog, handleCompleteTask, handleAISuggestion]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
 
@@ -586,7 +610,7 @@ const SEIKETSURecordPage: React.FC = () => {
                 <XCircle className="mr-2 h-5 w-5" /> CONCLUÍDA (F)
               </Button>
               <Button
-                onClick={handlePostponeClick}
+                onClick={handleOpenRescheduleDialog} {/* Chama a função que abre o diálogo e preenche */}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
               >
                 <CalendarDays className="mr-2 h-5 w-5" /> POSTERGAR (P)
