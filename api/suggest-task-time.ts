@@ -128,13 +128,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         parsedSuggestions = aiResponseContent;
         console.log("SERVERLESS: AI response content was already a parsed object.");
       } else if (typeof aiResponseContent === 'string') {
-        // Fallback: if it's a string, try to parse it (e.g., if responseMimeType is ignored or changed)
-        console.log("SERVERLESS: AI response content is a string, attempting JSON.parse.");
-        try {
-          parsedSuggestions = JSON.parse(aiResponseContent);
-        } catch (jsonParseError: any) {
-          console.error("SERVERLESS: Failed to parse AI response as JSON:", aiResponseContent, "Error:", jsonParseError);
-          throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
+        // If it's a string, first try to extract from a Markdown code block
+        const markdownMatch = aiResponseContent.match(/```json\n([\s\S]*?)\n```/);
+        if (markdownMatch && markdownMatch[1]) {
+          console.log("SERVERLESS: AI response content is a Markdown JSON string, attempting to extract and parse.");
+          try {
+            parsedSuggestions = JSON.parse(markdownMatch[1]);
+          } catch (jsonParseError: any) {
+            console.error("SERVERLESS: Failed to parse extracted Markdown JSON:", markdownMatch[1], "Error:", jsonParseError);
+            throw new Error(`Falha ao analisar o JSON extraído do Markdown: ${jsonParseError.message}`);
+          }
+        } else {
+          // Fallback: if it's a string but not a Markdown block, try to parse it directly
+          console.log("SERVERLESS: AI response content is a plain JSON string, attempting JSON.parse.");
+          try {
+            parsedSuggestions = JSON.parse(aiResponseContent);
+          } catch (jsonParseError: any) {
+            console.error("SERVERLESS: Failed to parse AI response as JSON:", aiResponseContent, "Error:", jsonParseError);
+            throw new Error(`Falha ao analisar a resposta da IA como JSON: ${jsonParseError.message}`);
+          }
         }
       } else {
         console.error("SERVERLESS: Unexpected type for aiResponseContent after processing:", typeof aiResponseContent, "Value:", aiResponseContent);
