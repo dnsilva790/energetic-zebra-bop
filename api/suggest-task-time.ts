@@ -71,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const userPromptContent = {
       hora_atual: hora_atual,
-      nova_tarefa: nova_tarefa,
+      nova_tarefa: nova_tareva,
       agenda_existente: processedAgendaExistente,
     };
 
@@ -160,16 +160,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log("SERVERLESS: Does parsedSuggestions have 'sugestoes' property?", Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes'));
       console.log("SERVERLESS: Type of parsedSuggestions.sugestoes:", typeof parsedSuggestions.sugestoes);
       console.log("SERVERLESS: Is parsedSuggestions.sugestoes an array?", Array.isArray(parsedSuggestions.sugestoes));
+      console.log("SERVERLESS: Is parsedSuggestions.sugestoes instanceof Array?", parsedSuggestions.sugestoes instanceof Array); // NOVO LOG
+      console.log("SERVERLESS: Value of parsedSuggestions.sugestoes:", parsedSuggestions.sugestoes); // NOVO LOG
 
-      if (!parsedSuggestions || typeof parsedSuggestions !== 'object' || parsedSuggestions === null || !Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes') || !Array.isArray(parsedSuggestions.sugestoes)) {
-        console.error("SERVERLESS: AI response does not contain a 'sugestoes' array or is not a valid object structure. Details:", {
-          isParsedSuggestionsNull: parsedSuggestions === null,
-          isParsedSuggestionsObject: typeof parsedSuggestions === 'object',
-          hasSugestoesProperty: Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes'),
-          isSugestoesArray: Array.isArray(parsedSuggestions.sugestoes),
-          parsedSuggestionsContent: parsedSuggestions // Log the full content for debugging
-        });
-        throw new Error("A resposta da IA não está no formato esperado (missing 'sugestoes' array ou estrutura inválida).");
+      if (!parsedSuggestions) {
+        console.error("SERVERLESS: parsedSuggestions é nulo ou indefinido.");
+        throw new Error("A resposta da IA não está no formato esperado (objeto principal ausente).");
+      }
+      if (typeof parsedSuggestions !== 'object') {
+        console.error("SERVERLESS: parsedSuggestions não é um objeto. Tipo real:", typeof parsedSuggestions);
+        throw new Error("A resposta da IA não está no formato esperado (objeto principal inválido).");
+      }
+      if (parsedSuggestions === null) {
+        console.error("SERVERLESS: parsedSuggestions é explicitamente null.");
+        throw new Error("A resposta da IA não está no formato esperado (objeto principal é null).");
+      }
+      if (!Object.prototype.hasOwnProperty.call(parsedSuggestions, 'sugestoes')) {
+        console.error("SERVERLESS: parsedSuggestions não possui a propriedade 'sugestoes'.");
+        throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' ausente).");
+      }
+      if (!Array.isArray(parsedSuggestions.sugestoes)) {
+        console.error("SERVERLESS: parsedSuggestions.sugestoes não é um array. Tipo real:", typeof parsedSuggestions.sugestoes, "Valor:", parsedSuggestions.sugestoes);
+        throw new Error("A resposta da IA não está no formato esperado (propriedade 'sugestoes' não é um array).");
       }
       // --- END NEW DIAGNOSTIC LOGS AND REFINED VALIDATION ---
 
