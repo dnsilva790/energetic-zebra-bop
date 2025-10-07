@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain, AlertCircle, Lightbulb
+  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain, AlertCircle
 } from "lucide-react"; 
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
@@ -21,8 +21,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"; // Importar Sheet
-import AITaskSuggestionBox from "@/components/AITaskSuggestionBox"; // Importar o novo componente
 
 const SEIKETSURecordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -38,8 +36,6 @@ const SEIKETSURecordPage: React.FC = () => {
   const [showPostponeDialog, setShowPostponeDialog] = useState(false);
   const [selectedDueDate, setSelectedDueDate] = useState<Date | undefined>(undefined);
   const [selectedDueTime, setSelectedDueTime] = useState<string>("");
-
-  const [isAISuggestionBoxOpen, setIsAISuggestionBoxOpen] = useState(false); // Estado para a caixa de sugestões
 
   const currentTask = tasksToReview[currentTaskIndex];
   const totalTasks = tasksToReview.length;
@@ -214,24 +210,9 @@ const SEIKETSURecordPage: React.FC = () => {
     }
   }, [currentTask, selectedDueDate, selectedDueTime, moveToNextTask]);
 
-  const handleOpenAISuggestionBox = useCallback(() => {
-    if (!currentTask) {
-      showError("Nenhuma tarefa selecionada para sugestões de IA.");
-      return;
-    }
-    setIsAISuggestionBoxOpen(true);
-  }, [currentTask]);
-
-  const handleTaskUpdatedFromSuggestion = useCallback(() => {
-    // Quando uma sugestão é aplicada, a tarefa é atualizada e precisamos avançar
-    // ou re-fetch para garantir que a lista esteja atualizada.
-    // Para simplicidade, vamos apenas avançar para a próxima tarefa.
-    moveToNextTask();
-  }, [moveToNextTask]);
-
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (loading || isSessionFinished || !currentTask || showPostponeDialog || isAISuggestionBoxOpen) return; // Desativa atalhos se a caixa de sugestões estiver aberta
+      if (loading || isSessionFinished || !currentTask || showPostponeDialog) return;
 
       if (event.key === 'r' || event.key === 'R') {
         event.preventDefault();
@@ -242,9 +223,6 @@ const SEIKETSURecordPage: React.FC = () => {
       } else if (event.key === 'c' || event.key === 'C') {
         event.preventDefault();
         handleCompleteTask();
-      } else if (event.key === 's' || event.key === 'S') { // 'S' para Sugerir
-        event.preventDefault();
-        handleOpenAISuggestionBox();
       }
     };
 
@@ -252,7 +230,7 @@ const SEIKETSURecordPage: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, showPostponeDialog, isAISuggestionBoxOpen, handleDoTodayQuick, handlePostponeClick, handleCompleteTask, handleOpenAISuggestionBox]);
+  }, [loading, isSessionFinished, currentTask, showPostponeDialog, handleDoTodayQuick, handlePostponeClick, handleCompleteTask]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
 
@@ -362,12 +340,6 @@ const SEIKETSURecordPage: React.FC = () => {
               >
                 <CalendarDays className="mr-2 h-5 w-5" /> POSTERGAR (P)
               </Button>
-              <Button
-                onClick={handleOpenAISuggestionBox}
-                className="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
-              >
-                <Lightbulb className="mr-2 h-5 w-5" /> SUGERIR (S)
-              </Button>
             </div>
           </div>
         ) : (
@@ -447,18 +419,6 @@ const SEIKETSURecordPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Sheet open={isAISuggestionBoxOpen} onOpenChange={setIsAISuggestionBoxOpen}>
-        <SheetContent className="flex flex-col sm:max-w-lg md:max-w-md"> {/* Largura ajustada para o box */}
-          {currentTask && (
-            <AITaskSuggestionBox
-              task={currentTask}
-              onClose={() => setIsAISuggestionBoxOpen(false)}
-              onTaskUpdated={handleTaskUpdatedFromSuggestion}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
     </div>
   );
 };
