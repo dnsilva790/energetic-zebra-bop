@@ -1,0 +1,9 @@
+export const SEQUENCER_SETTINGS_KEY = 'sequencer_settings';
+export const AI_SUGGESTION_SYSTEM_PROMPT_KEY = 'ai_suggestion_system_prompt';
+export const AI_TUTOR_SYSTEM_PROMPT_KEY = 'ai_tutor_system_prompt';
+export const AI_TUTOR_SHEET_WIDTH_KEY = 'ai_tutor_sheet_width';
+export const SEIRI_FILTER_KEY = 'seiri_filter_input';
+export const SEISO_FILTER_KEY = 'seiso_filter_input';
+export const SEISO_USE_SEITON_RANKING_KEY = 'seiso_use_seiton_ranking';
+export const SEITON_PROGRESS_KEY = 'seiton_progress';
+export const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking';

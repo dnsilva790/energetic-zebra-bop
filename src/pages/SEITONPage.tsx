@@ -14,10 +14,9 @@ import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils"; // Importar cn e formatDateForDisplay
 import SetDeadlineDialog from "@/components/SetDeadlineDialog"; // Importar o novo componente
+import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY } from "@/lib/constants";
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
-const SEITON_PROGRESS_KEY = 'seiton_progress';
-const SEITON_LAST_RANKING_KEY = 'seiton_last_ranking'; // Nova chave para o último ranking
 
 type SeitonStep = 'loading' | 'tournamentComparison' | 'result';
 
@@ -621,10 +620,10 @@ const SEITONPage = () => {
       if (loading || showSetDeadlineDialog) return; // Desativa atalhos se o diálogo de deadline estiver aberto
 
       if (currentStep === 'tournamentComparison' && currentChallenger && currentOpponentIndex !== null) {
-        if (event.key === '1') {
+        if (event.key === '1' || event.key === 'ArrowUp') { // Adicionado ArrowUp
           event.preventDefault();
           handleTournamentComparison(true);
-        } else if (event.key === '2') {
+        } else if (event.key === '2' || event.key === 'ArrowDown') { // Adicionado ArrowDown
           event.preventDefault();
           handleTournamentComparison(false);
         } else if (event.key === 'x' || event.key === 'X') { // 'X' for Cancel Challenger
@@ -835,10 +834,10 @@ const SEITONPage = () => {
             </div>
             <div className="flex justify-center space-x-4 mt-6">
               <Button onClick={() => handleTournamentComparison(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
-                <ChevronLeft className="mr-2 h-5 w-5" /> ESCOLHER CIMA (1)
+                <ChevronLeft className="mr-2 h-5 w-5" /> ESCOLHER CIMA (1 ou ↑)
               </Button>
               <Button onClick={() => handleTournamentComparison(false)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md transition-colors flex items-center">
-                ESCOLHER BAIXO (2) <ChevronRight className="ml-2 h-5 w-5" />
+                ESCOLHER BAIXO (2 ou ↓) <ChevronRight className="ml-2 h-5 w-5" />
               </Button>
             </div>
           </div>

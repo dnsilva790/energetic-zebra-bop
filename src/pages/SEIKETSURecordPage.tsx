@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -8,23 +8,22 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain, AlertCircle, Loader2
+  ArrowLeft, Check, Clock, CalendarDays, ExternalLink, Repeat, XCircle, Brain, AlertCircle, Loader2, Settings
 } from "lucide-react"; 
 import { MadeWithDyad } from "@/components/made-with-dyad";
 import { showSuccess, showError } from "@/utils/toast";
 import { getTasks, handleApiCall, updateTaskDueDate, completeTask } from "@/lib/todoistApi"; 
-import { format, parseISO, setHours, setMinutes, isValid, addDays, parse, startOfDay, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday } from "date-fns";
+import { format, parseISO, setHours, setMinutes, isValid, addDays, parse, startOfDay, nextMonday, nextTuesday, nextWednesday, nextThursday, nextFriday, nextSaturday, nextSunday, getDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { TodoistTask } from "@/lib/types"; 
+import { TodoistTask, SequencerSettings } from "@/lib/types"; 
 import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay } from "@/lib/utils";
+import { AI_SUGGESTION_SYSTEM_PROMPT_KEY, SEQUENCER_SETTINGS_KEY } from "@/lib/constants";
 
-const AI_SUGGESTION_SYSTEM_PROMPT_KEY = 'ai_suggestion_system_prompt';
 const DEFAULT_SUGGESTION_PROMPT = `Você é um assistente de produtividade. Dada a seguinte tarefa, sugira 3 a 5 opções de reagendamento (data e hora, se aplicável) que sejam razoáveis, considerando a prioridade e o vencimento atual. Formate cada sugestão como uma linha separada, começando com um asterisco, por exemplo: "* Amanhã às 10:00", "* Próxima segunda-feira". Evite sugerir datas passadas.`;
-
 
 const SEIKETSURecordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -45,12 +44,27 @@ const SEIKETSURecordPage: React.FC = () => {
   const [isAISuggesting, setIsAISuggesting] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [showAISuggestionsOnCard, setShowAISuggestionsOnCard] = useState(false); // Controla a visibilidade das sugestões no card
+
+  const [sequencerSettings, setSequencerSettings] = useState<SequencerSettings | null>(null);
 
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
   const currentTask = tasksToReview[currentTaskIndex];
   const totalTasks = tasksToReview.length;
+
+  useEffect(() => {
+    const savedSettings = localStorage.getItem(SEQUENCER_SETTINGS_KEY);
+    if (savedSettings) {
+      try {
+        setSequencerSettings(JSON.parse(savedSettings));
+      } catch (e) {
+        console.error("Error parsing sequencer settings from localStorage:", e);
+        showError("Erro ao carregar configurações do sequenciador.");
+      }
+    }
+  }, []);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -161,6 +175,9 @@ const SEIKETSURecordPage: React.FC = () => {
   const moveToNextTask = useCallback(() => {
     if (currentTaskIndex < totalTasks - 1) {
       setCurrentTaskIndex(currentTaskIndex + 1);
+      setShowAISuggestionsOnCard(false); // Esconde sugestões ao mover para próxima tarefa
+      setAiSuggestions([]); // Limpa sugestões
+      setAiError(null); // Limpa erros da IA
     } else {
       setIsSessionFinished(true);
     }
@@ -188,10 +205,8 @@ const SEIKETSURecordPage: React.FC = () => {
 
   const handlePostponeClick = useCallback(() => {
     if (currentTask) {
-      setSelectedDueDate(addDays(new Date(), 1));
-      setSelectedDueTime("");
-      setAiSuggestions([]); // Clear previous AI suggestions
-      setAiError(null); // Clear previous AI error
+      // Não limpa selectedDueDate/Time aqui, pois applyAISuggestion pode ter preenchido
+      // Apenas abre o diálogo.
       setShowPostponeDialog(true);
     }
   }, [currentTask]);
@@ -239,12 +254,31 @@ const SEIKETSURecordPage: React.FC = () => {
     setIsAISuggesting(true);
     setAiSuggestions([]);
     setAiError(null);
+    setShowAISuggestionsOnCard(true); // Mostra a seção de sugestões no card
 
     const systemPrompt = localStorage.getItem(AI_SUGGESTION_SYSTEM_PROMPT_KEY) || DEFAULT_SUGGESTION_PROMPT;
     const now = new Date();
     const formattedNow = format(now, "dd/MM/yyyy HH:mm", { locale: ptBR });
 
-    const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}. Data Limite: ${currentTask.deadline?.date ? formatDateForDisplay(currentTask.deadline) : 'Nenhum'}. Data e hora atuais: ${formattedNow}.`;
+    let timeBlocksInfo = "";
+    if (sequencerSettings) {
+      const dayIndex = getDay(now); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const currentDayName = dayNames[dayIndex];
+      const currentDaySettings = sequencerSettings.dailyContexts[currentDayName];
+
+      if (currentDaySettings) {
+        const professionalBlocks = currentDaySettings.professional.map(b => `${b.start}-${b.end}`).join(', ');
+        const personalBlocks = currentDaySettings.personal.map(b => `${b.start}-${b.end}`).join(', ');
+        timeBlocksInfo = `Meus blocos de tempo para hoje (${currentDayName}) são: Profissional [${professionalBlocks || 'Nenhum'}], Pessoal [${personalBlocks || 'Nenhum'}].`;
+      }
+    }
+
+    const taskDurationInfo = currentTask.duration 
+      ? `A tarefa tem uma duração estimada de ${currentTask.duration.amount} ${currentTask.duration.unit === 'minute' ? 'minutos' : 'dias'}.`
+      : "A duração da tarefa não foi especificada.";
+
+    const taskDetails = `Tarefa: "${currentTask.content}". Descrição: "${currentTask.description || 'Nenhuma descrição.'}". Prioridade: ${getPriorityLabel(currentTask.priority)}. Vencimento atual: ${currentTask.due?.string || 'Nenhum'}. Data Limite: ${currentTask.deadline?.date ? formatDateForDisplay(currentTask.deadline) : 'Nenhum'}. ${taskDurationInfo} Data e hora atuais: ${formattedNow}. ${timeBlocksInfo}`;
     const prompt = `${systemPrompt}\n${taskDetails}\nSugestões:`;
 
     try {
@@ -280,7 +314,7 @@ const SEIKETSURecordPage: React.FC = () => {
     } finally {
         setIsAISuggesting(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, currentTask, getPriorityLabel]);
+  }, [GEMINI_API_KEY, GEMINI_API_URL, currentTask, getPriorityLabel, sequencerSettings]);
 
   const applyAISuggestion = useCallback((suggestion: string) => {
     let newDate: Date | undefined = undefined;
@@ -353,6 +387,7 @@ const SEIKETSURecordPage: React.FC = () => {
 
     setSelectedDueDate(newDate);
     setSelectedDueTime(newTime);
+    setShowPostponeDialog(true); // Abre o diálogo de postergar com a sugestão preenchida
     showSuccess(`Sugestão "${suggestion}" aplicada.`);
   }, []);
 
@@ -360,15 +395,18 @@ const SEIKETSURecordPage: React.FC = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (loading || isSessionFinished || !currentTask || showPostponeDialog) return;
 
-      if (event.key === 'r' || event.key === 'R') {
+      if (event.key === 'r' || event.key === 'R') { // R for Do Today Quick
         event.preventDefault();
         handleDoTodayQuick();
-      } else if (event.key === 'p' || event.key === 'P') {
+      } else if (event.key === 'p' || event.key === 'P') { // P for Postpone
         event.preventDefault();
         handlePostponeClick();
-      } else if (event.key === 'c' || event.key === 'C') {
+      } else if (event.key === 'f' || event.key === 'F') { // F for Complete (changed from C)
         event.preventDefault();
         handleCompleteTask();
+      } else if (event.key === 'a' || event.key === 'A') { // A for AI Suggestion
+        event.preventDefault();
+        handleAISuggestion();
       }
     };
 
@@ -376,7 +414,7 @@ const SEIKETSURecordPage: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loading, isSessionFinished, currentTask, showPostponeDialog, handleDoTodayQuick, handlePostponeClick, handleCompleteTask]);
+  }, [loading, isSessionFinished, currentTask, showPostponeDialog, handleDoTodayQuick, handlePostponeClick, handleCompleteTask, handleAISuggestion]);
 
   const taskProgressValue = totalTasks > 0 ? (currentTaskIndex / totalTasks) * 100 : 0;
 
@@ -428,7 +466,7 @@ const SEIKETSURecordPage: React.FC = () => {
         </p>
       </div>
 
-      <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6">
+      <Card className="w-full max-w-3xl shadow-lg bg-white/80 backdrop-blur-sm p-6">
         {currentTask ? (
           <div className="space-y-6">
             <div className="text-center">
@@ -465,7 +503,58 @@ const SEIKETSURecordPage: React.FC = () => {
                   Data Limite: <span className="font-medium text-gray-700">{formatDateForDisplay(currentTask.deadline)}</span>
                 </p>
               )}
+              {currentTask.duration && (
+                <p className="text-sm text-gray-500">
+                  Duração: <span className="font-medium text-gray-700">{currentTask.duration.amount} {currentTask.duration.unit === 'minute' ? 'minutos' : 'dias'}</span>
+                </p>
+              )}
             </div>
+
+            {/* Botão de Sugestão de IA direto no card */}
+            <div className="flex justify-center mt-4">
+                <Button
+                    onClick={handleAISuggestion}
+                    disabled={isAISuggesting || !GEMINI_API_KEY}
+                    className="bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center px-6 py-2 rounded-md transition-colors"
+                >
+                    {isAISuggesting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                        <Brain className="mr-2 h-5 w-5" />
+                    )}
+                    Sugerir Horários com IA (A)
+                </Button>
+            </div>
+            {!GEMINI_API_KEY && (
+                <p className="text-red-500 text-sm text-center flex items-center justify-center mt-2">
+                    <AlertCircle className="h-4 w-4 mr-1" />
+                    Chave Gemini não configurada. Adicione VITE_GEMINI_API_KEY ao seu .env.
+                </p>
+            )}
+            {aiError && (
+                <p className="text-red-500 text-sm text-center mt-2">{aiError}</p>
+            )}
+
+            {/* Exibição das sugestões da IA no card */}
+            {showAISuggestionsOnCard && aiSuggestions.length > 0 && (
+                <div className="mt-4 space-y-2 border-t pt-4">
+                    <Label className="text-lg font-semibold text-gray-800 text-center block">Sugestões da IA:</Label>
+                    <div className="flex flex-wrap justify-center gap-2">
+                        {aiSuggestions.map((suggestion, index) => (
+                            <Button
+                                key={index}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => applyAISuggestion(suggestion)}
+                                disabled={isAISuggesting}
+                                className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                            >
+                                {suggestion}
+                            </Button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="flex justify-center space-x-4 mt-6">
               <Button
@@ -478,7 +567,7 @@ const SEIKETSURecordPage: React.FC = () => {
                 onClick={handleCompleteTask}
                 className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-colors flex items-center"
               >
-                <XCircle className="mr-2 h-5 w-5" /> CONCLUÍDA (C)
+                <XCircle className="mr-2 h-5 w-5" /> CONCLUÍDA (F)
               </Button>
               <Button
                 onClick={handlePostponeClick}
@@ -514,49 +603,6 @@ const SEIKETSURecordPage: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            {/* AI Suggestion Section */}
-            <div className="space-y-2">
-                <Button
-                    onClick={handleAISuggestion}
-                    disabled={isAISuggesting || !GEMINI_API_KEY}
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center"
-                >
-                    {isAISuggesting ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                        <Brain className="mr-2 h-4 w-4" />
-                    )}
-                    Sugerir Horários com IA
-                </Button>
-                {!GEMINI_API_KEY && (
-                    <p className="text-red-500 text-sm text-center flex items-center justify-center">
-                        <AlertCircle className="h-4 w-4 mr-1" />
-                        Chave Gemini não configurada. Adicione VITE_GEMINI_API_KEY ao seu .env.
-                    </p>
-                )}
-                {aiError && (
-                    <p className="text-red-500 text-sm text-center">{aiError}</p>
-                )}
-                {aiSuggestions.length > 0 && (
-                    <div className="mt-2 space-y-2">
-                        <Label className="text-sm font-medium">Sugestões da IA:</Label>
-                        <div className="flex flex-wrap gap-2">
-                            {aiSuggestions.map((suggestion, index) => (
-                                <Button
-                                    key={index}
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => applyAISuggestion(suggestion)}
-                                    disabled={isAISuggesting}
-                                >
-                                    {suggestion}
-                                </Button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-            {/* Existing Date/Time Pickers */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="date" className="text-right">
                 Data
