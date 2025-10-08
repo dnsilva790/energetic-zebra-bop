@@ -21,9 +21,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, formatDateForDisplay, roundToNext15Minutes } from "@/lib/utils";
-import { AI_SUGGESTION_SYSTEM_PROMPT_KEY, SEQUENCER_SETTINGS_KEY, SEITON_LAST_RANKING_KEY, AI_CONTEXT_PROMPT_KEY } from "@/lib/constants";
-
-const DEFAULT_AI_CONTEXT_PROMPT = `Dada a seguinte tarefa, classifique-a como 'pessoal' ou 'profissional'. Responda apenas com 'pessoal' ou 'profissional'.`;
+import { AI_SUGGESTION_SYSTEM_PROMPT_KEY, SEQUENCER_SETTINGS_KEY, SEITON_LAST_RANKING_KEY } from "@/lib/constants";
+import { classifyTaskContext } from "@/lib/aiUtils"; // Importar do novo utilitário
 
 interface SeitonRankingData {
   rankedTasks: TodoistTask[];
@@ -308,51 +307,8 @@ const SEIKETSURecordPage: React.FC = () => {
     return index !== -1 ? index : null; // Lower index means higher rank
   }, []);
 
-  const getAIContextPrompt = useCallback(() => {
-    return localStorage.getItem(AI_CONTEXT_PROMPT_KEY) || DEFAULT_AI_CONTEXT_PROMPT;
-  }, []);
-
-  const classifyTaskContext = useCallback(async (task: TodoistTask): Promise<'pessoal' | 'profissional' | 'indefinido'> => {
-    if (!GEMINI_API_KEY) {
-      console.warn("GEMINI_API_KEY not configured. Cannot classify task context.");
-      return 'indefinido';
-    }
-
-    const systemPrompt = getAIContextPrompt();
-    const taskDetails = `Tarefa: "${task.content}". Descrição: "${task.description || 'Nenhuma descrição.'}".`;
-    const prompt = `${systemPrompt}\n${taskDetails}`;
-
-    try {
-      const response = await fetch(GEMINI_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      // Verificação mais robusta para data.candidates
-      const candidates = data.candidates;
-      const aiResponseContent = (Array.isArray(candidates) && candidates.length > 0 && candidates[0]?.content?.parts?.[0]?.text) || "indefinido";
-      
-      const classification = aiResponseContent.toLowerCase().trim();
-
-      if (classification === 'pessoal' || classification === 'profissional') {
-        return classification;
-      }
-      return 'indefinido';
-
-    } catch (error: any) {
-      console.error(`Error classifying task context for "${task.content}":`, error);
-      return 'indefinido';
-    }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, getAIContextPrompt]);
+  // classifyTaskContext agora é importado de aiUtils.ts
+  // getAIContextPrompt também é importado de aiUtils.ts
 
   const handleAISuggestion = useCallback(async () => {
     if (!currentTask) return;
@@ -364,6 +320,10 @@ const SEIKETSURecordPage: React.FC = () => {
     if (!seitonRanking) {
       showError("Último ranking SEITON não encontrado. Por favor, execute o SEITON primeiro.");
       navigate("/5s/seiton");
+      return;
+    }
+    if (!GEMINI_API_KEY) { // Adicionar verificação da chave aqui também
+      showError("Chave da API do Gemini não configurada. Não é possível obter sugestões.");
       return;
     }
 
@@ -462,7 +422,7 @@ const SEIKETSURecordPage: React.FC = () => {
     } finally {
       setIsAISuggesting(false);
     }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, currentTask, sequencerSettings, seitonRanking, allActiveTasks, classifyTaskContext, getTaskRank, getAIContextPrompt, navigate]);
+  }, [GEMINI_API_KEY, GEMINI_API_URL, currentTask, sequencerSettings, seitonRanking, allActiveTasks, classifyTaskContext, getTaskRank, navigate]);
 
   const applyAISuggestion = useCallback((suggestion: string) => {
     const now = new Date();
@@ -664,7 +624,7 @@ const SEIKETSURecordPage: React.FC = () => {
             <div className="flex justify-center mt-4">
                 <Button
                     onClick={handleAISuggestion}
-                    disabled={isAISuggesting} // A verificação da chave já é feita no nível superior
+                    disabled={isAISuggesting || !GEMINI_API_KEY} // Desabilita se a chave não estiver presente
                     className="bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center px-6 py-2 rounded-md transition-colors"
                 >
                     {isAISuggesting ? (

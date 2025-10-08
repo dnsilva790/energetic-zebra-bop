@@ -22,6 +22,7 @@ export interface TodoistTask {
     amount: number;
     unit: 'minute' | 'day';
   } | null;
+  contextType?: 'pessoal' | 'profissional' | 'indefinido'; // Novo: Classificação de contexto da IA
 }
 
 export interface TodoistProject {

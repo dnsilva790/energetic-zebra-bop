@@ -11,12 +11,10 @@ import { getTasks, handleApiCall, updateTask } from "@/lib/todoistApi";
 import { TodoistTask, SequencerSettings } from "@/lib/types";
 import { format, parseISO, isValid, getDay, setHours, setMinutes, isAfter, startOfDay, isBefore, addMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Input } from "@/components/ui/input"; // Importar Input
-import { Label } from "@/components/ui/label"; // Importar Label
-import { SEQUENCER_SETTINGS_KEY, SEQUENCER_TASK_LIMIT_KEY } from "@/lib/constants"; // Importar a nova constante
-
-const AI_CONTEXT_PROMPT_KEY = 'ai_context_prompt';
-const DEFAULT_AI_CONTEXT_PROMPT = `Dada a seguinte tarefa, classifique-a como 'pessoal' ou 'profissional'. Responda apenas com 'pessoal' ou 'profissional'.`;
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SEQUENCER_SETTINGS_KEY, SEQUENCER_TASK_LIMIT_KEY } from "@/lib/constants";
+import { classifyTaskContext } from "@/lib/aiUtils"; // Importar do novo utilitário
 
 // Função utilitária para arredondar para o próximo intervalo de 15 minutos
 const roundToNext15Minutes = (date: Date): Date => {
@@ -41,9 +39,8 @@ const SequencerPage: React.FC = () => {
     return savedLimit ? parseInt(savedLimit) : null; // Padrão para null (sem limite)
   });
 
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; // Mantido para o aviso de erro, mas classifyTaskContext já o usa
+  
   useEffect(() => {
     const savedSettings = localStorage.getItem(SEQUENCER_SETTINGS_KEY);
     if (savedSettings) {
@@ -83,48 +80,8 @@ const SequencerPage: React.FC = () => {
     }
   }, []);
 
-  const getAIContextPrompt = useCallback(() => {
-    return localStorage.getItem(AI_CONTEXT_PROMPT_KEY) || DEFAULT_AI_CONTEXT_PROMPT;
-  }, []);
-
-  const classifyTaskContext = useCallback(async (task: TodoistTask): Promise<'pessoal' | 'profissional' | 'indefinido'> => {
-    if (!GEMINI_API_KEY) {
-      console.warn("GEMINI_API_KEY not configured. Cannot classify task context.");
-      return 'indefinido';
-    }
-
-    const systemPrompt = getAIContextPrompt();
-    const taskDetails = `Tarefa: "${task.content}". Descrição: "${task.description || 'Nenhuma descrição.'}".`;
-    const prompt = `${systemPrompt}\n${taskDetails}`;
-
-    try {
-      const response = await fetch(GEMINI_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const aiResponseContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "indefinido";
-      const classification = aiResponseContent.toLowerCase().trim();
-
-      if (classification === 'pessoal' || classification === 'profissional') {
-        return classification;
-      }
-      return 'indefinido';
-
-    } catch (error: any) {
-      console.error(`Error classifying task context for "${task.content}":`, error);
-      return 'indefinido';
-    }
-  }, [GEMINI_API_KEY, GEMINI_API_URL, getAIContextPrompt]);
+  // classifyTaskContext agora é importado de aiUtils.ts
+  // getAIContextPrompt também é importado de aiUtils.ts
 
   const generateSchedule = useCallback(async () => {
     if (!sequencerSettings) {
@@ -133,6 +90,10 @@ const SequencerPage: React.FC = () => {
     }
     if (tasks.length === 0) {
       showSuccess("Nenhuma tarefa para sequenciar.");
+      return;
+    }
+    if (!GEMINI_API_KEY) { // Adicionar verificação da chave aqui também
+      showError("Chave da API do Gemini não configurada. Não é possível gerar cronograma.");
       return;
     }
 
@@ -248,7 +209,7 @@ const SequencerPage: React.FC = () => {
     setScheduledTasks(newScheduledTasks);
     setIsGeneratingSchedule(false);
     showSuccess("Cronograma gerado com sucesso!");
-  }, [sequencerSettings, tasks, classifyTaskContext, taskLimit]);
+  }, [sequencerSettings, tasks, classifyTaskContext, taskLimit, GEMINI_API_KEY]);
 
   const applyScheduleToTodoist = useCallback(async () => {
     if (scheduledTasks.length === 0) {
@@ -325,6 +286,15 @@ const SequencerPage: React.FC = () => {
             </div>
           ) : (
             <>
+              {!GEMINI_API_KEY && (
+                <div className="flex flex-col items-center justify-center p-4 text-center text-red-600 bg-red-50 border border-red-200 rounded-md">
+                  <AlertCircle className="h-8 w-8 mb-2" />
+                  <p className="text-base font-semibold">Chave da API do Gemini Ausente!</p>
+                  <p className="text-sm mt-1">
+                    Por favor, adicione a variável de ambiente <code>VITE_GEMINI_API_KEY</code> ao seu arquivo <code>.env</code>.
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="task-limit" className="text-lg font-semibold">
                   Limite de Tarefas para Agendar (opcional)
@@ -352,7 +322,7 @@ const SequencerPage: React.FC = () => {
               <Button
                 onClick={generateSchedule}
                 className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 rounded-md transition-colors flex items-center justify-center"
-                disabled={isGeneratingSchedule || tasks.length === 0 || !sequencerSettings}
+                disabled={isGeneratingSchedule || tasks.length === 0 || !sequencerSettings || !GEMINI_API_KEY}
               >
                 {isGeneratingSchedule ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

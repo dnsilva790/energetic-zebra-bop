@@ -15,6 +15,7 @@ import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SetDeadlineDialog from "@/components/SetDeadlineDialog";
 import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, SEITON_MODE_KEY, SEITON_COMPARISON_HISTORY_PROFESSIONAL_KEY, SEITON_COMPARISON_HISTORY_PERSONAL_KEY } from "@/lib/constants";
+import { classifyTaskContext } from "@/lib/aiUtils"; // Importar do novo utilitário
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
@@ -77,8 +78,7 @@ const SEITONPage = () => {
   // Novo estado para armazenar o vencedor do último embate entre as tarefas atuais
   const [lastWinnerInCurrentComparison, setLastWinnerInCurrentComparison] = useState<'challenger' | 'opponent' | null>(null);
 
-  // GEMINI_API_KEY and GEMINI_API_URL are no longer used in SEITONPage for comparison suggestions.
-  // They are kept in the codebase for other pages/components.
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; // Para verificar se a chave está configurada
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -153,10 +153,18 @@ const SEITONPage = () => {
 
   const fetchAndSetupTasks = useCallback(async (mode: 'professional' | 'personal') => {
     setLoading(true);
-    console.log(`SEITONPage - fetchAndSetupTasks: Starting API call to get tasks for ${mode} mode.`);
+    console.log(`SEITONPage - fetchAndSetupTasks: Starting API call to get ALL eligible tasks for ${mode} mode.`);
+    
+    if (!GEMINI_API_KEY) {
+      showError("Chave da API do Gemini não configurada. Não é possível classificar tarefas.");
+      setLoading(false);
+      setCurrentStep('modeSelection'); // Voltar para seleção de modo ou mostrar erro
+      return;
+    }
+
     try {
-      const filter = mode === 'professional' ? "#profissional & (today | overdue | no due date)" : "#pessoal & (today | overdue | no due date)";
-      const fetchedTasks = await handleApiCall(() => getTasks(filter), `Carregando tarefas para o modo ${mode === 'professional' ? 'Profissional' : 'Pessoal'}...`);
+      // Buscar TODAS as tarefas elegíveis, sem filtro de #pessoal ou #profissional
+      const fetchedTasks = await handleApiCall(() => getTasks("(today | overdue | no due date)"), `Carregando tarefas para o modo ${mode === 'professional' ? 'Profissional' : 'Pessoal'}...`);
       
       if (!fetchedTasks) {
         showError("Não foi possível carregar as tarefas do Todoist.");
@@ -164,9 +172,18 @@ const SEITONPage = () => {
         return;
       }
 
-      const activeTasks = fetchedTasks
+      // Classificar cada tarefa usando a IA
+      const tasksWithContextPromises = fetchedTasks.map(async task => {
+        const contextType = await classifyTaskContext(task);
+        return { ...task, contextType };
+      });
+      const classifiedTasks = await Promise.all(tasksWithContextPromises);
+
+      // Filtrar tarefas ativas e relevantes para o modo selecionado
+      const activeTasksForMode = classifiedTasks
         .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
         .filter((task: TodoistTask) => !task.is_completed && !(task as any).completed)
+        .filter((task: TodoistTask) => task.contextType === mode) // Filtrar pelo modo selecionado
         .sort((a, b) => {
           if (b.priority !== a.priority) return b.priority - a.priority;
           const deadlineA = a.deadline?.date ? parseISO(a.deadline.date) : null;
@@ -194,10 +211,10 @@ const SEITONPage = () => {
         const loaded: SeitonProgress = JSON.parse(savedProgressRaw);
         // Only load if the saved mode matches the current mode
         if (loaded.seitonMode === mode) {
-          const currentTournamentQueue = loaded.tournamentQueue.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-          const currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-          const currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasks.some(at => at.id === task.id));
-          const currentChallenger = loaded.currentChallenger && activeTasks.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
+          const currentTournamentQueue = loaded.tournamentQueue.filter((task: TodoistTask) => activeTasksForMode.some(at => at.id === task.id));
+          const currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasksForMode.some(at => at.id === task.id));
+          const currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasksForMode.some(at => at.id === task.id));
+          const currentChallenger = loaded.currentChallenger && activeTasksForMode.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
           
           setTournamentQueue(currentTournamentQueue);
           setRankedTasks(currentRankedTasks);
@@ -237,7 +254,7 @@ const SEITONPage = () => {
       
       // No saved progress for this mode, or mode mismatch, start a new tournament
       console.log(`SEITONPage - Starting new tournament for ${mode} mode.`);
-      setTournamentQueue(activeTasks);
+      setTournamentQueue(activeTasksForMode);
       setRankedTasks([]);
       setP3Tasks([]);
       setCurrentChallenger(null);
@@ -246,7 +263,7 @@ const SEITONPage = () => {
       setLastUndoableAction(null);
       setCurrentStep('tournamentComparison');
       setSeitonMode(mode); // Set the mode for the new session
-      if (activeTasks.length === 0) {
+      if (activeTasksForMode.length === 0) {
         showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
         setCurrentStep('result');
       }
@@ -257,7 +274,7 @@ const SEITONPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, getComparisonHistoryKey, updateTaskAndReturn]);
+  }, [navigate, getComparisonHistoryKey, updateTaskAndReturn, classifyTaskContext, GEMINI_API_KEY]);
 
   useEffect(() => {
     // Initial load: check for saved mode or prompt for selection
@@ -806,8 +823,28 @@ const SEITONPage = () => {
     );
   }
 
-  // Removed GEMINI_API_KEY check here as AI comparison is removed.
-  // The check for VITE_GEMINI_API_KEY is still present in other components that use it.
+  if (!GEMINI_API_KEY) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-blue-100 p-4">
+        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
+          <CardTitle className="text-3xl font-bold text-gray-800">Erro de Configuração</CardTitle>
+          <CardDescription className="text-lg text-red-600 mt-2">
+            A chave da API do Gemini (<code>VITE_GEMINI_API_KEY</code>) não está configurada.
+          </CardDescription>
+          <p className="text-sm text-gray-700">
+            Por favor, adicione-a ao seu arquivo <code>.env</code> na raiz do projeto.
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            Exemplo: <code>VITE_GEMINI_API_KEY=SUA_CHAVE_AQUI</code>
+          </p>
+          <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
+            Voltar ao Menu Principal
+          </Button>
+        </Card>
+        <MadeWithDyad />
+      </div>
+    );
+  }
 
   if (currentStep === 'modeSelection') {
     return (
@@ -1000,7 +1037,7 @@ const SEITONPage = () => {
                 <h4 className="font-semibold mt-2">Tournament Queue ({tournamentQueue.length} tasks):</h4>
                 <ul className="list-disc list-inside ml-4">
                   {tournamentQueue.map(task => (
-                    <li key={task.id}>{task.content} (ID: {task.id}, Prio: {task.priority})</li>
+                    <li key={task.id}>{task.content} (ID: {task.id}, Prio: {task.priority}, Context: {task.contextType || 'N/A'})</li>
                   ))}
                 </ul>
               </div>
@@ -1009,7 +1046,7 @@ const SEITONPage = () => {
                 <h4 className="font-semibold mt-2">Ranked Tasks ({rankedTasks.length} tasks):</h4>
                 <ul className="list-disc list-inside ml-4">
                   {rankedTasks.map(task => (
-                    <li key={task.id}>{task.content} (ID: {task.id}, Prio: {task.priority})</li>
+                    <li key={task.id}>{task.content} (ID: {task.id}, Prio: {task.priority}, Context: {task.contextType || 'N/A'})</li>
                   ))}
                 </ul>
               </div>
@@ -1018,7 +1055,7 @@ const SEITONPage = () => {
                 <h4 className="font-semibold mt-2">P3 Tasks ({p3Tasks.length} tasks):</h4>
                 <ul className="list-disc list-inside ml-4">
                   {p3Tasks.map((task) => (
-                    <li key={task.id}>{task.content} (ID: {task.id}, Prio: {task.priority})</li>
+                    <li key={task.id}>{task.content} (ID: {task.id}, Prio: {task.priority}, Context: {task.contextType || 'N/A'})</li>
                   ))}
                 </ul>
               </div>
