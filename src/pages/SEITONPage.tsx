@@ -79,6 +79,7 @@ const SEITONPage = () => {
   const [lastWinnerInCurrentComparison, setLastWinnerInCurrentComparison] = useState<'challenger' | 'opponent' | null>(null);
 
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; // Para verificar se a chave está configurada
+  const [aiClassificationQuotaExceeded, setAiClassificationQuotaExceeded] = useState(false); // Novo estado para quota
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -153,6 +154,7 @@ const SEITONPage = () => {
 
   const fetchAndSetupTasks = useCallback(async (mode: 'professional' | 'personal') => {
     setLoading(true);
+    setAiClassificationQuotaExceeded(false); // Resetar o estado da quota
     console.log(`SEITONPage - fetchAndSetupTasks: Starting API call to get ALL eligible tasks for ${mode} mode.`);
     
     if (!GEMINI_API_KEY) {
@@ -181,11 +183,19 @@ const SEITONPage = () => {
       });
       const classifiedTasks = await Promise.all(tasksWithContextPromises);
       console.log(`SEITONPage - Classified ${classifiedTasks.length} tasks.`);
+      
       const contextCounts = classifiedTasks.reduce((acc, task) => {
         acc[task.contextType || 'indefinido'] = (acc[task.contextType || 'indefinido'] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
       console.log("SEITONPage - Context classification distribution:", contextCounts);
+
+      // Verificar se houve falhas na classificação da IA (retornou 'indefinido' e a chave está presente)
+      const anyIndefinidoDueToAI = classifiedTasks.some(task => task.contextType === 'indefinido');
+      if (anyIndefinidoDueToAI && GEMINI_API_KEY) {
+        setAiClassificationQuotaExceeded(true);
+        showError("Algumas tarefas não puderam ser classificadas pela IA (possível limite de quota da API Gemini).");
+      }
 
 
       // Filtrar tarefas ativas e relevantes para o modo selecionado
@@ -882,6 +892,15 @@ const SEITONPage = () => {
           <CardDescription className="text-lg text-gray-600">
             Selecione o contexto para o qual você deseja priorizar as tarefas.
           </CardDescription>
+          {aiClassificationQuotaExceeded && (
+            <div className="flex flex-col items-center justify-center p-4 text-center text-red-600 bg-red-50 border border-red-200 rounded-md">
+              <AlertCircle className="h-8 w-8 mb-2" />
+              <p className="text-base font-semibold">Limite de Quota da API Gemini Atingido!</p>
+              <p className="text-sm mt-1">
+                A classificação de tarefas pela IA pode não funcionar corretamente. Por favor, aguarde ou verifique sua quota no Google Cloud.
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-4">
             <Button
               onClick={() => fetchAndSetupTasks('professional')}
