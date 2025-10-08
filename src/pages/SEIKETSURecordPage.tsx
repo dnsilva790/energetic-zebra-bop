@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } => "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -23,6 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn, formatDateForDisplay, roundToNext15Minutes } from "@/lib/utils";
 import { AI_SUGGESTION_SYSTEM_PROMPT_KEY, SEQUENCER_SETTINGS_KEY, SEITON_LAST_RANKING_KEY } from "@/lib/constants";
 import { classifyTaskContext } from "@/lib/aiUtils"; // Importar do novo utilitário
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Importar o componente Alert
 
 interface SeitonRankingData {
   rankedTasks: TodoistTask[];
@@ -313,17 +314,17 @@ const SEIKETSURecordPage: React.FC = () => {
   const handleAISuggestion = useCallback(async () => {
     if (!currentTask) return;
     if (!sequencerSettings) {
-      showError("Configurações do Sequenciador não carregadas. Por favor, configure-as.");
+      setAiError("Configurações do Sequenciador não carregadas. Por favor, configure-as.");
       navigate("/sequencer-settings");
       return;
     }
     if (!seitonRanking) {
-      showError("Último ranking SEITON não encontrado. Por favor, execute o SEITON primeiro.");
+      setAiError("Último ranking SEITON não encontrado. Por favor, execute o SEITON primeiro.");
       navigate("/5s/seiton");
       return;
     }
     if (!GEMINI_API_KEY) { // Adicionar verificação da chave aqui também
-      showError("Chave da API do Gemini não configurada. Não é possível obter sugestões.");
+      setAiError("Chave da API do Gemini não configurada. Não é possível obter sugestões.");
       return;
     }
 
@@ -636,7 +637,13 @@ const SEIKETSURecordPage: React.FC = () => {
                 </Button>
             </div>
             {aiError && (
-                <p className="text-red-500 text-sm text-center mt-2">{aiError}</p>
+                <Alert variant="destructive" className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Erro na Sugestão da IA</AlertTitle>
+                    <AlertDescription>
+                        {aiError} Por favor, verifique sua chave da API do Gemini e a quota de uso no Google Cloud.
+                    </AlertDescription>
+                </Alert>
             )}
 
             {/* Exibição das sugestões da IA no card */}

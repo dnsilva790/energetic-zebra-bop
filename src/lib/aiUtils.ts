@@ -30,8 +30,17 @@ export const classifyTaskContext = async (task: TodoistTask): Promise<'pessoal' 
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || `Erro na API Gemini: ${response.statusText}`);
+      let errorMessage = `Erro na API Gemini: ${response.status} ${response.statusText}`;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error?.message || errorData.message || errorMessage;
+        } catch (jsonError: any) {
+          console.warn("Failed to parse JSON error response from Gemini API:", jsonError);
+        }
+      }
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -49,6 +58,7 @@ export const classifyTaskContext = async (task: TodoistTask): Promise<'pessoal' 
 
   } catch (error: any) {
     console.error(`Error classifying task context for "${task.content}":`, error);
-    return 'indefinido';
+    // Re-throw the error so the calling component can handle it more specifically
+    throw error; 
   }
 };
