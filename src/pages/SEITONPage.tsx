@@ -13,12 +13,12 @@ import { shouldExcludeTaskFromTriage } from "@/utils/taskFilters";
 import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils";
-import SetDeadlineDialog from "@/components/SetDeadlineDialog";
+import SetDeadlineDialog from "@/components/SetDeadline/SetDeadlineDialog";
 import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, SEITON_MODE_KEY, SEITON_COMPARISON_HISTORY_PROFESSIONAL_KEY, SEITON_COMPARISON_HISTORY_PERSONAL_KEY } from "@/lib/constants";
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
-type SeitonStep = 'loading' | 'modeSelection' | 'tournamentComparison' | 'result'; // Added 'modeSelection'
+type SeitonStep = 'loading' | 'modeSelection' | 'tournamentComparison' | 'result';
 
 interface ComparisonEntry {
   challengerId: string;
@@ -30,15 +30,14 @@ interface ComparisonEntry {
   timestamp: string;
 }
 
-// A interface SeitonProgress agora não inclui comparisonHistory, pois será salvo separadamente
 interface SeitonProgress {
   tournamentQueue: TodoistTask[];
   rankedTasks: TodoistTask[];
   p3Tasks: TodoistTask[];
-  currentStep: Exclude<SeitonStep, 'modeSelection'>; // Exclude modeSelection from saved progress
+  currentStep: Exclude<SeitonStep, 'modeSelection'>;
   currentChallenger: TodoistTask | null;
   currentOpponentIndex: number | null;
-  seitonMode: 'professional' | 'personal' | null; // Save the mode with progress
+  seitonMode: 'professional' | 'personal' | null;
 }
 
 interface UndoState {
@@ -53,7 +52,7 @@ interface UndoState {
 
 const SEITONPage = () => {
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState<SeitonStep>('loading');
+  const [currentStep, setCurrentStep] = useState<SeitonStep>('modeSelection');
   const [tournamentQueue, setTournamentQueue] = useState<TodoistTask[]>([]);
   const [rankedTasks, setRankedTasks] = useState<TodoistTask[]>([]);
   const [p3Tasks, setP3Tasks] = useState<TodoistTask[]>([]);
@@ -61,9 +60,8 @@ const SEITONPage = () => {
   const [currentChallenger, setCurrentChallenger] = useState<TodoistTask | null>(null);
   const [currentOpponentIndex, setCurrentOpponentIndex] = useState<number | null>(null);
   
-  const [seitonMode, setSeitonMode] = useState<'professional' | 'personal' | null>(null); // New state for mode
+  const [seitonMode, setSeitonMode] = useState<'professional' | 'personal' | null>(null);
   
-  // comparisonHistory now depends on seitonMode
   const [comparisonHistory, setComparisonHistory] = useState<ComparisonEntry[]>([]);
   
   const [loading, setLoading] = useState(true);
@@ -74,11 +72,12 @@ const SEITONPage = () => {
   const [showSetDeadlineDialog, setShowSetDeadlineDialog] = useState(false);
   const [taskToSetDeadline, setTaskToSetDeadline] = useState<TodoistTask | null>(null);
 
-  // Novo estado para armazenar o vencedor do último embate entre as tarefas atuais
   const [lastWinnerInCurrentComparison, setLastWinnerInCurrentComparison] = useState<'challenger' | 'opponent' | null>(null);
 
   useEffect(() => {
-    console.log("SEITONPage mounted.");
+    console.log("SEITONPage mounted. Always starting with mode selection.");
+    setCurrentStep('modeSelection');
+    setLoading(false); // Ensure loading is false so mode selection is visible
     return () => console.log("SEITONPage unmounted.");
   }, []);
 
@@ -97,22 +96,28 @@ const SEITONPage = () => {
   }, []);
 
   const saveProgress = useCallback(() => {
-    if (!seitonMode) return; // Don't save if mode is not set
+    if (!seitonMode) return;
 
     const progress: SeitonProgress = {
       tournamentQueue,
       rankedTasks,
       p3Tasks,
-      currentStep: currentStep === 'modeSelection' ? 'loading' : currentStep, // Don't save modeSelection as a step
+      currentStep: currentStep === 'modeSelection' ? 'loading' : currentStep,
       currentChallenger,
       currentOpponentIndex,
-      seitonMode, // Save the current mode
+      seitonMode,
     };
     localStorage.setItem(SEITON_PROGRESS_KEY, JSON.stringify(progress));
-    localStorage.setItem(getComparisonHistoryKey(seitonMode), JSON.stringify(comparisonHistory)); // Save the specific history
+    localStorage.setItem(getComparisonHistoryKey(seitonMode), JSON.stringify(comparisonHistory));
     console.log("SEITONPage - Progress saved:", progress);
     console.log(`SEITONPage - Comparison history for ${seitonMode} mode saved:`, comparisonHistory);
   }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, seitonMode, comparisonHistory, getComparisonHistoryKey]);
+
+  useEffect(() => {
+    if (!loading && seitonMode) {
+      saveProgress();
+    }
+  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory, loading, saveProgress, seitonMode]);
 
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -136,7 +141,7 @@ const SEITONPage = () => {
 
   const updateTaskAndReturn = useCallback(async (task: TodoistTask, newPriority: number): Promise<TodoistTask> => {
     if (task.priority === newPriority) {
-      return task; // No update needed
+      return task;
     }
     try {
       const updatedTask = await handleApiCall(() => updateTask(task.id, { priority: newPriority }), `Atualizando prioridade da tarefa "${task.content}" para P${newPriority}...`);
@@ -144,16 +149,16 @@ const SEITONPage = () => {
     } catch (error) {
       console.error(`Failed to update priority for task ${task.id}:`, error);
       showError(`Falha ao atualizar prioridade da tarefa "${task.content}".`);
-      return task; // Return original task on error
+      return task;
     }
   }, []);
 
   const fetchAndSetupTasks = useCallback(async (mode: 'professional' | 'personal') => {
     setLoading(true);
+    setSeitonMode(mode); // Set the mode immediately when selected
     console.log(`SEITONPage - fetchAndSetupTasks: Starting API call to get ALL eligible tasks for ${mode} mode.`);
     
     try {
-      // Buscar TODAS as tarefas elegíveis, sem filtro de #pessoal ou #profissional
       const fetchedTasks = await handleApiCall(() => getTasks("(today | overdue | no due date)"), `Carregando tarefas para o modo ${mode === 'professional' ? 'Profissional' : 'Pessoal'}...`);
       
       if (!fetchedTasks) {
@@ -163,7 +168,6 @@ const SEITONPage = () => {
       }
       console.log(`SEITONPage - Fetched ${fetchedTasks.length} raw tasks.`);
 
-      // Filtrar tarefas ativas e relevantes para o modo selecionado
       const activeTasksForMode = fetchedTasks
         .filter((task: TodoistTask) => {
           const excludedByTriage = shouldExcludeTaskFromTriage(task);
@@ -208,34 +212,29 @@ const SEITONPage = () => {
       if (savedProgressRaw) {
         try {
           const loaded: SeitonProgress = JSON.parse(savedProgressRaw);
-          // Only load if the saved mode matches the current mode
-          if (loaded.seitonMode === mode) {
+          if (loaded.seitonMode === mode) { // Only load if the saved mode matches the current mode
             const currentTournamentQueue = loaded.tournamentQueue.filter((task: TodoistTask) => activeTasksForMode.some(at => at.id === task.id));
             const currentRankedTasks = loaded.rankedTasks.filter((task: TodoistTask) => activeTasksForMode.some(at => at.id === task.id));
             const currentP3Tasks = loaded.p3Tasks.filter((task: TodoistTask) => activeTasksForMode.some(at => at.id === task.id));
             const currentChallenger = loaded.currentChallenger && activeTasksForMode.some(at => at.id === loaded.currentChallenger.id) ? loaded.currentChallenger : null;
             
-            // If loaded progress is effectively empty but there are still active tasks, start a new tournament
             if (currentTournamentQueue.length === 0 && currentRankedTasks.length === 0 && currentP3Tasks.length === 0 && !currentChallenger) {
               if (activeTasksForMode.length > 0) {
                 console.log("SEITONPage - Loaded progress is empty, but new active tasks found. Starting a fresh tournament.");
-                shouldStartNewTournament = true; // Explicitly set to start new
+                shouldStartNewTournament = true;
               } else {
-                // No active tasks at all. Session truly finished.
                 showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
                 setCurrentStep('result');
                 localStorage.removeItem(SEITON_PROGRESS_KEY);
-                shouldStartNewTournament = false; // Don't start new, go to result
+                shouldStartNewTournament = false;
               }
             } else {
-              // Resume existing tournament
               setTournamentQueue(currentTournamentQueue);
               setRankedTasks(currentRankedTasks);
               setP3Tasks(currentP3Tasks);
               setCurrentChallenger(currentChallenger);
               setCurrentOpponentIndex(loaded.currentOpponentIndex);
               setCurrentStep(loaded.currentStep);
-              setSeitonMode(loaded.seitonMode); // Ensure mode is set from loaded progress
               setLastUndoableAction(null);
 
               if (savedComparisonHistoryRaw) {
@@ -250,24 +249,22 @@ const SEITONPage = () => {
               }
 
               if (loaded.currentStep === 'tournamentComparison' && currentChallenger && currentRankedTasks.length > 0) {
-                // Ensure opponent index is valid if we're resuming a comparison
                 setCurrentOpponentIndex(Math.min(RANKING_SIZE - 1, currentRankedTasks.length - 1));
               }
               console.log("SEITONPage - Loaded saved progress and resumed.");
-              shouldStartNewTournament = false; // Successfully resumed, no need to start new
+              shouldStartNewTournament = false;
             }
           } else {
             console.log("SEITONPage - Saved progress found but mode mismatch. Starting new tournament for selected mode.");
-            shouldStartNewTournament = true; // Mode mismatch, start new
+            shouldStartNewTournament = true;
           }
         } catch (e) {
           console.error("Error parsing saved progress on initial load:", e);
-          localStorage.removeItem(SEITON_PROGRESS_KEY); // Clear corrupted progress
-          shouldStartNewTournament = true; // Corrupted progress, start new
+          localStorage.removeItem(SEITON_PROGRESS_KEY);
+          shouldStartNewTournament = true;
         }
       }
       
-      // If no saved progress for this mode, or mode mismatch, or loaded progress was empty, start a new tournament
       if (shouldStartNewTournament) {
         console.log(`SEITONPage - Starting new tournament for ${mode} mode.`);
         setTournamentQueue(activeTasksForMode);
@@ -275,10 +272,9 @@ const SEITONPage = () => {
         setP3Tasks([]);
         setCurrentChallenger(null);
         setCurrentOpponentIndex(null);
-        setComparisonHistory([]); // Reset history for new session
+        setComparisonHistory([]);
         setLastUndoableAction(null);
         setCurrentStep('tournamentComparison');
-        setSeitonMode(mode); // Set the mode for the new session
         if (activeTasksForMode.length === 0) {
           showSuccess("Nenhuma tarefa ativa para planejar hoje. Bom trabalho!");
           setCurrentStep('result');
@@ -293,36 +289,7 @@ const SEITONPage = () => {
     }
   }, [navigate, getComparisonHistoryKey, updateTaskAndReturn]);
 
-  useEffect(() => {
-    // Initial load: check for saved mode or prompt for selection
-    const savedProgressRaw = localStorage.getItem(SEITON_PROGRESS_KEY);
-    if (savedProgressRaw) {
-      try {
-        const loaded: SeitonProgress = JSON.parse(savedProgressRaw);
-        if (loaded.seitonMode) {
-          setSeitonMode(loaded.seitonMode);
-          fetchAndSetupTasks(loaded.seitonMode);
-          return;
-        }
-      } catch (e) {
-        console.error("Error parsing saved progress on initial load:", e);
-        localStorage.removeItem(SEITON_PROGRESS_KEY); // Clear corrupted progress
-      }
-    }
-    // If no valid saved mode, prompt for selection
-    setCurrentStep('modeSelection');
-    setLoading(false);
-  }, [fetchAndSetupTasks]); // Only run once on mount
-
-  useEffect(() => {
-    if (!loading && seitonMode) { // Don't save progress during initial AI ranking or if mode isn't set
-      saveProgress();
-    }
-  }, [tournamentQueue, rankedTasks, p3Tasks, currentStep, currentChallenger, currentOpponentIndex, comparisonHistory, loading, saveProgress, seitonMode]);
-
-  // Função para encontrar o último vencedor entre duas tarefas
   const findLastWinner = useCallback((cId: string, oId: string): 'challenger' | 'opponent' | null => {
-    // Procura no histórico por uma correspondência direta ou invertida
     const found = comparisonHistory.find(entry =>
       (entry.challengerId === cId && entry.opponentId === oId) ||
       (entry.challengerId === oId && entry.opponentId === cId)
@@ -330,9 +297,8 @@ const SEITONPage = () => {
 
     if (found) {
       if (found.challengerId === cId && found.opponentId === oId) {
-        return found.winner; // O desafiante atual era o desafiante no passado
+        return found.winner;
       } else if (found.challengerId === oId && found.opponentId === cId) {
-        // O desafiante atual era o oponente no passado, e vice-versa
         return found.winner === 'challenger' ? 'opponent' : 'challenger';
       }
     }
@@ -341,7 +307,7 @@ const SEITONPage = () => {
 
   const startNextTournamentComparison = useCallback(async () => {
     console.log("SEITONPage - startNextTournamentComparison called.");
-    setLastWinnerInCurrentComparison(null); // Resetar o último vencedor
+    setLastWinnerInCurrentComparison(null);
 
     if (tournamentQueue.length === 0) {
       console.log("SEITONPage - Tournament queue is empty, moving to result.");
@@ -368,7 +334,6 @@ const SEITONPage = () => {
     setCurrentStep('tournamentComparison');
     console.log("SEITONPage - Starting comparison. Opponent Index:", opponentIndex, "Opponent:", rankedTasks[opponentIndex]?.content);
 
-    // Verificar o histórico de comparações para as tarefas atuais
     if (nextChallenger && rankedTasks[opponentIndex]) {
       const winner = findLastWinner(nextChallenger.id, rankedTasks[opponentIndex].id);
       setLastWinnerInCurrentComparison(winner);
@@ -490,8 +455,8 @@ const SEITONPage = () => {
 
     setComparisonHistory(prevHistory => [
       {
-        challengerId: currentChallenger.id, // Usar ID
-        opponentId: opponentTask.id,       // Usar ID
+        challengerId: currentChallenger.id,
+        opponentId: opponentTask.id,
         challengerContent: currentChallenger.content,
         opponentContent: opponentTask.content,
         winner: challengerWins ? 'challenger' : 'opponent',
@@ -499,7 +464,7 @@ const SEITONPage = () => {
         timestamp: format(new Date(), "HH:mm:ss", { locale: ptBR }),
       },
       ...prevHistory,
-    ].slice(0, 100)); // Manter um histórico maior para consultas
+    ].slice(0, 100));
 
     console.log("SEITONPage - After comparison. New Ranked:", newRankedTasks.map(t => t.content), "New P3:", newP3Tasks.map(t => t.content));
 
@@ -516,7 +481,7 @@ const SEITONPage = () => {
       localStorage.removeItem(SEITON_PROGRESS_KEY);
     }
 
-    setLastWinnerInCurrentComparison(null); // Resetar após a comparação
+    setLastWinnerInCurrentComparison(null);
   }, [currentChallenger, currentOpponentIndex, rankedTasks, p3Tasks, tournamentQueue, updateTaskAndReturn, setLastUndoableAction, setComparisonHistory]);
 
   const handleCancelTask = useCallback(async (taskIdToCancel: string) => {
@@ -564,8 +529,8 @@ const SEITONPage = () => {
 
         setComparisonHistory(prevHistory => [
             {
-                challengerId: currentChallenger?.id || "N/A", // Usar ID
-                opponentId: isOpponentCancelled ? currentOpponent?.id || "N/A" : "N/A", // Usar ID
+                challengerId: currentChallenger?.id || "N/A",
+                opponentId: isOpponentCancelled ? currentOpponent?.id || "N/A" : "N/A",
                 challengerContent: currentChallenger?.content || "N/A",
                 opponentContent: isOpponentCancelled ? currentOpponent?.content || "N/A" : "N/A",
                 winner: 'N/A',
@@ -579,7 +544,7 @@ const SEITONPage = () => {
         setLastUndoableAction(null);
     }
 
-    setLastWinnerInCurrentComparison(null); // Resetar após a ação
+    setLastWinnerInCurrentComparison(null);
 }, [currentChallenger, currentOpponentIndex, rankedTasks, completeTask, tournamentQueue, p3Tasks, setLastUndoableAction, setComparisonHistory]);
 
   const handleUndo = useCallback(async () => {
@@ -716,18 +681,18 @@ const SEITONPage = () => {
       return;
     }
     setLoading(true);
-    localStorage.removeItem(SEITON_PROGRESS_KEY); // Remove apenas o progresso da sessão atual
-    localStorage.removeItem(SEITON_LAST_RANKING_KEY); // Remove o último ranking finalizado
-    localStorage.removeItem(getComparisonHistoryKey(seitonMode)); // Remove o histórico de embates específico do modo
+    localStorage.removeItem(SEITON_PROGRESS_KEY);
+    localStorage.removeItem(SEITON_LAST_RANKING_KEY);
+    localStorage.removeItem(getComparisonHistoryKey(seitonMode));
     showSuccess("Ranking e histórico resetados. Recarregando tarefas...");
     setTournamentQueue([]);
     setRankedTasks([]);
     setP3Tasks([]);
     setCurrentChallenger(null);
     setCurrentOpponentIndex(null);
-    setComparisonHistory([]); // Resetar o histórico no estado
+    setComparisonHistory([]);
     setLastUndoableAction(null);
-    setLastWinnerInCurrentComparison(null); // Resetar também
+    setLastWinnerInCurrentComparison(null);
     await fetchAndSetupTasks(seitonMode);
   }, [fetchAndSetupTasks, seitonMode, getComparisonHistoryKey]);
 
@@ -737,7 +702,7 @@ const SEITONPage = () => {
     description: string,
     priorityOverride?: number,
     onCardClick?: () => void,
-    isLastWinner?: boolean // Novo prop para indicar se foi o último vencedor
+    isLastWinner?: boolean
   ) => {
     if (!task) {
         return null;
@@ -746,9 +711,9 @@ const SEITONPage = () => {
     return (
       <Card
         className={cn(
-          "w-full shadow-lg bg-white/80 backdrop-blur-sm p-4 relative", // Adicionado 'relative' para posicionamento do badge
+          "w-full shadow-lg bg-white/80 backdrop-blur-sm p-4 relative",
           onCardClick && "cursor-pointer hover:border-blue-500 transition-all duration-200",
-          isLastWinner && "border-4 border-purple-500 ring-4 ring-purple-200" // Destaque visual para o último vencedor
+          isLastWinner && "border-4 border-purple-500 ring-4 ring-purple-200"
         )}
         onClick={onCardClick}
         tabIndex={onCardClick ? 0 : -1}
