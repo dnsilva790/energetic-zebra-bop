@@ -38,6 +38,8 @@ export const classifyTaskContext = async (task: TodoistTask): Promise<'pessoal' 
     const candidates = data.candidates;
     const aiResponseContent = (Array.isArray(candidates) && candidates.length > 0 && candidates[0]?.content?.parts?.[0]?.text) || "indefinido";
     
+    console.log(`classifyTaskContext - Raw AI response for "${task.content}": "${aiResponseContent}"`); // Add this log
+    
     const classification = aiResponseContent.toLowerCase().trim();
 
     if (classification === 'pessoal' || classification === 'profissional') {

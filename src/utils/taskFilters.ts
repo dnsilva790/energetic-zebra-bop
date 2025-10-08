@@ -11,6 +11,7 @@ import { TodoistTask } from "@/lib/types";
 export const shouldExcludeTaskFromTriage = (task: TodoistTask): boolean => {
   // Exclude subtasks
   if (task.parent_id !== null) {
+    console.log(`shouldExcludeTaskFromTriage - Excluding subtask: ${task.content}`);
     return true;
   }
 
@@ -20,6 +21,7 @@ export const shouldExcludeTaskFromTriage = (task: TodoistTask): boolean => {
     // Check for hourly or minute-based recurrence
     if (recurrenceString.includes("hour") || recurrenceString.includes("hora") ||
         recurrenceString.includes("min") || recurrenceString.includes("minuto")) {
+      console.log(`shouldExcludeTaskFromTriage - Excluding short-term recurring task: ${task.content}`);
       return true;
     }
   }

@@ -171,19 +171,46 @@ const SEITONPage = () => {
         navigate("/main-menu");
         return;
       }
+      console.log(`SEITONPage - Fetched ${fetchedTasks.length} raw tasks.`);
 
       // Classificar cada tarefa usando a IA
       const tasksWithContextPromises = fetchedTasks.map(async task => {
         const contextType = await classifyTaskContext(task);
+        console.log(`SEITONPage - Task "${task.content}" classified as: ${contextType}`);
         return { ...task, contextType };
       });
       const classifiedTasks = await Promise.all(tasksWithContextPromises);
+      console.log(`SEITONPage - Classified ${classifiedTasks.length} tasks.`);
+      const contextCounts = classifiedTasks.reduce((acc, task) => {
+        acc[task.contextType || 'indefinido'] = (acc[task.contextType || 'indefinido'] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      console.log("SEITONPage - Context classification distribution:", contextCounts);
+
 
       // Filtrar tarefas ativas e relevantes para o modo selecionado
       const activeTasksForMode = classifiedTasks
-        .filter((task: TodoistTask) => !shouldExcludeTaskFromTriage(task))
-        .filter((task: TodoistTask) => !task.is_completed && !(task as any).completed)
-        .filter((task: TodoistTask) => task.contextType === mode) // Filtrar pelo modo selecionado
+        .filter((task: TodoistTask) => {
+          const excludedByTriage = shouldExcludeTaskFromTriage(task);
+          if (excludedByTriage) {
+            console.log(`SEITONPage - Excluded by triage: ${task.content}`);
+          }
+          return !excludedByTriage;
+        })
+        .filter((task: TodoistTask) => {
+          const isCompleted = task.is_completed || (task as any).completed;
+          if (isCompleted) {
+            console.log(`SEITONPage - Excluded by completion: ${task.content}`);
+          }
+          return !isCompleted;
+        })
+        .filter((task: TodoistTask) => {
+          const matchesMode = task.contextType === mode;
+          if (!matchesMode) {
+            console.log(`SEITONPage - Excluded by mode mismatch: ${task.content} (Context: ${task.contextType}, Mode: ${mode})`);
+          }
+          return matchesMode;
+        })
         .sort((a, b) => {
           if (b.priority !== a.priority) return b.priority - a.priority;
           const deadlineA = a.deadline?.date ? parseISO(a.deadline.date) : null;
@@ -202,6 +229,7 @@ const SEITONPage = () => {
           if (isValidDateB) return 1;
           return 0;
         });
+      console.log(`SEITONPage - Filtered to ${activeTasksForMode.length} active tasks for ${mode} mode.`);
 
       const savedProgressRaw = localStorage.getItem(SEITON_PROGRESS_KEY);
       const comparisonHistoryKey = getComparisonHistoryKey(mode);
