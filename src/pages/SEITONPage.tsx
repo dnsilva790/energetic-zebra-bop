@@ -15,7 +15,7 @@ import { ptBR } from "date-fns/locale";
 import { cn, formatDateForDisplay } from "@/lib/utils";
 import SetDeadlineDialog from "@/components/SetDeadlineDialog";
 import { SEITON_PROGRESS_KEY, SEITON_LAST_RANKING_KEY, SEITON_MODE_KEY, SEITON_COMPARISON_HISTORY_PROFESSIONAL_KEY, SEITON_COMPARISON_HISTORY_PERSONAL_KEY } from "@/lib/constants";
-import { classifyTaskContext } from "@/lib/aiUtils"; // Importar do novo utilitário
+// import { classifyTaskContext } from "@/lib/aiUtils"; // Importar do novo utilitário - REMOVIDO
 
 const RANKING_SIZE = 24; // P1 (4) + P2 (20)
 
@@ -78,8 +78,8 @@ const SEITONPage = () => {
   // Novo estado para armazenar o vencedor do último embate entre as tarefas atuais
   const [lastWinnerInCurrentComparison, setLastWinnerInCurrentComparison] = useState<'challenger' | 'opponent' | null>(null);
 
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; // Para verificar se a chave está configurada
-  const [aiClassificationQuotaExceeded, setAiClassificationQuotaExceeded] = useState(false); // Novo estado para quota
+  // const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; // Para verificar se a chave está configurada - REMOVIDO
+  // const [aiClassificationQuotaExceeded, setAiClassificationQuotaExceeded] = useState(false); // Novo estado para quota - REMOVIDO
 
   useEffect(() => {
     console.log("SEITONPage mounted.");
@@ -154,15 +154,15 @@ const SEITONPage = () => {
 
   const fetchAndSetupTasks = useCallback(async (mode: 'professional' | 'personal') => {
     setLoading(true);
-    setAiClassificationQuotaExceeded(false); // Resetar o estado da quota
+    // setAiClassificationQuotaExceeded(false); // Resetar o estado da quota - REMOVIDO
     console.log(`SEITONPage - fetchAndSetupTasks: Starting API call to get ALL eligible tasks for ${mode} mode.`);
     
-    if (!GEMINI_API_KEY) {
-      showError("Chave da API do Gemini não configurada. Não é possível classificar tarefas.");
-      setLoading(false);
-      setCurrentStep('modeSelection'); // Voltar para seleção de modo ou mostrar erro
-      return;
-    }
+    // if (!GEMINI_API_KEY) { // REMOVIDO
+    //   showError("Chave da API do Gemini não configurada. Não é possível classificar tarefas.");
+    //   setLoading(false);
+    //   setCurrentStep('modeSelection'); // Voltar para seleção de modo ou mostrar erro
+    //   return;
+    // }
 
     try {
       // Buscar TODAS as tarefas elegíveis, sem filtro de #pessoal ou #profissional
@@ -175,31 +175,31 @@ const SEITONPage = () => {
       }
       console.log(`SEITONPage - Fetched ${fetchedTasks.length} raw tasks.`);
 
-      // Classificar cada tarefa usando a IA
-      const tasksWithContextPromises = fetchedTasks.map(async task => {
-        const contextType = await classifyTaskContext(task);
-        console.log(`SEITONPage - Task "${task.content}" classified as: ${contextType}`);
-        return { ...task, contextType };
-      });
-      const classifiedTasks = await Promise.all(tasksWithContextPromises);
-      console.log(`SEITONPage - Classified ${classifiedTasks.length} tasks.`);
+      // Classificar cada tarefa usando a IA - REMOVIDO
+      // const tasksWithContextPromises = fetchedTasks.map(async task => {
+      //   const contextType = await classifyTaskContext(task);
+      //   console.log(`SEITONPage - Task "${task.content}" classified as: ${contextType}`);
+      //   return { ...task, contextType };
+      // });
+      // const classifiedTasks = await Promise.all(tasksWithContextPromises);
+      // console.log(`SEITONPage - Classified ${classifiedTasks.length} tasks.`);
       
-      const contextCounts = classifiedTasks.reduce((acc, task) => {
-        acc[task.contextType || 'indefinido'] = (acc[task.contextType || 'indefinido'] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-      console.log("SEITONPage - Context classification distribution:", contextCounts);
+      // const contextCounts = classifiedTasks.reduce((acc, task) => {
+      //   acc[task.contextType || 'indefinido'] = (acc[task.contextType || 'indefinido'] || 0) + 1;
+      //   return acc;
+      // }, {} as Record<string, number>);
+      // console.log("SEITONPage - Context classification distribution:", contextCounts);
 
-      // Verificar se houve falhas na classificação da IA (retornou 'indefinido' e a chave está presente)
-      const anyIndefinidoDueToAI = classifiedTasks.some(task => task.contextType === 'indefinido');
-      if (anyIndefinidoDueToAI && GEMINI_API_KEY) {
-        setAiClassificationQuotaExceeded(true);
-        showError("Algumas tarefas não puderam ser classificadas pela IA (possível limite de quota da API Gemini).");
-      }
+      // Verificar se houve falhas na classificação da IA (retornou 'indefinido' e a chave está presente) - REMOVIDO
+      // const anyIndefinidoDueToAI = classifiedTasks.some(task => task.contextType === 'indefinido');
+      // if (anyIndefinidoDueToAI && GEMINI_API_KEY) {
+      //   setAiClassificationQuotaExceeded(true);
+      //   showError("Algumas tarefas não puderam ser classificadas pela IA (possível limite de quota da API Gemini).");
+      // }
 
 
       // Filtrar tarefas ativas e relevantes para o modo selecionado
-      const activeTasksForMode = classifiedTasks
+      const activeTasksForMode = fetchedTasks // Usar fetchedTasks diretamente, sem classificação da IA
         .filter((task: TodoistTask) => {
           const excludedByTriage = shouldExcludeTaskFromTriage(task);
           if (excludedByTriage) {
@@ -214,13 +214,13 @@ const SEITONPage = () => {
           }
           return !isCompleted;
         })
-        .filter((task: TodoistTask) => {
-          const matchesMode = task.contextType === mode;
-          if (!matchesMode) {
-            console.log(`SEITONPage - Excluded by mode mismatch: ${task.content} (Context: ${task.contextType}, Mode: ${mode})`);
-          }
-          return matchesMode;
-        })
+        // .filter((task: TodoistTask) => { // REMOVIDO: Filtro baseado em contextType da IA
+        //   const matchesMode = task.contextType === mode;
+        //   if (!matchesMode) {
+        //     console.log(`SEITONPage - Excluded by mode mismatch: ${task.content} (Context: ${task.contextType}, Mode: ${mode})`);
+        //   }
+        //   return matchesMode;
+        // })
         .sort((a, b) => {
           if (b.priority !== a.priority) return b.priority - a.priority;
           const deadlineA = a.deadline?.date ? parseISO(a.deadline.date) : null;
@@ -312,7 +312,7 @@ const SEITONPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, getComparisonHistoryKey, updateTaskAndReturn, classifyTaskContext, GEMINI_API_KEY]);
+  }, [navigate, getComparisonHistoryKey, updateTaskAndReturn]); // Removed classifyTaskContext from dependencies
 
   useEffect(() => {
     // Initial load: check for saved mode or prompt for selection
@@ -861,28 +861,29 @@ const SEITONPage = () => {
     );
   }
 
-  if (!GEMINI_API_KEY) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-blue-100 p-4">
-        <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
-          <CardTitle className="text-3xl font-bold text-gray-800">Erro de Configuração</CardTitle>
-          <CardDescription className="text-lg text-red-600 mt-2">
-            A chave da API do Gemini (<code>VITE_GEMINI_API_KEY</code>) não está configurada.
-          </CardDescription>
-          <p className="text-sm text-gray-700">
-            Por favor, adicione-a ao seu arquivo <code>.env</code> na raiz do projeto.
-          </p>
-          <p className="text-xs text-gray-500 mt-2">
-            Exemplo: <code>VITE_GEMINI_API_KEY=SUA_CHAVE_AQUI</code>
-          </p>
-          <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
-            Voltar ao Menu Principal
-          </Button>
-        </Card>
-        <MadeWithDyad />
-      </div>
-    );
-  }
+  // REMOVIDO: Verificação da chave da API do Gemini aqui, pois a IA não será usada nesta página.
+  // if (!GEMINI_API_KEY) {
+  //   return (
+  //     <div className="min-h-screen flex flex-col items-center justify-center bg-blue-100 p-4">
+  //       <Card className="w-full max-w-md shadow-lg bg-white/80 backdrop-blur-sm p-6 text-center space-y-4">
+  //         <CardTitle className="text-3xl font-bold text-gray-800">Erro de Configuração</CardTitle>
+  //         <CardDescription className="text-lg text-red-600 mt-2">
+  //           A chave da API do Gemini (<code>VITE_GEMINI_API_KEY</code>) não está configurada.
+  //         </CardDescription>
+  //         <p className="text-sm text-gray-700">
+  //           Por favor, adicione-a ao seu arquivo <code>.env</code> na raiz do projeto.
+  //         </p>
+  //         <p className="text-xs text-gray-500 mt-2">
+  //           Exemplo: <code>VITE_GEMINI_API_KEY=SUA_CHAVE_AQUI</code>
+  //         </p>
+  //         <Button onClick={() => navigate("/main-menu")} className="mt-4 bg-blue-600 hover:bg-blue-700">
+  //           Voltar ao Menu Principal
+  //         </Button>
+  //       </Card>
+  //       <MadeWithDyad />
+  //     </div>
+  //   );
+  // }
 
   if (currentStep === 'modeSelection') {
     return (
@@ -892,7 +893,8 @@ const SEITONPage = () => {
           <CardDescription className="text-lg text-gray-600">
             Selecione o contexto para o qual você deseja priorizar as tarefas.
           </CardDescription>
-          {aiClassificationQuotaExceeded && (
+          {/* REMOVIDO: Aviso de quota da IA */}
+          {/* {aiClassificationQuotaExceeded && (
             <div className="flex flex-col items-center justify-center p-4 text-center text-red-600 bg-red-50 border border-red-200 rounded-md">
               <AlertCircle className="h-8 w-8 mb-2" />
               <p className="text-base font-semibold">Limite de Quota da API Gemini Atingido!</p>
@@ -900,7 +902,7 @@ const SEITONPage = () => {
                 A classificação de tarefas pela IA pode não funcionar corretamente. Por favor, aguarde ou verifique sua quota no Google Cloud.
               </p>
             </div>
-          )}
+          )} */}
           <div className="flex flex-col gap-4">
             <Button
               onClick={() => fetchAndSetupTasks('professional')}
